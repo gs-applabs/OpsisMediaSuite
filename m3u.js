@@ -15,7 +15,7 @@ function parseM3u(text, baseDir) {
   for (const l of lines(text, MAX_LINES + 200)) {
     if (l.startsWith('#')) continue;
     let ref = l;
-    if (!validRef(ref) && baseDir && !/^[a-z][a-z0-9+.-]*:/i.test(ref) && !ref.startsWith('\\\\')) ref = path.resolve(baseDir, ref);
+    if (!validRef(ref) && baseDir && !/^[a-z][a-z0-9+.-]*:/i.test(ref) && !ref.startsWith('\\\\')) ref = path.win32.resolve(baseDir, ref); // refs are Windows paths: win32 rules keep this deterministic (and testable) on any OS
     if (validRef(ref)) { if (items.length < MAX_LINES) items.push(ref); } else skipped++;
   }
   return { items, skipped };
