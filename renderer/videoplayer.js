@@ -228,7 +228,28 @@
     } else lines.push(t('vp.infoNone'));
     await showAlertDialog(t('vp.info'), lines.join('\n'));
   }
-  function aria() { $('vpFramePrev').setAttribute('aria-label', t('vp.framePrev')); $('vpFramePrev').title = t('vp.framePrev'); $('vpFrameNext').setAttribute('aria-label', t('vp.frameNext')); $('vpFrameNext').title = t('vp.frameNext'); }
+  // transport: icon buttons like the music player; labels / tooltips come from the language files
+  function syncTransport() {
+    const playing = video && !video.paused && !video.ended, p = $('vpPlay');
+    p.textContent = playing ? '⏸' : '▶';
+    const lbl = playing ? t('vp.pause') : t('vp.play'); p.title = lbl; p.setAttribute('aria-label', lbl);
+    const m = $('vpMute'), muted = video.muted || video.volume === 0;
+    m.textContent = muted ? '🔇' : '🔊'; m.classList.toggle('active', muted);
+    const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
+  }
+  function syncTime() {
+    const d = video.duration || 0, c = video.currentTime || 0;
+    $('vpTime').textContent = VP.clock(c * 1000) + ' / ' + VP.clock(d * 1000);
+    if (!seeking && d > 0) $('vpSeek').value = String(Math.round(c / d * 1000));
+  }
+  let seeking = false;
+  function iconLabels() {
+    for (const [id, key] of [['vpPrev', 'vp.prev'], ['vpNext', 'vp.next'], ['vpStop', 'vp.stop'], ['vpSnap', 'vp.snapshot'], ['vpFull', 'vp.fullscreen']]) { const b = $(id); b.title = t(key); b.setAttribute('aria-label', t(key)); }
+    $('vpSeek').setAttribute('aria-label', t('vp.seek')); $('vpVolume').setAttribute('aria-label', t('vp.volume'));
+    if (video) syncTransport();
+  }
+  function aria() {
+    iconLabels(); $('vpFramePrev').setAttribute('aria-label', t('vp.framePrev')); $('vpFramePrev').title = t('vp.framePrev'); $('vpFrameNext').setAttribute('aria-label', t('vp.frameNext')); $('vpFrameNext').title = t('vp.frameNext'); }
 
   /* ---------------- build ---------------- */
   function build() {
@@ -248,9 +269,20 @@
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
+    $('vpPlay').addEventListener('click', () => { if (!current() && list.length) playAt(0); else if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    $('vpStop').addEventListener('click', () => { video.pause(); video.currentTime = 0; syncTime(); syncTransport(); });
+    $('vpMute').addEventListener('click', () => { video.muted = !video.muted; syncTransport(); });
+    $('vpVolume').addEventListener('input', () => { video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
+    video.addEventListener('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
+    $('vpSeek').addEventListener('input', () => { seeking = true; if (video.duration) video.currentTime = Number($('vpSeek').value) / 1000 * video.duration; });
+    $('vpSeek').addEventListener('change', () => { seeking = false; });
+    video.addEventListener('timeupdate', syncTime); video.addEventListener('durationchange', syncTime);
+    for (const ev of ['play', 'pause', 'ended', 'emptied']) video.addEventListener(ev, syncTransport);
+    video.addEventListener('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    video.addEventListener('dblclick', () => $('vpFull').click());
     $('vpSpeed').addEventListener('change', () => { video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
     $('vpFx').addEventListener('click', toggleFx);
-    $('vpFull').addEventListener('click', () => { const f = $('vpFrame'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
+    $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));

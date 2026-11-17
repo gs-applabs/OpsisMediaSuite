@@ -1,6 +1,6 @@
 'use strict';
 
-document.getElementById('helpVersion').textContent = `v${window.waveframe?.version || '2.3.2'}`;
+document.getElementById('helpVersion').textContent = `v${window.waveframe?.version || '2.4.0'}`;
 document.getElementById('licenseYear').textContent = String(new Date().getFullYear());
 
 window.waveframe?.onThemeSync?.((theme) => {
@@ -58,5 +58,14 @@ for (const [k, v] of Object.entries(window.WAVEFRAME_LICENSES || {})) { const el
   if (ul && typeof I18N !== 'undefined') {
     const pick = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || I18N.el[k];
     const li = document.createElement('li'); li.textContent = pick('help.v232.1'); ul.appendChild(li);
+  }
+}
+
+{
+  const lang = new URLSearchParams(location.search).get('lang') || 'el';
+  const ul = document.getElementById('changelogV240');
+  if (ul && typeof I18N !== 'undefined') {
+    const pick = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || I18N.el[k];
+    const li = document.createElement('li'); li.textContent = pick('help.v240.1'); ul.appendChild(li);
   }
 }

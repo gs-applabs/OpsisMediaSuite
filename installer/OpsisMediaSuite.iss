@@ -8,7 +8,7 @@
 #endif
 
 #ifndef MyAppVersion
-  #define MyAppVersion "2.3.2"
+  #define MyAppVersion "2.4.0"
 #endif
 #define MyAppName "Opsis Media Suite"
 #define MyAppExeName "Opsis Media Suite.exe"
@@ -38,12 +38,16 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\icon.ico
 ; Opsis Media Suite artwork instead of the default Inno disk-and-box (two sizes each for high-DPI)
 WizardImageFile=images\wizard-164x314.bmp,images\wizard-246x471.bmp
-WizardSmallImageFile=images\small-55x55.bmp,images\small-110x110.bmp
+WizardImageFileDynamicDark=images\dark-wizard-164x314.bmp,images\dark-wizard-246x471.bmp
+WizardImageBackColor=#3b2f9e
+WizardImageBackColorDynamicDark=#15123a
+WizardSmallImageFile=images\small-55x55.png,images\small-110x110.png
+WizardSmallImageFileDynamicDark=images\small-55x55.png,images\small-110x110.png
 OutputDir=output
 OutputBaseFilename=OpsisMediaSuite-Setup-{#MyAppVersion}
 Compression=lzma2/max
 SolidCompression=yes
-WizardStyle=modern
+WizardStyle=modern dynamic
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
