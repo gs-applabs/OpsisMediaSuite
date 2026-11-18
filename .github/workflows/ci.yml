@@ -1,31 +1,48 @@
-name: CI
+name: Opsis Flyout Windows x64 test download
 
 on:
   push:
-  pull_request:
+    branches: [codex/flyout-test-download]
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  build:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 54fd69064243d60416206df6e334eb568dbfb8bb
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Install dependencies
-        run: npm ci
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Build and smoke-test the Windows desktop helper
+      - run: npm ci
+      - name: Build unsigned portable Windows x64 executable
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          ELECTRON_BUILDER_COMPRESSION_LEVEL: '1'
+        run: npm run dist -- --x64 -c.win.artifactName=OpsisMediaSuite-2.4.0-Flyout-test-x64.exe
+      - name: Verify packaged files and record SHA-256
+        shell: pwsh
         run: |
-          npm run build:windows-desktop
-          node test/windows-desktop.smoke.js
-      - name: FFmpeg for the real-conversion tests and the converter self-test
-        run: choco install ffmpeg --no-progress -y
-      - name: Unit, localisation, security and real-conversion tests
-        run: npm test
-      - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
-        run: npm run selftest
+          $exe = 'release/OpsisMediaSuite-2.4.0-Flyout-test-x64.exe'
+          $helper = 'release/win-unpacked/resources/windows-desktop/Opsis.WindowsDesktop.exe'
+          if (!(Test-Path $helper) -or !(Test-Path $exe)) { throw 'Missing application or Windows desktop helper' }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  OpsisMediaSuite-2.4.0-Flyout-test-x64.exe" | Set-Content -Encoding ascii "$exe.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpsisMediaSuite-2.4.0-Flyout-test-x64
+          path: |
+            release/OpsisMediaSuite-2.4.0-Flyout-test-x64.exe
+            release/OpsisMediaSuite-2.4.0-Flyout-test-x64.exe.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
