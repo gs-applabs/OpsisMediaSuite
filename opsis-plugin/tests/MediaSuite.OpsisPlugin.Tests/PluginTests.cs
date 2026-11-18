@@ -90,6 +90,17 @@ public class PluginTests
     }
 
     [Fact]
+    public void InstalledDecisionMirrorsOpsisDetector()
+    {
+        Assert.False(MediaSuiteLocator.IsInstalled(new string[0], new[] { "Something else", null! }));
+        Assert.True(MediaSuiteLocator.IsInstalled(new string[0], new[] { "Opsis Media Suite 2.4.1" }));
+        Assert.True(MediaSuiteLocator.IsInstalled(new string[0], new[] { "Waveframe" }));
+        var d = Directory.CreateTempSubdirectory().FullName;
+        try { Assert.False(MediaSuiteLocator.IsInstalled(new[] { d }, new string[0])); File.WriteAllText(Path.Combine(d, "x.exe"), ""); Assert.True(MediaSuiteLocator.IsInstalled(new[] { d }, new string[0])); }
+        finally { Directory.Delete(d, true); }
+    }
+
+    [Fact]
     public void KnownPathsMatchSuiteAppsJson()
     {
         var json = Up(6, "suite-apps.json");

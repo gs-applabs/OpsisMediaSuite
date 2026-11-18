@@ -49,17 +49,18 @@ public sealed class MediaSuitePlugin : IOpsisNewsCrawlerPlugin, IPluginWidgetPro
         "Shows the Opsis Media Suite and launches the installed app.",
         "gs-applabs", "MIT", Array.Empty<PluginAboutSection>());
 
-    public IReadOnlyList<PluginMenuItem> GetTrayMenuItems() => new List<PluginMenuItem>
+    // The three offers below appear only when the Media Suite is installed (same rule as Opsis' own detector, which keeps enabling the native "Audio management" tab by itself).
+    public IReadOnlyList<PluginMenuItem> GetTrayMenuItems() => !MediaSuiteLocator.IsInstalled() ? new List<PluginMenuItem>() : new List<PluginMenuItem>
     {
         new("mediasuite.launch", "Άνοιγμα Opsis Media Suite", "Open Opsis Media Suite", () => MediaSuiteCard.LaunchInstalled()),
     };
 
-    public IReadOnlyList<PluginNavigationItem> GetNavigationItems() => new List<PluginNavigationItem>
+    public IReadOnlyList<PluginNavigationItem> GetNavigationItems() => !MediaSuiteLocator.IsInstalled() ? new List<PluginNavigationItem>() : new List<PluginNavigationItem>
     {
         new("mediasuite", "Media Suite", "Media Suite", CreateCard, 200),
     };
 
-    public IReadOnlyList<PluginWidget> GetWidgets() => new List<PluginWidget>
+    public IReadOnlyList<PluginWidget> GetWidgets() => !MediaSuiteLocator.IsInstalled() ? new List<PluginWidget>() : new List<PluginWidget>
     {
         new("mediasuite", "Opsis Media Suite", "Opsis Media Suite", CreateCard),
     };

@@ -12,6 +12,43 @@ public static class MediaSuiteLocator
         @"%LocalAppData%\Programs\Opsis Media Suite\Opsis Media Suite.exe",
     };
 
+    /// <summary>Same decision as Opsis' own MediaSuiteDetector (which turns on the native "Audio management" tab by itself): a usual folder with an .exe, or an uninstall entry named "Opsis Media Suite"/"Waveframe". The plugin only mirrors it to decide whether to show its page.</summary>
+    public static bool IsInstalled(IEnumerable<string>? existingFolders = null, IEnumerable<string>? uninstallNames = null)
+    {
+        existingFolders ??= CandidateFolders();
+        return existingFolders.Any(f => { try { return Directory.Exists(f) && Directory.EnumerateFiles(f, "*.exe", SearchOption.TopDirectoryOnly).Any(); } catch { return false; } })
+            || (uninstallNames ?? UninstallNames()).Any(n => n != null && new[] { "Opsis Media Suite", "Waveframe" }.Any(d => n.StartsWith(d, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public static IEnumerable<string> CandidateFolders()
+    {
+        var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "";
+        var pf = Environment.GetEnvironmentVariable("ProgramFiles") ?? "";
+        var pf86 = Environment.GetEnvironmentVariable("ProgramFiles(x86)") ?? "";
+        foreach (var root in new[] { local.Length > 0 ? Path.Combine(local, "Programs") : "", pf, pf86 })
+        {
+            if (root.Length == 0) continue;
+            foreach (var name in new[] { "Opsis Media Suite", "waveframe", "Waveframe" }) yield return Path.Combine(root, name);
+        }
+    }
+
+    public static IEnumerable<string> UninstallNames()
+    {
+        var names = new List<string>();
+        foreach (var (hive, view) in new[] { (RegistryHive.LocalMachine, RegistryView.Registry64), (RegistryHive.LocalMachine, RegistryView.Registry32), (RegistryHive.CurrentUser, RegistryView.Default) })
+        {
+            try
+            {
+                using var root = RegistryKey.OpenBaseKey(hive, view);
+                using var un = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (un == null) continue;
+                foreach (var n in un.GetSubKeyNames()) { using var s = un.OpenSubKey(n); if (s?.GetValue("DisplayName") is string dn) names.Add(dn); }
+            }
+            catch { }
+        }
+        return names;
+    }
+
     public static string? Find(Func<string, bool>? exists = null, Func<string?>? registryPath = null)
     {
         exists ??= File.Exists;
