@@ -1,8 +1,10 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { createWindowsDesktop } = require('../windows-desktop');
+const { execFileSync } = require('node:child_process');
+const { createWindowsDesktop, helperPath } = require('../windows-desktop');
 
 if (process.platform !== 'win32') process.exit(0);
+console.log(execFileSync(helperPath(), ['--test-taskbar-placement'], { encoding: 'utf8', timeout: 15_000 }).trim());
 const desktop = createWindowsDesktop((message) => {
   if (message.type === 'exit' || message.type === 'error') {
     clearTimeout(timeout);

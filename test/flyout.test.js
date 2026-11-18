@@ -135,3 +135,16 @@ test('system media commands go to the selected Windows session and Windows mixer
   assert.equal(owner.messages.at(-1)[0], 'flyout:command');
   assert.equal(owner.messages.at(-1)[1].action, 'next');
 });
+
+test('taskbar placement settings are passed to the Windows helper with backward-compatible defaults', (t) => {
+  const { owner, send, nativeCommands } = fixture(t, true);
+  const set = (fields) => {
+    send(owner, 'flyout:settings', { automatic: false, widget: true, ...fields });
+    return nativeCommands.findLast((command) => command.type === 'configure');
+  };
+  assert.equal(set({}).widgetPosition, 'end');
+  assert.equal(set({ widgetPosition: 'center', widgetLegacyBounds: true }).widgetPosition, 'center');
+  assert.equal(nativeCommands.findLast((command) => command.type === 'configure').widgetLegacyBounds, true);
+  assert.equal(set({ widgetPosition: 'unknown', widgetLegacyBounds: 'true' }).widgetPosition, 'end');
+  assert.equal(nativeCommands.findLast((command) => command.type === 'configure').widgetLegacyBounds, false);
+});

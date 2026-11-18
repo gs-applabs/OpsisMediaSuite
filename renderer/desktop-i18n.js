@@ -25,3 +25,30 @@ const desktopTranslations = {
 for (const [lang, labels] of Object.entries(desktopTranslations)) {
   desktopKeys.forEach((key, index) => { I18N[lang]['desktop.' + key] = labels[index]; });
 }
+
+const taskbarKeys = ['widgetPosition', 'widgetStart', 'widgetCenter', 'widgetEnd', 'widgetLegacy', 'widgetLegacyHint'];
+const taskbarTranslations = {
+  el: ['Θέση χειριστηρίου', 'Αρχή', 'Κέντρο', 'Τέλος', 'Κλασική μέτρηση γραμμής εργασιών', 'Χρησιμοποιεί τα όρια του παραθύρου του Explorer.'],
+  en: ['Widget position', 'Start', 'Center', 'End', 'Classic taskbar measurement', 'Uses the Explorer window bounds.'],
+  fr: ['Position de la commande', 'Début', 'Centre', 'Fin', 'Mesure classique de la barre des tâches', 'Utilise les dimensions de la fenêtre de l’Explorateur.'],
+  de: ['Position der Mediensteuerung', 'Anfang', 'Mitte', 'Ende', 'Klassische Taskleistenmessung', 'Verwendet die Abmessungen des Explorer-Fensters.'],
+  es: ['Posición del control', 'Inicio', 'Centro', 'Final', 'Medición clásica de la barra de tareas', 'Usa los límites de la ventana del Explorador.'],
+  it: ['Posizione del controllo', 'Inizio', 'Centro', 'Fine', 'Misurazione classica della barra delle applicazioni', 'Usa i limiti della finestra di Esplora file.'],
+  pt: ['Posição do controlo', 'Início', 'Centro', 'Fim', 'Medição clássica da barra de tarefas', 'Usa os limites da janela do Explorador.'],
+  ru: ['Положение виджета', 'Начало', 'Центр', 'Конец', 'Классическое измерение панели задач', 'Использует границы окна Проводника.'],
+  tr: ['Medya denetimi konumu', 'Başlangıç', 'Orta', 'Son', 'Klasik görev çubuğu ölçümü', 'Gezgin penceresinin sınırlarını kullanır.'],
+  pl: ['Pozycja sterowania', 'Początek', 'Środek', 'Koniec', 'Klasyczny pomiar paska zadań', 'Używa granic okna Eksploratora.'],
+  nl: ['Positie van de mediabediening', 'Begin', 'Midden', 'Einde', 'Klassieke taakbalkmeting', 'Gebruikt de grenzen van het Verkenner-venster.'],
+  sv: ['Medieknapparnas placering', 'Början', 'Mitten', 'Slutet', 'Klassisk mätning av aktivitetsfältet', 'Använder Utforskarfönstrets gränser.'],
+  da: ['Medieknappernes placering', 'Start', 'Midte', 'Slut', 'Klassisk måling af proceslinjen', 'Bruger Stifinder-vinduets grænser.'],
+  no: ['Plassering av mediekontroller', 'Start', 'Midten', 'Slutt', 'Klassisk måling av oppgavelinjen', 'Bruker grensene til Utforsker-vinduet.'],
+  fi: ['Mediaohjainten sijainti', 'Alku', 'Keskellä', 'Loppu', 'Perinteinen tehtäväpalkin mittaus', 'Käyttää Resurssienhallinnan ikkunan rajoja.'],
+  cs: ['Umístění ovládání', 'Začátek', 'Střed', 'Konec', 'Klasické měření hlavního panelu', 'Použije okraje okna Průzkumníka.'],
+  sk: ['Poloha ovládania', 'Začiatok', 'Stred', 'Koniec', 'Klasické meranie panela úloh', 'Použije hranice okna Prieskumníka.'],
+  hu: ['A médiavezérlő helye', 'Eleje', 'Közép', 'Vége', 'A tálca klasszikus mérése', 'A Fájlkezelő ablakhatárait használja.'],
+  ro: ['Poziția controlului', 'Început', 'Centru', 'Sfârșit', 'Măsurare clasică a barei de activități', 'Folosește limitele ferestrei Explorer.'],
+  uk: ['Положення віджета', 'Початок', 'Центр', 'Кінець', 'Класичне вимірювання панелі завдань', 'Використовує межі вікна Провідника.'],
+};
+for (const [lang, labels] of Object.entries(taskbarTranslations)) {
+  taskbarKeys.forEach((key, index) => { I18N[lang]['desktop.' + key] = labels[index]; });
+}

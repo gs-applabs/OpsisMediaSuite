@@ -10,12 +10,18 @@ static class Program
     private static readonly HashSet<string> MixerActions = ["volume", "mute"];
 
     [STAThread]
-    public static void Main()
+    public static void Main(string[] args)
     {
         Console.InputEncoding = Encoding.UTF8;
         Console.OutputEncoding = new UTF8Encoding(false);
         Forms.Application.SetHighDpiMode(Forms.HighDpiMode.PerMonitorV2);
         Forms.Application.EnableVisualStyles();
+        if (args is ["--test-taskbar-placement"])
+        {
+            TaskbarWidget.VerifyPlacement();
+            Console.WriteLine("Taskbar placement and native child window verified");
+            return;
+        }
         using var context = new Forms.ApplicationContext();
         using var receiver = new Forms.Control();
         _ = receiver.Handle;
@@ -48,7 +54,8 @@ static class Program
                     case "configure":
                         keys.Configure(Bool(input, "locks"), Bool(input, "mediaKeys"));
                         widget.Configure(Bool(input, "widget"), Bool(input, "light"),
-                            String(input, "openLabel"), String(input, "prevLabel"), String(input, "playLabel"), String(input, "nextLabel"));
+                            String(input, "openLabel"), String(input, "prevLabel"), String(input, "playLabel"), String(input, "nextLabel"),
+                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"));
                         break;
                     case "widget":
                         widget.Update(String(input, "title"), Bool(input, "playing"), Bool(input, "canPlay"),

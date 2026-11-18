@@ -315,6 +315,8 @@ function attachFlyout(owner, getTheme) {
     };
     desktopSettings = {
       locks: data.locks === true, widget: data.widget === true, light: data.light === true,
+      widgetPosition: ['start', 'center', 'end'].includes(data.widgetPosition) ? data.widgetPosition : 'end',
+      widgetLegacyBounds: data.widgetLegacyBounds === true,
       openLabel: label(data.openLabel), prevLabel: label(data.prevLabel),
       playLabel: label(data.playLabel), nextLabel: label(data.nextLabel),
     };
