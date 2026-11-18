@@ -118,7 +118,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const r = await dialog.showSaveDialog(getMainWin(), { defaultPath: path.join(app.getPath('pictures'), `${base}-edited.${ext}`), filters: [{ name: ext.toUpperCase(), extensions: SAVE_FORMATS[req.format] }] });
     if (r.canceled || !r.filePath) return { ok: false, canceled: true };
     if (!SAVE_FORMATS[req.format].includes(extOf(r.filePath))) return { ok: false };
-    try { fs.writeFileSync(r.filePath, Buffer.from(req.bytes instanceof ArrayBuffer ? req.bytes : req.bytes.buffer)); return { ok: true, file: r.filePath }; } catch (_) { return { ok: false }; }
+    try {
+      // A view can cover only part of its backing buffer (including pooled Buffers).
+      const bytes = req.bytes instanceof ArrayBuffer ? Buffer.from(req.bytes)
+        : Buffer.from(req.bytes.buffer, req.bytes.byteOffset, req.bytes.byteLength);
+      fs.writeFileSync(r.filePath, bytes);
+      return { ok: true, file: r.filePath };
+    } catch (_) { return { ok: false }; }
   });
 
   // WAVEFRAME_SELFTEST: the real renderer plays a generated clip through wfmedia: with its subtitle, edits a generated photo, and audits the layout.

@@ -49,6 +49,7 @@ test('file kinds, titles and URLs', () => {
   assert.equal(V.mediaUrl('https://x.org/a.mp4'), 'https://x.org/a.mp4');
   assert.equal(decodeURIComponent(new URL(V.mediaUrl('C:\\Films\\a b.mp4')).pathname.replace(/^\//, '')), 'C:\\Films\\a b.mp4', 'round-trips through the URL the main process parses');
   assert.equal(V.playable('C:\\x\\y.mp4'), true); assert.equal(V.playable('C:\\x\\y.exe'), false); assert.equal(V.playable('..\\y.mp4'), false); assert.equal(V.playable(5), false);
+  assert.equal(V.playable('C:\\x\\y.mp4\n'), false); assert.equal(V.playable('C:\\x\\y\0.mp4'), false); assert.equal(V.playable('\\\\srv\\share\\y.mp4'), false);
 });
 
 test('subtitle bytes: UTF-8, UTF-8 BOM and Windows-1253 (Greek) all decode', () => {
