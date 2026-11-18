@@ -1283,6 +1283,9 @@ const flyoutToggle = document.getElementById('swMediaFlyout');
 const flyoutButton = document.getElementById('btnMediaFlyout');
 const lockFlyoutToggle = document.getElementById('swLockFlyout');
 const taskbarWidgetToggle = document.getElementById('swTaskbarWidget');
+const taskbarWidgetPosition = document.getElementById('taskbarWidgetPosition');
+const taskbarWidgetLegacy = document.getElementById('swTaskbarWidgetLegacy');
+const taskbarPositionKey = 'waveframe.taskbarWidgetPosition';
 const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
 const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
 let flyoutVisible = false;
@@ -1291,12 +1294,16 @@ let flyoutArtwork;
 function syncFlyoutSettings() {
   flyoutButton.title = t('flyout.title');
   flyoutButton.setAttribute('aria-label', flyoutButton.title);
+  const widget = taskbarWidgetToggle.classList.contains('active');
+  taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = !widget;
   window.waveframe.setFlyoutSettings({
     automatic: flyoutToggle.classList.contains('active'),
     lang: document.documentElement.lang,
     accent: localStorage.getItem('waveframe.accentColor') || '',
     locks: lockFlyoutToggle.classList.contains('active'),
-    widget: taskbarWidgetToggle.classList.contains('active'),
+    widget,
+    widgetPosition: taskbarWidgetPosition.value,
+    widgetLegacyBounds: taskbarWidgetLegacy.classList.contains('active'),
     light: isLightSkin(document.documentElement.dataset.theme),
     openLabel: t('flyout.title'), prevLabel: t('vp.prev'),
     playLabel: t('vp.groupPlayback'), nextLabel: t('vp.next'),
@@ -1346,15 +1353,23 @@ wireSwitch(flyoutToggle, (enabled) => {
   localStorage.setItem(flyoutSettingsKey, enabled ? '1' : '0');
   syncFlyoutSettings();
 }, localStorage.getItem(flyoutSettingsKey) === '1');
-for (const [toggle, key] of [[lockFlyoutToggle, 'waveframe.lockFlyout'], [taskbarWidgetToggle, 'waveframe.taskbarWidget']]) {
+for (const [toggle, key] of [[lockFlyoutToggle, 'waveframe.lockFlyout'], [taskbarWidgetToggle, 'waveframe.taskbarWidget'],
+  [taskbarWidgetLegacy, 'waveframe.taskbarWidgetLegacyBounds']]) {
   wireSwitch(toggle, (enabled) => {
     localStorage.setItem(key, enabled ? '1' : '0');
     syncFlyoutSettings();
   }, localStorage.getItem(key) === '1');
 }
+taskbarWidgetPosition.value = localStorage.getItem(taskbarPositionKey) || 'end';
+if (!taskbarWidgetPosition.value) taskbarWidgetPosition.value = 'end';
+taskbarWidgetPosition.addEventListener('change', () => {
+  localStorage.setItem(taskbarPositionKey, taskbarWidgetPosition.value);
+  syncFlyoutSettings();
+});
 window.waveframe.onDesktopAvailability((available) => {
   document.getElementById('rowLockFlyout').hidden = !available;
-  document.getElementById('rowTaskbarWidget').hidden = !available;
+  for (const id of ['rowTaskbarWidget', 'rowTaskbarWidgetPosition', 'rowTaskbarWidgetLegacy'])
+    document.getElementById(id).hidden = !available;
 });
 document.addEventListener('waveframe:language-changed', () => {
   syncFlyoutSettings();

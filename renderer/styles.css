@@ -927,3 +927,13 @@ body.mini-mode #bgCanvas { display: none; }
 @media (max-width: 1250px) { .vp-layout { grid-template-columns: minmax(0, 1fr); } .vp-cards { grid-template-columns: minmax(0, 1fr); } }
 
 .switch-row[hidden] { display: none; }
+
+.settings-select {
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font: inherit;
+}
+.switch-row :disabled { opacity: 0.5; }

@@ -13,6 +13,11 @@ sealed class TaskbarWidget : IDisposable
     private string title = "", open = "", previous = "", playback = "", next = "";
     private bool playing, canPlay, canPrev, canNext, light;
     private double[] spectrum = [];
+    private Edge position = Edge.End;
+    private bool legacyBounds;
+    private Task<Anchors>? anchorQuery;
+    private IntPtr queriedTaskbar;
+    private enum Edge { Start, Center, End }
 
     public TaskbarWidget(Action<string> command)
     {
@@ -21,18 +26,23 @@ sealed class TaskbarWidget : IDisposable
         timer.Tick += async (_, _) => await Relocate();
     }
 
-    public void Configure(bool show, bool lightTheme, string openLabel, string prevLabel, string playLabel, string nextLabel)
+    public void Configure(bool show, bool lightTheme, string openLabel, string prevLabel, string playLabel, string nextLabel,
+        string placement, bool legacy)
     {
         light = lightTheme;
         open = openLabel;
         previous = prevLabel;
         playback = playLabel;
         next = nextLabel;
-        if (show != enabled)
+        var edge = placement switch { "start" => Edge.Start, "center" => Edge.Center, _ => Edge.End };
+        bool changed = show != enabled || edge != position || legacy != legacyBounds;
+        enabled = show;
+        position = edge;
+        legacyBounds = legacy;
+        if (changed)
         {
-            enabled = show;
             generation++;
-            if (show)
+            if (enabled)
             {
                 timer.Start();
                 _ = Relocate();
@@ -75,7 +85,7 @@ sealed class TaskbarWidget : IDisposable
         Placement? placement = null;
         try
         {
-            placement = await Task.Run(() => FindPlacement());
+            placement = await FindPlacement();
         }
         catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException) { }
         finally { locating = false; }
@@ -94,79 +104,169 @@ sealed class TaskbarWidget : IDisposable
             form.CreateControl();
         }
 
-        var handle = form.Handle;
-        if (GetParent(handle) != p.Parent)
-        {
-            // The widget is our own window. Explorer supplies the taskbar parent only.
-            int style = GetWindowLong(handle, -16);
-            SetWindowLong(handle, -16, (style & ~unchecked((int)0x80000000)) | 0x40000000);
-            SetParent(handle, p.Parent);
-            if (GetParent(handle) != p.Parent)
-            {
-                CloseForm();
-                return;
-            }
-        }
         form.Orient(p.Vertical);
-        if (!form.Visible) form.Show();
-        SetWindowPos(handle, IntPtr.Zero, p.X, p.Y, p.Width, p.Height, 0x0010 | 0x0020);
+        if (!Attach(form, p))
+        {
+            CloseForm();
+            return;
+        }
         Paint();
     }
 
-    private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical);
+    private static bool Attach(WidgetForm widget, Placement placement)
+    {
+        var hwnd = widget.Handle;
+        if (!AttachToTaskbar(hwnd, placement.Parent)) return false;
+        if (!widget.Visible) widget.Show();
+        // WinForms can update its native parent when first made visible.
+        if (!AttachToTaskbar(hwnd, placement.Parent)) return false;
+        return SetWindowPos(hwnd, IntPtr.Zero, placement.X, placement.Y, placement.Width, placement.Height,
+            0x0010 | 0x0020);
+    }
 
-    private static Placement? FindPlacement()
+    private static bool AttachToTaskbar(IntPtr hwnd, IntPtr taskbar)
+    {
+        if (GetParent(hwnd) == taskbar) return true;
+        // Only the widget HWND belongs to us. Explorer keeps ownership of the taskbar.
+        int style = GetWindowLong(hwnd, -16);
+        SetWindowLong(hwnd, -16, (style & ~unchecked((int)0x80000000)) | 0x40000000);
+        SetParent(hwnd, taskbar);
+        return GetParent(hwnd) == taskbar;
+    }
+
+    private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical);
+    private readonly record struct Anchors(Rect? Frame, Rect? Tray, Rect? Widgets);
+
+    private async Task<Placement?> FindPlacement()
     {
         var bar = FindWindow("Shell_TrayWnd", null);
-        if (bar == IntPtr.Zero || !GetWindowRect(bar, out var rect)) return null;
-        int barWidth = rect.Right - rect.Left;
-        int barHeight = rect.Bottom - rect.Top;
-        bool vertical = barHeight > barWidth;
-        int cross = vertical ? barWidth : barHeight;
-        if (cross < 24) return null;
-        uint dpi = GetDpiForWindow(bar);
-        int wanted = (int)((vertical ? 156 : 205) * Math.Max(96, dpi) / 96);
-        var origin = new Point(rect.Left, rect.Top);
-        if (!ScreenToClient(bar, ref origin)) return null;
-        int start = vertical ? rect.Top : rect.Left;
-        int min = start + 4;
-        int max = (vertical ? rect.Bottom : rect.Right) - 4;
-        var tray = FindWindowEx(bar, IntPtr.Zero, "TrayNotifyWnd", null);
-        if (tray != IntPtr.Zero && GetWindowRect(tray, out var trayRect))
+        if (bar == IntPtr.Zero || !GetWindowRect(bar, out var bounds)) return null;
+
+        Anchors anchors = default;
+        if (!legacyBounds)
         {
-            int trayStart = vertical ? trayRect.Top : trayRect.Left;
-            if (trayStart > min) max = Math.Min(max, trayStart - 5);
+            // A stalled Explorer accessibility provider must not prevent Win32 placement.
+            if (anchorQuery is null || (queriedTaskbar != bar && anchorQuery.IsCompleted))
+            {
+                queriedTaskbar = bar;
+                anchorQuery = Task.Run(() => ReadAnchors(bar));
+            }
+            if (queriedTaskbar == bar)
+            {
+                try { anchors = await anchorQuery.WaitAsync(TimeSpan.FromMilliseconds(450)); }
+                catch (TimeoutException) { }
+            }
+            if (anchorQuery.IsCompleted) anchorQuery = null;
         }
 
-        var root = AutomationElement.FromHandle(bar);
-        var interactive = root.FindAll(TreeScope.Descendants, new OrCondition(
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem)));
-        var occupied = new List<(int Left, int Right)>();
-        foreach (AutomationElement element in interactive)
+        Rect? tray = anchors.Tray;
+        if (tray is null)
         {
+            var trayWindow = FindWindowEx(bar, IntPtr.Zero, "TrayNotifyWnd", null);
+            if (trayWindow != IntPtr.Zero && GetWindowRect(trayWindow, out var nativeTray)) tray = nativeTray;
+        }
+        var origin = new Point(0, 0);
+        if (!ClientToScreen(bar, ref origin)) return null;
+        return CalculatePlacement(bar, bounds, origin, anchors.Frame, tray, anchors.Widgets, GetDpiForWindow(bar), position);
+    }
+
+    private static Anchors ReadAnchors(IntPtr taskbar)
+    {
+        try
+        {
+            var root = AutomationElement.FromHandle(taskbar);
+            return new Anchors(ReadBounds(root, "TaskbarFrame"), ReadBounds(root, "SystemTrayIcon"), ReadBounds(root, "WidgetsButton"));
+        }
+        catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException or ElementNotAvailableException)
+        {
+            return default;
+        }
+    }
+
+    private static Rect? ReadBounds(AutomationElement root, string id)
+    {
+        try
+        {
+            var element = root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+            if (element is null || element.Current.IsOffscreen) return null;
             var bounds = element.Current.BoundingRectangle;
-            if (element.Current.ProcessId == Environment.ProcessId || element.Current.IsOffscreen || bounds.IsEmpty ||
-                bounds.Width <= 0 || bounds.Height <= 0 || bounds.Bottom <= rect.Top || bounds.Top >= rect.Bottom ||
-                bounds.Right <= rect.Left || bounds.Left >= rect.Right) continue;
-            occupied.Add(((int)(vertical ? bounds.Top : bounds.Left) - 3, (int)Math.Ceiling(vertical ? bounds.Bottom : bounds.Right) + 3));
+            return bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0
+                ? null : new Rect { Left = (int)bounds.Left, Top = (int)bounds.Top, Right = (int)bounds.Right, Bottom = (int)bounds.Bottom };
         }
-        if (occupied.Count == 0) return null; // Wait for Explorer's accessible layout.
-        var limit = max;
-        foreach (var area in occupied.OrderByDescending(x => x.Right))
+        catch (Exception e) when (e is COMException or InvalidOperationException or ElementNotAvailableException)
         {
-            if (area.Left >= limit) continue;
-            if (limit - Math.Max(min, area.Right) >= wanted) break;
-            limit = Math.Min(limit, area.Left);
+            return null;
         }
-        if (limit - min < wanted) return null;
-        int thickness = Math.Min(cross - 4, (int)(32 * Math.Max(96, dpi) / 96));
-        int offset = limit - wanted - start;
-        int center = (cross - thickness) / 2;
+    }
+
+    private static Placement? CalculatePlacement(IntPtr bar, Rect bounds, Point origin, Rect? frame, Rect? tray,
+        Rect? widgets, uint dpi, Edge edge)
+    {
+        bool vertical = bounds.Bottom - bounds.Top > bounds.Right - bounds.Left;
+        if (frame is { } f && f.Left >= bounds.Left && f.Right <= bounds.Right &&
+            f.Top >= bounds.Top && f.Bottom <= bounds.Bottom && f.Right > f.Left && f.Bottom > f.Top)
+            bounds = f;
+
+        int start = vertical ? bounds.Top : bounds.Left;
+        int end = vertical ? bounds.Bottom : bounds.Right;
+        int near = vertical ? bounds.Left : bounds.Top;
+        int far = vertical ? bounds.Right : bounds.Bottom;
+        int span = end - start;
+        int cross = far - near;
+        if (span < 50 || cross < 24) return null;
+
+        double scale = (dpi == 0 ? 96 : dpi) / 96.0;
+        int gap = Math.Clamp((int)Math.Round(5 * scale), 2, span / 4);
+        int inset = (int)Math.Round(20 * scale);
+        int extent = Math.Min(span - 2 * gap, (int)Math.Round((vertical ? 156 : 205) * scale));
+        int thickness = Math.Min(cross - 4, (int)Math.Round(32 * scale));
+        int midpoint = start + span / 2;
+        int? widgetStart = widgets is { } w ? AxisStart(w, vertical) : null;
+        int? widgetEnd = widgets is { } lead ? AxisEnd(lead, vertical) : null;
+        int? trayStart = tray is { } t ? AxisStart(t, vertical) : null;
+        int offset = edge switch
+        {
+            Edge.Start => widgetStart >= start && widgetEnd is int widgetEdge && widgetEdge > start && widgetEdge <= midpoint
+                ? widgetEdge + gap : start + inset,
+            Edge.Center => start + (span - extent) / 2,
+            _ => EndAnchor() - extent,
+        };
+
+        int EndAnchor()
+        {
+            int anchor = trayStart is int trayEdge && trayEdge >= midpoint && trayEdge <= end ? trayEdge - gap : end - inset;
+            if (widgetStart is int widgetEdge && widgetEdge >= midpoint && widgetEdge <= end) anchor = Math.Min(anchor, widgetEdge - gap);
+            return anchor;
+        }
+
+        offset = Math.Clamp(offset, start + gap, end - extent - gap);
+        int center = near + (cross - thickness) / 2;
         return vertical
-            ? new Placement(bar, origin.X + center, origin.Y + offset, thickness, wanted, true)
-            : new Placement(bar, origin.X + offset, origin.Y + center, wanted, thickness, false);
+            ? new Placement(bar, center - origin.X, offset - origin.Y, thickness, extent, true)
+            : new Placement(bar, offset - origin.X, center - origin.Y, extent, thickness, false);
+    }
+
+    private static int AxisStart(Rect rect, bool vertical) => vertical ? rect.Top : rect.Left;
+    private static int AxisEnd(Rect rect, bool vertical) => vertical ? rect.Bottom : rect.Right;
+
+    public static void VerifyPlacement()
+    {
+        var bounds = new Rect { Left = 0, Top = 1000, Right = 1920, Bottom = 1048 };
+        var tray = new Rect { Left = 1690, Top = 1000, Right = 1919, Bottom = 1048 };
+        var startWidget = new Rect { Left = 0, Top = 1000, Right = 43, Bottom = 1048 };
+        var origin = new Point(0, 1000);
+        var parent = new IntPtr(1);
+        if (CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.End)?.X != 1480 ||
+            CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.End)?.X != 1695 ||
+            CalculatePlacement(parent, bounds, origin, null, null, startWidget, 96, Edge.Start)?.X != 48 ||
+            CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.Center)?.X != 857)
+            throw new InvalidOperationException("Unexpected taskbar placement");
+
+        using var host = new Forms.Form();
+        using var widget = new WidgetForm(_ => { });
+        var test = new Placement(host.Handle, 8, 8, 205, 32, false);
+        if (!Attach(widget, test) || GetParent(widget.Handle) != host.Handle)
+            throw new InvalidOperationException("The widget is not attached to its native parent");
     }
 
     public void Dispose()
@@ -273,7 +373,7 @@ sealed class TaskbarWidget : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string name, string? caption);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string name, string? caption);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
-    [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr window, ref Point point);
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr window, ref Point point);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr SetParent(IntPtr window, IntPtr parent);

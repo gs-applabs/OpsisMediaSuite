@@ -1,4 +1,4 @@
-name: Opsis Flyout Windows x64 test download
+name: Opsis taskbar placement Windows x64 test download
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 54fd69064243d60416206df6e334eb568dbfb8bb
+          ref: d63dc9eda7892837d9a73b781370686ccf64fabc
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -24,15 +24,15 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: npm ci
+      - name: Build and test the Windows desktop helper
+        run: |
+          npm run build:windows-desktop
+          node test/windows-desktop.smoke.js
       - name: Build the portable Windows x64 folder
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          ELECTRON_BUILDER_COMPRESSION_LEVEL: '1'
         shell: pwsh
-        run: |
-          npm run build:windows-desktop
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx --no-install electron-builder --win --dir --x64 --publish never '-c.win.signAndEditExecutable=false'
+        run: npx --no-install electron-builder --win --dir --x64 --publish never '-c.win.signAndEditExecutable=false'
       - name: Verify packaged files and record SHA-256
         shell: pwsh
         run: |
@@ -40,10 +40,10 @@ jobs:
           $helper = 'release/win-unpacked/resources/windows-desktop/Opsis.WindowsDesktop.exe'
           if (!(Test-Path $helper) -or !(Test-Path $exe)) { throw 'Missing application or Windows desktop helper' }
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii 'release/win-unpacked/Opsis Media Suite.exe.sha256'
+          "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii "$exe.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: OpsisMediaSuite-2.4.0-Flyout-test-x64
+          name: OpsisMediaSuite-2.4.0-Taskbar-placement-x64
           path: release/win-unpacked/
           if-no-files-found: error
           compression-level: 3

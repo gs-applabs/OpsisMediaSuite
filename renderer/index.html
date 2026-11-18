@@ -492,6 +492,18 @@
             <div class="switch-title" id="taskbarWidgetLabel" data-i18n="desktop.widget"></div>
             <button class="switch" id="swTaskbarWidget" aria-labelledby="taskbarWidgetLabel"></button>
           </div>
+          <div class="switch-row" id="rowTaskbarWidgetPosition" hidden>
+            <label for="taskbarWidgetPosition" class="switch-title" data-i18n="desktop.widgetPosition"></label>
+            <select id="taskbarWidgetPosition" class="settings-select">
+              <option value="start" data-i18n="desktop.widgetStart"></option>
+              <option value="center" data-i18n="desktop.widgetCenter"></option>
+              <option value="end" data-i18n="desktop.widgetEnd"></option>
+            </select>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidgetLegacy" hidden>
+            <div><div class="switch-title" id="taskbarLegacyLabel" data-i18n="desktop.widgetLegacy"></div><div class="switch-sub" id="taskbarLegacyHint" data-i18n="desktop.widgetLegacyHint"></div></div>
+            <button class="switch" id="swTaskbarWidgetLegacy" aria-labelledby="taskbarLegacyLabel" aria-describedby="taskbarLegacyHint"></button>
+          </div>
           <div class="switch-row">
             <div><div class="switch-title" data-i18n="settings.autostart">Αυτόματη εκκίνηση</div><div class="switch-sub" data-i18n="settings.autostartSub">Εκκίνηση του Waveframe μαζί με τα Windows</div></div>
             <button class="switch" id="swAutostart"></button>
