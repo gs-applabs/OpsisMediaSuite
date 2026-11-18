@@ -1296,6 +1296,7 @@ function syncFlyoutSettings() {
   flyoutButton.setAttribute('aria-label', flyoutButton.title);
   const widget = taskbarWidgetToggle.classList.contains('active');
   taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = !widget;
+  if (!widget) document.getElementById('taskbarWidgetStatus').hidden = true;
   window.waveframe.setFlyoutSettings({
     automatic: flyoutToggle.classList.contains('active'),
     lang: document.documentElement.lang,
@@ -1365,6 +1366,10 @@ if (!taskbarWidgetPosition.value) taskbarWidgetPosition.value = 'end';
 taskbarWidgetPosition.addEventListener('change', () => {
   localStorage.setItem(taskbarPositionKey, taskbarWidgetPosition.value);
   syncFlyoutSettings();
+});
+window.waveframe.onTaskbarStatus((status) => {
+  document.getElementById('taskbarStatusCode').textContent = status;
+  document.getElementById('taskbarWidgetStatus').hidden = !status || !taskbarWidgetToggle.classList.contains('active');
 });
 window.waveframe.onDesktopAvailability((available) => {
   document.getElementById('rowLockFlyout').hidden = !available;

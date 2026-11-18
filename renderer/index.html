@@ -489,8 +489,11 @@
             <button class="switch" id="swLockFlyout" aria-labelledby="lockFlyoutLabel"></button>
           </div>
           <div class="switch-row" id="rowTaskbarWidget" hidden>
-            <div class="switch-title" id="taskbarWidgetLabel" data-i18n="desktop.widget"></div>
-            <button class="switch" id="swTaskbarWidget" aria-labelledby="taskbarWidgetLabel"></button>
+            <div>
+              <div class="switch-title" id="taskbarWidgetLabel" data-i18n="desktop.widget"></div>
+              <div id="taskbarWidgetStatus" class="switch-sub" role="status" hidden><span data-i18n="desktop.widgetStatus"></span> <output id="taskbarStatusCode"></output></div>
+            </div>
+            <button class="switch" id="swTaskbarWidget" aria-labelledby="taskbarWidgetLabel" aria-describedby="taskbarWidgetStatus"></button>
           </div>
           <div class="switch-row" id="rowTaskbarWidgetPosition" hidden>
             <label for="taskbarWidgetPosition" class="switch-title" data-i18n="desktop.widgetPosition"></label>

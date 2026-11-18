@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using Forms = System.Windows.Forms;
@@ -7,21 +8,23 @@ sealed class TaskbarWidget : IDisposable
 {
     private readonly Action<string> command;
     private readonly Forms.Timer timer;
-    private WidgetForm? form;
-    private bool enabled;
+    private readonly Action<string> status;
+    private readonly Dictionary<IntPtr, TaskbarSurface> surfaces = new();
+    private readonly Dictionary<IntPtr, Task<Anchors>> queries = new();
+    private bool enabled, locating;
     private int generation;
+    private string lastStatus = "";
     private string title = "", open = "", previous = "", playback = "", next = "";
     private bool playing, canPlay, canPrev, canNext, light;
     private double[] spectrum = [];
     private Edge position = Edge.End;
     private bool legacyBounds;
-    private Task<Anchors>? anchorQuery;
-    private IntPtr queriedTaskbar;
     private enum Edge { Start, Center, End }
 
-    public TaskbarWidget(Action<string> command)
+    public TaskbarWidget(Action<string> command, Action<string> status)
     {
         this.command = command;
+        this.status = status;
         timer = new Forms.Timer { Interval = 1500 };
         timer.Tick += async (_, _) => await Relocate();
     }
@@ -44,13 +47,15 @@ sealed class TaskbarWidget : IDisposable
             generation++;
             if (enabled)
             {
+                Report("CHECKING");
                 timer.Start();
                 _ = Relocate();
             }
             else
             {
                 timer.Stop();
-                CloseForm();
+                foreach (var bar in surfaces.Keys.ToArray()) CloseSurface(bar);
+                Report("");
             }
         }
         Paint();
@@ -67,96 +72,106 @@ sealed class TaskbarWidget : IDisposable
         Paint();
     }
 
-    private void Paint() =>
-        form?.UpdateView(title, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, spectrum);
-
-    private void CloseForm()
+    private void Paint()
     {
-        form?.Dispose();
-        form = null;
+        foreach (var surface in surfaces.Values)
+            surface.UpdateView(title, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, spectrum);
     }
 
-    private bool locating;
+    private void Report(string value)
+    {
+        if (lastStatus == value) return;
+        lastStatus = value;
+        status(value);
+    }
+
+    private void CloseSurface(IntPtr bar)
+    {
+        if (surfaces.Remove(bar, out var surface)) surface.Dispose();
+    }
+
+    private static List<IntPtr> FindTaskbars()
+    {
+        var result = new List<IntPtr>();
+        var primary = FindWindow("Shell_TrayWnd", null);
+        if (primary != IntPtr.Zero) result.Add(primary);
+        IntPtr current = IntPtr.Zero;
+        while ((current = FindWindowEx(IntPtr.Zero, current, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
+            result.Add(current);
+        return result;
+    }
+
     private async Task Relocate()
     {
         if (!enabled || locating) return;
         locating = true;
         int request = generation;
-        Placement? placement = null;
         try
         {
-            placement = await FindPlacement();
+            var bars = FindTaskbars();
+            var placements = await Task.WhenAll(bars.Select(FindPlacement));
+            if (!enabled || request != generation) return;
+            foreach (var bar in surfaces.Keys.Where(bar => !bars.Contains(bar)).ToArray()) CloseSurface(bar);
+            foreach (var bar in queries.Keys.Where(bar => !bars.Contains(bar)).ToArray()) queries.Remove(bar);
+            string failure = bars.Count == 0 ? "NO-TASKBAR" : "NO-BOUNDS";
+            int attached = 0;
+            for (int i = 0; i < bars.Count; i++)
+            {
+                var bar = bars[i];
+                if (placements[i] is not { } p) { CloseSurface(bar); continue; }
+                try
+                {
+                    if (surfaces.TryGetValue(bar, out var surface) && (!surface.IsAlive || surface.Vertical != p.Vertical))
+                    {
+                        CloseSurface(bar);
+                        surface = null;
+                    }
+                    if (surface is null)
+                    {
+                        surface = new TaskbarSurface(bar, p.Vertical, p.Width, p.Height, command);
+                        surfaces.Add(bar, surface);
+                    }
+                    surface.Place(p.X, p.Y, p.Width, p.Height);
+                    if (surface.IsExposed) attached++;
+                    else failure = "NOT-VISIBLE";
+                }
+                catch (Win32Exception e)
+                {
+                    failure = $"WIN32-{e.NativeErrorCode}";
+                    CloseSurface(bar);
+                }
+                catch (Exception e) when (e is InvalidOperationException or ArgumentException or COMException)
+                {
+                    failure = "ATTACH-FAILED";
+                    CloseSurface(bar);
+                }
+            }
+            Paint();
+            Report(attached == 0 ? failure : attached == bars.Count ? $"ATTACHED-{attached}" : $"PARTIAL-{attached}");
         }
-        catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException) { }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException or ArgumentException or COMException)
+        {
+            if (enabled && request == generation) Report("ATTACH-FAILED");
+        }
         finally { locating = false; }
-        if (!enabled || request != generation) return;
-        if (placement is null)
-        {
-            CloseForm();
-            return;
-        }
-
-        var p = placement.Value;
-        if (form is null || form.IsDisposed || !form.IsHandleCreated || !IsWindow(form.Handle))
-        {
-            CloseForm();
-            form = new WidgetForm(command);
-            form.CreateControl();
-        }
-
-        form.Orient(p.Vertical);
-        if (!Attach(form, p))
-        {
-            CloseForm();
-            return;
-        }
-        Paint();
-    }
-
-    private static bool Attach(WidgetForm widget, Placement placement)
-    {
-        var hwnd = widget.Handle;
-        if (!AttachToTaskbar(hwnd, placement.Parent)) return false;
-        if (!widget.Visible) widget.Show();
-        // WinForms can update its native parent when first made visible.
-        if (!AttachToTaskbar(hwnd, placement.Parent)) return false;
-        return SetWindowPos(hwnd, IntPtr.Zero, placement.X, placement.Y, placement.Width, placement.Height,
-            0x0010 | 0x0020);
-    }
-
-    private static bool AttachToTaskbar(IntPtr hwnd, IntPtr taskbar)
-    {
-        if (GetParent(hwnd) == taskbar) return true;
-        // Only the widget HWND belongs to us. Explorer keeps ownership of the taskbar.
-        int style = GetWindowLong(hwnd, -16);
-        SetWindowLong(hwnd, -16, (style & ~unchecked((int)0x80000000)) | 0x40000000);
-        SetParent(hwnd, taskbar);
-        return GetParent(hwnd) == taskbar;
     }
 
     private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical);
     private readonly record struct Anchors(Rect? Frame, Rect? Tray, Rect? Widgets);
 
-    private async Task<Placement?> FindPlacement()
+    private async Task<Placement?> FindPlacement(IntPtr bar)
     {
-        var bar = FindWindow("Shell_TrayWnd", null);
-        if (bar == IntPtr.Zero || !GetWindowRect(bar, out var bounds)) return null;
+        if (!GetWindowRect(bar, out var bounds)) return null;
 
         Anchors anchors = default;
         if (!legacyBounds)
         {
-            // A stalled Explorer accessibility provider must not prevent Win32 placement.
-            if (anchorQuery is null || (queriedTaskbar != bar && anchorQuery.IsCompleted))
-            {
-                queriedTaskbar = bar;
-                anchorQuery = Task.Run(() => ReadAnchors(bar));
-            }
-            if (queriedTaskbar == bar)
-            {
-                try { anchors = await anchorQuery.WaitAsync(TimeSpan.FromMilliseconds(450)); }
-                catch (TimeoutException) { }
-            }
-            if (anchorQuery.IsCompleted) anchorQuery = null;
+            // Keep at most one query per taskbar if Explorer's accessibility provider stalls.
+            if (!queries.TryGetValue(bar, out var query))
+                queries[bar] = query = Task.Run(() => ReadAnchors(bar));
+            try { anchors = await query.WaitAsync(TimeSpan.FromMilliseconds(450)); }
+            catch (TimeoutException) { }
+            if (query.IsCompleted) queries.Remove(bar);
         }
 
         Rect? tray = anchors.Tray;
@@ -167,6 +182,8 @@ sealed class TaskbarWidget : IDisposable
         }
         var origin = new Point(0, 0);
         if (!ClientToScreen(bar, ref origin)) return null;
+        if (GetClientRect(bar, out var client) && client.Right > 0 && client.Bottom > 0)
+            bounds = new Rect { Left = origin.X, Top = origin.Y, Right = origin.X + client.Right, Bottom = origin.Y + client.Bottom };
         return CalculatePlacement(bar, bounds, origin, anchors.Frame, tray, anchors.Widgets, GetDpiForWindow(bar), position);
     }
 
@@ -263,10 +280,25 @@ sealed class TaskbarWidget : IDisposable
             throw new InvalidOperationException("Unexpected taskbar placement");
 
         using var host = new Forms.Form();
-        using var widget = new WidgetForm(_ => { });
-        var test = new Placement(host.Handle, 8, 8, 205, 32, false);
-        if (!Attach(widget, test) || GetParent(widget.Handle) != host.Handle)
-            throw new InvalidOperationException("The widget is not attached to its native parent");
+        host.Show();
+        using var widget = new TaskbarSurface(host.Handle, false, 205, 32, _ => { });
+        using var coveringSibling = new TaskbarSurface(host.Handle, false, 205, 32, _ => { });
+        coveringSibling.Place(8, 8, 205, 32);
+        widget.Place(8, 8, 205, 32);
+        widget.VerifyVisibleChild();
+    }
+
+    public static bool VerifyExplorer()
+    {
+        var bars = FindTaskbars();
+        if (bars.Count == 0) return false;
+        using var widget = new TaskbarWidget(_ => { }, _ => { }) { legacyBounds = true };
+        var placement = widget.FindPlacement(bars[0]).GetAwaiter().GetResult()
+            ?? throw new InvalidOperationException("Could not calculate placement on the Explorer taskbar");
+        using var surface = new TaskbarSurface(placement.Parent, placement.Vertical, placement.Width, placement.Height, _ => { });
+        surface.Place(placement.X, placement.Y, placement.Width, placement.Height);
+        surface.VerifyVisibleChild();
+        return true;
     }
 
     public void Dispose()
@@ -274,111 +306,14 @@ sealed class TaskbarWidget : IDisposable
         enabled = false;
         generation++;
         timer.Dispose();
-        CloseForm();
-    }
-
-    private sealed class WidgetForm : Forms.Form
-    {
-        private readonly Forms.Button title = new() { FlatStyle = Forms.FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
-        private readonly Forms.Button prev = new() { FlatStyle = Forms.FlatStyle.Flat, Text = "⏮" };
-        private readonly Forms.Button play = new() { FlatStyle = Forms.FlatStyle.Flat };
-        private readonly Forms.Button next = new() { FlatStyle = Forms.FlatStyle.Flat, Text = "⏭" };
-        private readonly Forms.Control meter = new();
-        private readonly Forms.ToolTip tips = new();
-        private readonly Forms.TableLayoutPanel layout = new() { Dock = Forms.DockStyle.Fill, Margin = Forms.Padding.Empty };
-        private bool? vertical;
-        private double[] spectrum = [];
-
-        public WidgetForm(Action<string> command)
-        {
-            AutoScaleMode = Forms.AutoScaleMode.None;
-            FormBorderStyle = Forms.FormBorderStyle.None;
-            ShowInTaskbar = false;
-            ShowIcon = false;
-            StartPosition = Forms.FormStartPosition.Manual;
-            foreach (var (button, action) in new[] { (title, "open"), (prev, "prev"), (play, "playpause"), (next, "next") })
-            {
-                button.FlatAppearance.BorderSize = 0;
-                button.Dock = Forms.DockStyle.Fill;
-                button.Margin = Forms.Padding.Empty;
-                button.Click += (_, _) => command(action);
-            }
-            meter.Dock = Forms.DockStyle.Fill;
-            meter.Paint += (_, e) =>
-            {
-                using var brush = new SolidBrush(ForeColor);
-                for (int i = 0; i < spectrum.Length; i++)
-                {
-                    float step = meter.Width / (float)spectrum.Length;
-                    float height = (float)Math.Max(2, spectrum[i] * meter.Height * 0.52);
-                    e.Graphics.FillRectangle(brush, i * step, (meter.Height - height) / 2, Math.Max(1, step - 1), height);
-                }
-            };
-            Controls.Add(layout);
-            Orient(false);
-        }
-
-        public void Orient(bool stack)
-        {
-            if (vertical == stack) return;
-            vertical = stack;
-            layout.SuspendLayout();
-            layout.Controls.Clear();
-            layout.ColumnStyles.Clear();
-            layout.RowStyles.Clear();
-            layout.ColumnCount = stack ? 1 : 5;
-            layout.RowCount = stack ? 5 : 1;
-            title.TextAlign = stack ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
-            Forms.Control[] items = [title, meter, prev, play, next];
-            for (int i = 0; i < items.Length; i++)
-            {
-                if (stack) layout.RowStyles.Add(new Forms.RowStyle(Forms.SizeType.Percent, 20));
-                else layout.ColumnStyles.Add(new Forms.ColumnStyle(Forms.SizeType.Percent, i == 0 ? 100 : i == 1 ? 15 : 20));
-                layout.Controls.Add(items[i], stack ? 0 : i, stack ? i : 0);
-            }
-            layout.ResumeLayout();
-        }
-
-        protected override bool ShowWithoutActivation => true;
-
-        public void UpdateView(string track, string open, string previous, string playback, string following,
-            bool playing, bool canPlay, bool canPrev, bool canNext, bool light, double[] levels)
-        {
-            BackColor = light ? Color.FromArgb(240, 240, 244) : Color.FromArgb(28, 30, 38);
-            ForeColor = light ? Color.FromArgb(32, 33, 41) : Color.WhiteSmoke;
-            title.Text = vertical == true ? "♫" : string.IsNullOrEmpty(track) ? "Opsis" : track.Replace("&", "&&");
-            if (!string.IsNullOrEmpty(track)) open = $"{open} · {track}";
-            prev.Enabled = canPrev;
-            play.Enabled = canPlay;
-            next.Enabled = canNext;
-            play.Text = playing ? "⏸" : "▶";
-            foreach (var (button, name) in new[] { (title, open), (prev, previous), (play, playback), (next, following) })
-            {
-                if (button.AccessibleName == name) continue;
-                button.AccessibleName = name;
-                tips.SetToolTip(button, name);
-            }
-            spectrum = levels;
-            meter.Invalidate();
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing) tips.Dispose();
-            base.Dispose(disposing);
-        }
+        foreach (var bar in surfaces.Keys.ToArray()) CloseSurface(bar);
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string name, string? caption);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string name, string? caption);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr window, ref Point point);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
-    [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
-    [DllImport("user32.dll")] private static extern IntPtr SetParent(IntPtr window, IntPtr parent);
-    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong(IntPtr window, int index);
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")] private static extern int SetWindowLong(IntPtr window, int index, int value);
-    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int w, int h, uint flags);
 }
