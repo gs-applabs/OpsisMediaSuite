@@ -24,25 +24,27 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: npm ci
-      - name: Build unsigned portable Windows x64 executable
+      - name: Build the portable Windows x64 folder
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           ELECTRON_BUILDER_COMPRESSION_LEVEL: '1'
-        run: npm run dist -- --x64 -c.win.artifactName=OpsisMediaSuite-2.4.0-Flyout-test-x64.exe
+        shell: pwsh
+        run: |
+          npm run build:windows-desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx --no-install electron-builder --win --dir --x64 --publish never '-c.win.signAndEditExecutable=false'
       - name: Verify packaged files and record SHA-256
         shell: pwsh
         run: |
-          $exe = 'release/OpsisMediaSuite-2.4.0-Flyout-test-x64.exe'
+          $exe = 'release/win-unpacked/Opsis Media Suite.exe'
           $helper = 'release/win-unpacked/resources/windows-desktop/Opsis.WindowsDesktop.exe'
           if (!(Test-Path $helper) -or !(Test-Path $exe)) { throw 'Missing application or Windows desktop helper' }
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  OpsisMediaSuite-2.4.0-Flyout-test-x64.exe" | Set-Content -Encoding ascii "$exe.sha256"
+          "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii 'release/win-unpacked/Opsis Media Suite.exe.sha256'
       - uses: actions/upload-artifact@v4
         with:
           name: OpsisMediaSuite-2.4.0-Flyout-test-x64
-          path: |
-            release/OpsisMediaSuite-2.4.0-Flyout-test-x64.exe
-            release/OpsisMediaSuite-2.4.0-Flyout-test-x64.exe.sha256
+          path: release/win-unpacked/
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 3
           retention-days: 30
