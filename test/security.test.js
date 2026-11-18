@@ -9,7 +9,7 @@ const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 test('every BrowserWindow keeps contextIsolation on, nodeIntegration off and the sandbox on', () => {
-  for (const f of ['main.js', 'suite-main.js']) {
+  for (const f of ['main.js', 'suite-main.js', 'flyout-main.js']) {
     const src = read(f);
     const wins = [...src.matchAll(/new BrowserWindow\(\{[\s\S]*?\n\s*\}\);/g)].map((m) => m[0]);
     assert.ok(wins.length >= 1, `${f}: no BrowserWindow found`);
@@ -22,7 +22,7 @@ test('every BrowserWindow keeps contextIsolation on, nodeIntegration off and the
 });
 
 test('every page has a strict CSP (no inline script/style, no eval, no plugins, no base/form hijack) and no inline style attributes', () => {
-  for (const f of ['index.html', 'help.html', 'splash.html']) {
+  for (const f of ['index.html', 'help.html', 'splash.html', 'flyout.html']) {
     const html = read(path.join('renderer', f));
     const csp = /Content-Security-Policy" content="([^"]+)"/.exec(html);
     assert.ok(csp, `${f}: no CSP`);

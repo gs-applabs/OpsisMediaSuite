@@ -47,9 +47,9 @@ test('no raw keys or stray Greek in the Latin/Cyrillic languages for the new tex
 
 test('every key referenced by the code exists in the Greek reference', () => {
   const used = new Set();
-  for (const f of ['app.js', 'converter.js', 'splash.js', 'video.js', 'index.html']) {
+  for (const f of ['app.js', 'converter.js', 'splash.js', 'video.js', 'index.html', 'flyout.html', 'flyout.js']) {
     const s = fs.readFileSync(path.join(root, f), 'utf8');
-    for (const m of s.matchAll(/data-i18n(?:-title)?="([\w.]+)"/g)) used.add(m[1]);
+    for (const m of s.matchAll(/(?:data-i18n(?:-title)?|data-label)="([\w.]+)"/g)) used.add(m[1]);
     for (const m of s.matchAll(/\bt\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
     for (const m of s.matchAll(/\btr\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
   }

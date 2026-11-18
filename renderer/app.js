@@ -694,7 +694,9 @@ let currentTrackIndex = -1;
 let selectedForExport = new Set();
 let exportSelectionInitialized = false;
 let shuffleOn = false;
-let repeatOn = false;
+let repeatMode = 'off';
+let queuedShuffleTrack = null;
+let announcedTrack = null;
 let selectedFormat = 'wav';
 let selectedQuality = 'medium';
 let activePresetKey = 'flat';
@@ -1075,6 +1077,7 @@ function updateTrackNameUi() {
   syncOsNowPlaying();
   syncMiniBar();
   syncMediaSession();
+  publishFlyout();
 }
 function syncMediaSession() {
   // Standard Web MediaSession API — Chromium wires this straight through to
@@ -1111,6 +1114,7 @@ setInterval(() => {
     els.seek.value = String((el.currentTime / el.duration) * 1000);
     els.timeLabel.textContent = `${fmtTime(el.currentTime)} / ${fmtTime(el.duration)}`;
   }
+  publishFlyout();
 }, 250);
 els.seek.addEventListener('input', () => engine.seekTo(parseFloat(els.seek.value) / 1000));
 
@@ -1128,17 +1132,36 @@ function syncPlayButton() {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = engine.activeEl.paused ? 'paused' : 'playing';
   }
+  publishFlyout();
 }
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => engine.togglePlay().then(syncPlayButton));
-  navigator.mediaSession.setActionHandler('pause', () => engine.togglePlay().then(syncPlayButton));
-  navigator.mediaSession.setActionHandler('previoustrack', () => goPrev());
-  navigator.mediaSession.setActionHandler('nexttrack', () => goNext());
+  navigator.mediaSession.setActionHandler('play', () => {
+    if (engine.activeEl.paused && playlist.length) els.btnPlay.click();
+    openFlyoutForMediaKey();
+  });
+  navigator.mediaSession.setActionHandler('pause', () => {
+    engine.pauseActive();
+    syncPlayButton();
+    openFlyoutForMediaKey();
+  });
+  navigator.mediaSession.setActionHandler('previoustrack', () => { goPrev(); openFlyoutForMediaKey(); });
+  navigator.mediaSession.setActionHandler('nexttrack', () => { goNext(); openFlyoutForMediaKey(); });
+  navigator.mediaSession.setActionHandler('seekto', ({ seekTime }) => {
+    const duration = engine.activeEl.duration;
+    if (Number.isFinite(seekTime) && Number.isFinite(duration) && duration > 0) {
+      engine.seekTo(Math.max(0, Math.min(1, seekTime / duration)));
+    }
+  });
 }
 engine.slots.forEach((s) => {
   s.el.addEventListener('play', syncPlayButton);
   s.el.addEventListener('pause', syncPlayButton);
-  s.el.addEventListener('ended', () => { if (engine.activeSlot === engine.slots.indexOf(s)) onTrackEnded(); });
+  s.el.addEventListener('timeupdate', () => { if (s.el === engine.activeEl) maybeAnnounceNext(s); });
+  s.el.addEventListener('ended', () => {
+    if (s.el !== engine.activeEl || s.item !== playlist[currentTrackIndex]) return;
+    onTrackEnded();
+    syncPlayButton();
+  });
   s.el.addEventListener('error', () => {
     if (!s.el.src || engine.activeSlot !== engine.slots.indexOf(s)) return;
     showAlertDialog(t('player.loadErrorTitle'), t('player.loadErrorMsg'));
@@ -1146,8 +1169,7 @@ engine.slots.forEach((s) => {
 });
 function onTrackEnded() {
   if (sleepWantsStopAtEnd()) return;
-  if (repeatOn && playlist.length === 1) { playTrackAt(currentTrackIndex); return; }
-  goNext();
+  playTrackAt(nextTrackIndex({ natural: true }));
 }
 // Real loudness (ITU-R BS.1770-4 integrated LUFS with gating, see audiolib.js) instead of a plain RMS estimate:
 // quiet classical and loud masters now land on the same perceived level. Result: { gain (linear), lufs }.
@@ -1179,6 +1201,8 @@ function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
   currentTrackIndex = index;
   const item = playlist[index];
+  queuedShuffleTrack = null;
+  announcedTrack = null;
   engine.setNormalizationGain(1);
   showLoudnessInfo(null);
   analyzeLoudness(item).then((gain) => {
@@ -1188,6 +1212,7 @@ function playTrackAt(index) {
     const slot = engine.slots[slotIndex];
     slot.el.src = item.file ? URL.createObjectURL(item.file) : item.url;
     slot.name = item.name;
+    slot.item = item;
   }, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
 }
 function showLoudnessInfo(item) {
@@ -1197,29 +1222,147 @@ function showLoudnessInfo(item) {
   const sign = item.normGainDb > 0 ? '+' : '';
   el.textContent = t('enhance.loudnessInfo').replace('{lufs}', item.lufs.toFixed(1)).replace('{gain}', sign + item.normGainDb.toFixed(1));
 }
-function goNext() {
-  if (playlist.length === 0) return;
-  let next;
-  if (shuffleOn) next = Math.floor(Math.random() * playlist.length);
-  else { next = currentTrackIndex + 1; if (next >= playlist.length) next = repeatOn ? 0 : -1; }
-  if (next === -1) return;
-  playTrackAt(next);
+function nextTrackIndex({ natural = false } = {}) {
+  if (playlist.length === 0) return -1;
+  if (natural && repeatMode === 'one' && currentTrackIndex >= 0) return currentTrackIndex;
+  if (shuffleOn && playlist.length > 1) {
+    // Keep the displayed next track until it is played or removed from the playlist.
+    const queuedIndex = playlist.indexOf(queuedShuffleTrack);
+    if (queuedIndex >= 0 && queuedIndex !== currentTrackIndex) return queuedIndex;
+    const choices = playlist.length - (currentTrackIndex >= 0 ? 1 : 0);
+    const choice = Math.floor(Math.random() * choices);
+    const index = currentTrackIndex >= 0 && choice >= currentTrackIndex ? choice + 1 : choice;
+    queuedShuffleTrack = playlist[index];
+    return index;
+  }
+  if (currentTrackIndex + 1 < playlist.length) return currentTrackIndex + 1;
+  return repeatMode === 'all' ? 0 : -1;
 }
+function goNext() { playTrackAt(nextTrackIndex()); }
 function goPrev() {
   if (playlist.length === 0) return;
   playTrackAt(currentTrackIndex <= 0 ? playlist.length - 1 : currentTrackIndex - 1);
 }
 els.btnNext.addEventListener('click', goNext);
 els.btnPrev.addEventListener('click', goPrev);
-els.btnShuffle.addEventListener('click', () => { shuffleOn = !shuffleOn; els.btnShuffle.classList.toggle('active', shuffleOn); });
-els.btnRepeat.addEventListener('click', () => { repeatOn = !repeatOn; els.btnRepeat.classList.toggle('active', repeatOn); });
+els.btnShuffle.addEventListener('click', () => {
+  shuffleOn = !shuffleOn;
+  queuedShuffleTrack = null;
+  els.btnShuffle.classList.toggle('active', shuffleOn);
+  els.btnShuffle.setAttribute('aria-pressed', String(shuffleOn));
+  publishFlyout();
+});
+const repeatLabels = { off: 'vp.repeatOff', all: 'vp.repeatList', one: 'vp.repeatFile' };
+function syncRepeatButton() {
+  els.btnRepeat.classList.toggle('active', repeatMode !== 'off');
+  els.btnRepeat.textContent = repeatMode === 'one' ? '↻¹' : '↻';
+  els.btnRepeat.title = `${t('vp.repeat')} · ${t(repeatLabels[repeatMode])}`;
+  els.btnRepeat.setAttribute('aria-label', els.btnRepeat.title);
+  els.btnRepeat.setAttribute('aria-pressed', String(repeatMode !== 'off'));
+}
+els.btnRepeat.addEventListener('click', () => {
+  repeatMode = { off: 'all', all: 'one', one: 'off' }[repeatMode];
+  syncRepeatButton();
+  publishFlyout();
+});
 els.btnMute.addEventListener('click', () => {
   const m = !engine.state.muted;
   engine.setMuted(m);
   els.btnMute.classList.toggle('active', m);
   els.btnMute.textContent = m ? '🔇' : '🔊';
+  publishFlyout();
 });
-els.volume.addEventListener('input', () => engine.setVolume(parseInt(els.volume.value, 10) / 100));
+els.volume.addEventListener('input', () => {
+  engine.setVolume(parseInt(els.volume.value, 10) / 100);
+  publishFlyout();
+});
+
+/* ---- Desktop playback flyout ---- */
+const flyoutSettingsKey = 'waveframe.automaticFlyout';
+const flyoutToggle = document.getElementById('swMediaFlyout');
+const flyoutButton = document.getElementById('btnMediaFlyout');
+const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
+const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
+let flyoutVisible = false;
+let flyoutArtwork;
+
+function syncFlyoutSettings() {
+  flyoutButton.title = t('flyout.title');
+  flyoutButton.setAttribute('aria-label', flyoutButton.title);
+  window.waveframe.setFlyoutSettings({
+    automatic: flyoutToggle.classList.contains('active'),
+    lang: document.documentElement.lang,
+    accent: localStorage.getItem('waveframe.accentColor') || '',
+  });
+}
+function openFlyoutForMediaKey() {
+  if (playlist.length) window.waveframe.openFlyout('media');
+}
+function upcomingTrack() {
+  if (SLEEP_STEPS[sleepStep] === 'end') return null;
+  return playlist[nextTrackIndex({ natural: true })];
+}
+function maybeAnnounceNext(slot) {
+  if (!flyoutToggle.classList.contains('active')) return;
+  const item = playlist[currentTrackIndex];
+  const remaining = slot.el.duration - slot.el.currentTime;
+  if (item && item === slot.item && item !== announcedTrack && !slot.el.paused &&
+      remaining > 0 && remaining <= 7 && upcomingTrack()) {
+    announcedTrack = item;
+    window.waveframe.openFlyout('up-next');
+  }
+}
+function publishFlyout() {
+  if (!flyoutVisible) return;
+  const item = playlist[currentTrackIndex];
+  const slot = engine.slots[engine.activeSlot];
+  const hasMedia = !!item && slot.item === item;
+  const playing = hasMedia && !slot.el.paused && !slot.el.ended;
+  const upcoming = item && upcomingTrack();
+  if (playing && !engine.state.muted) engine.analyser.getByteFrequencyData(flyoutFrequencyData);
+  else flyoutFrequencyData.fill(0);
+  if (flyoutArtwork !== (item?.picture || '')) {
+    flyoutArtwork = item?.picture || '';
+    window.waveframe.updateFlyoutArtwork(flyoutArtwork);
+  }
+  window.waveframe.updateFlyout({
+    title: item?.title || item?.name, artist: item?.artist, upcoming: upcoming?.title || upcoming?.name,
+    playing, canPlay: playlist.length > 0, canNext: nextTrackIndex() >= 0, repeat: repeatMode, shuffle: shuffleOn,
+    position: hasMedia ? slot.el.currentTime : 0,
+    duration: hasMedia ? slot.el.duration : 0,
+    volume: engine.state.volume * 100, muted: engine.state.muted,
+    spectrum: flyoutBins.map((bin) => flyoutFrequencyData[bin] / 255),
+  });
+}
+flyoutButton.addEventListener('click', () => window.waveframe.openFlyout('manual'));
+wireSwitch(flyoutToggle, (enabled) => {
+  localStorage.setItem(flyoutSettingsKey, enabled ? '1' : '0');
+  syncFlyoutSettings();
+}, localStorage.getItem(flyoutSettingsKey) === '1');
+document.addEventListener('waveframe:language-changed', () => {
+  syncFlyoutSettings();
+  syncRepeatButton();
+});
+window.waveframe.onFlyoutVisibility((visible) => {
+  flyoutVisible = visible;
+  flyoutArtwork = undefined;
+  publishFlyout();
+});
+const flyoutButtons = {
+  playpause: els.btnPlay, prev: els.btnPrev, next: els.btnNext,
+  repeat: els.btnRepeat, shuffle: els.btnShuffle, mute: els.btnMute,
+};
+window.waveframe.onFlyoutCommand(({ action, value }) => {
+  if (action === 'volume') {
+    els.volume.value = String(Math.round(value * 100));
+    els.volume.dispatchEvent(new Event('input'));
+  } else if (action === 'seek') {
+    if (engine.slots[engine.activeSlot].item === playlist[currentTrackIndex] &&
+        Number.isFinite(engine.activeEl.duration)) engine.seekTo(value);
+  } else {
+    flyoutButtons[action]?.click();
+  }
+});
 
 /* ---- sleep timer: Off -> 15 -> 30 -> 45 -> 60 -> 90 min -> end of track -> Off. Fades the volume out over the last 10 s ---- */
 const SLEEP_STEPS = [0, 15, 30, 45, 60, 90, 'end'];
@@ -1342,7 +1485,10 @@ async function enrichTrackMetadata(item) {
   if (!item.path) return;
   const meta = await window.waveframe.readMetadata(item.path);
   if (!meta) return;
-  if (meta.title) item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
+  if (meta.title) {
+    item.title = meta.title;
+    item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
+  }
   item.artist = meta.artist || null;
   item.album = meta.album || null;
   item.picture = meta.picture || null;
@@ -1433,6 +1579,7 @@ function renderPlaylist() {
     els.playlist.appendChild(li);
   });
   savePlaylist();
+  publishFlyout();
 }
 
 els.crossfade.addEventListener('input', () => { engine.crossfadeSeconds = parseFloat(els.crossfade.value); });
@@ -1683,6 +1830,7 @@ function applyAccentColor(hex) {
   document.documentElement.style.setProperty('--accent-2', hslToHex(h, s, Math.max(0, l - 10)));
   document.documentElement.style.setProperty('--accent-3', hslToHex(h, s, Math.min(100, l + 12)));
   localStorage.setItem('waveframe.accentColor', hex);
+  syncFlyoutSettings();
 }
 function resetAccentColor() {
   document.documentElement.style.removeProperty('--accent');
@@ -1690,6 +1838,7 @@ function resetAccentColor() {
   document.documentElement.style.removeProperty('--accent-3');
   localStorage.removeItem('waveframe.accentColor');
   document.getElementById('accentColorPicker').value = '#7c6cf0';
+  syncFlyoutSettings();
 }
 document.getElementById('accentColorPicker').addEventListener('input', (e) => applyAccentColor(e.target.value));
 document.getElementById('btnAccentReset').addEventListener('click', resetAccentColor);
@@ -2436,11 +2585,12 @@ restorePlaylist();
 updateTrackNameUi();
 refreshDepsStatus();
 
-window.waveframe.onMediaKey((action) => {
-  if (action === 'playpause') { if (currentTrackIndex === -1 && playlist.length > 0) playTrackAt(0); else engine.togglePlay().then(syncPlayButton); }
+window.waveframe.onMediaKey((action, fromKeyboard) => {
+  if (action === 'playpause' && playlist.length) els.btnPlay.click();
   else if (action === 'next') goNext();
   else if (action === 'prev') goPrev();
   else if (action === 'stop') { engine.pauseActive(); syncPlayButton(); }
+  if (fromKeyboard) openFlyoutForMediaKey();
 });
 
 /* ---- Taskbar thumbnail toolbar icons (drawn on a canvas, no image assets needed) ---- */
@@ -2452,7 +2602,7 @@ function drawThumbIcon(draw) {
   draw(ctx);
   return c.toDataURL('image/png');
 }
-window.waveframe?.setThumbbarIcons?.({
+const thumbbarIcons = {
   prev: drawThumbIcon((ctx) => {
     ctx.fillRect(8, 8, 3, 16);
     ctx.beginPath(); ctx.moveTo(24, 8); ctx.lineTo(24, 24); ctx.lineTo(13, 16); ctx.closePath(); ctx.fill();
@@ -2468,7 +2618,20 @@ window.waveframe?.setThumbbarIcons?.({
     ctx.fillRect(9, 7, 5, 18);
     ctx.fillRect(18, 7, 5, 18);
   }),
-});
+  flyout: drawThumbIcon((ctx) => {
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(4, 7, 24, 18);
+    ctx.fillRect(9, 13, 4, 5);
+    ctx.fillRect(15, 11, 8, 2);
+    ctx.fillRect(15, 17, 8, 2);
+  }),
+};
+function syncThumbbarIcons() {
+  window.waveframe?.setThumbbarIcons?.({ ...thumbbarIcons, flyoutLabel: t('flyout.title') });
+}
+syncThumbbarIcons();
+document.addEventListener('waveframe:language-changed', syncThumbbarIcons);
 
 // First-run guidance is the welcome splash (main process, once per major.minor version); the old in-page tutorial is no longer auto-opened.
 
@@ -2514,6 +2677,18 @@ window.__selfTest = async function () {
     playlist = [{ name: '<b id="xss-probe">bold</b>', picture: '" onerror="1' }]; currentTrackIndex = -1;
     renderPlaylist();
     check('playlist names are rendered as text (no markup injection)', !document.getElementById('xss-probe') && els.playlist.textContent.includes('<b id="xss-probe">'));
+    playlist = [{ name: 'First' }, { name: 'Second' }, { name: 'Third' }];
+    currentTrackIndex = 0;
+    shuffleOn = true;
+    const next = upcomingTrack();
+    check('Up Next follows the stable shuffle choice', next !== playlist[0] && next === playlist[nextTrackIndex()]);
+    playlist.splice(playlist.indexOf(next), 1);
+    check('Up Next drops a removed shuffle choice', upcomingTrack() === playlist[1]);
+    repeatMode = 'one';
+    check('repeat-one previews the current track and allows manual advance', upcomingTrack() === playlist[0] && nextTrackIndex() === 1);
+    repeatMode = 'off';
+    shuffleOn = false;
+    queuedShuffleTrack = null;
     playlist = savedList; currentTrackIndex = savedIdx; renderPlaylist();
     check('i18n has the new keys', t('player.sleep') !== 'player.sleep' && t('enhance.exportApo') !== 'enhance.exportApo');
   } catch (e) { check('self-test threw', false, e && e.stack || e); }

@@ -23,6 +23,7 @@
     </div>
     <div class="titlebar-controls">
       <button id="btnThemeToggle" class="win-btn win-btn-theme" title="Φωτεινή / Σκοτεινή λειτουργία" aria-label="Φωτεινή / Σκοτεινή λειτουργία">☀️</button>
+      <button id="btnMediaFlyout" class="win-btn" data-i18n-title="flyout.title">♫</button>
       <button id="btnMiniMode" class="win-btn" title="Μίνι λειτουργία" aria-label="Μίνι λειτουργία">&#8865;</button>
       <button id="btnMinimize" class="win-btn" title="Ελαχιστοποίηση" aria-label="Ελαχιστοποίηση">&#8211;</button>
       <button id="btnMaximize" class="win-btn" title="Μεγιστοποίηση" aria-label="Μεγιστοποίηση">&#9633;</button>
@@ -478,6 +479,10 @@
           <div class="switch-row">
             <div><div class="switch-title" data-i18n="settings.trackNotif">Ειδοποιήσεις τραγουδιού</div><div class="switch-sub" data-i18n="settings.trackNotifSub">Ειδοποίηση Windows όταν αλλάζει το κομμάτι</div></div>
             <button class="switch active" id="swTrackNotif"></button>
+          </div>
+          <div class="switch-row">
+            <div><div class="switch-title" id="flyoutAutoLabel" data-i18n="flyout.auto"></div><div class="switch-sub" id="flyoutAutoHint" data-i18n="flyout.autoHint"></div></div>
+            <button class="switch" id="swMediaFlyout" aria-labelledby="flyoutAutoLabel" aria-describedby="flyoutAutoHint"></button>
           </div>
           <div class="switch-row">
             <div><div class="switch-title" data-i18n="settings.autostart">Αυτόματη εκκίνηση</div><div class="switch-sub" data-i18n="settings.autostartSub">Εκκίνηση του Waveframe μαζί με τα Windows</div></div>
