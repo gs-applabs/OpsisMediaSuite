@@ -142,6 +142,11 @@ function attachFlyout(owner, getTheme) {
       }
       return;
     }
+    if (message.type === 'taskbar-status' && typeof message.status === 'string' &&
+        /^(?:CHECKING|NO-TASKBAR|NO-BOUNDS|NOT-VISIBLE|ATTACH-FAILED|(?:WIN32|ATTACHED|PARTIAL)-[0-9]{1,10})?$/.test(message.status)) {
+      sendToOwner('flyout:taskbar-status', message.status);
+      return;
+    }
     if (message.type === 'widget' && desktopSettings.widget) {
       if (message.action === 'open') {
         selected = external.some((item) => item.id === activeSession) ? activeSession : '';
@@ -162,6 +167,7 @@ function attachFlyout(owner, getTheme) {
     }
     if (message.type === 'error') send('flyout:notice', 'failed');
     if (message.type === 'exit') {
+      if (desktopSettings.widget) sendToOwner('flyout:taskbar-status', 'HELPER-EXIT');
       mixer = null;
       external = [];
       selected = '';

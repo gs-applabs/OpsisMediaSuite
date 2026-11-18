@@ -22,6 +22,13 @@ static class Program
             Console.WriteLine("Taskbar placement and native child window verified");
             return;
         }
+        if (args is ["--test-explorer-taskbar"])
+        {
+            Console.WriteLine(TaskbarWidget.VerifyExplorer()
+                ? "Verified a visible widget above Explorer taskbar siblings"
+                : "Explorer taskbar not available in this Windows session");
+            return;
+        }
         using var context = new Forms.ApplicationContext();
         using var receiver = new Forms.Control();
         _ = receiver.Handle;
@@ -38,7 +45,8 @@ static class Program
     private static async Task Run()
     {
         var services = new MediaServices();
-        using var widget = new TaskbarWidget(action => Send(new { type = "widget", action }));
+        using var widget = new TaskbarWidget(action => Send(new { type = "widget", action }),
+            status => Send(new { type = "taskbar-status", status }));
         using var keys = new KeyboardObserver((key, enabled) => Send(new { type = "key", key, enabled }));
         Send(new { type = "ready" });
         // Console.In uses a synchronized reader. Keep its potentially blocking read off the window message loop.

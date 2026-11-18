@@ -5,6 +5,7 @@ const { createWindowsDesktop, helperPath } = require('../windows-desktop');
 
 if (process.platform !== 'win32') process.exit(0);
 console.log(execFileSync(helperPath(), ['--test-taskbar-placement'], { encoding: 'utf8', timeout: 15_000 }).trim());
+console.log(execFileSync(helperPath(), ['--test-explorer-taskbar'], { encoding: 'utf8', timeout: 15_000 }).trim());
 const desktop = createWindowsDesktop((message) => {
   if (message.type === 'exit' || message.type === 'error') {
     clearTimeout(timeout);

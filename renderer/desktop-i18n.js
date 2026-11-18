@@ -52,3 +52,14 @@ const taskbarTranslations = {
 for (const [lang, labels] of Object.entries(taskbarTranslations)) {
   taskbarKeys.forEach((key, index) => { I18N[lang]['desktop.' + key] = labels[index]; });
 }
+
+
+const taskbarStatusLabels = {
+  el: 'Κατάσταση γραμμής εργασιών', en: 'Taskbar status', fr: 'État de la barre des tâches', de: 'Taskleistenstatus',
+  es: 'Estado de la barra de tareas', it: 'Stato della barra delle applicazioni', pt: 'Estado da barra de tarefas',
+  ru: 'Состояние панели задач', tr: 'Görev çubuğu durumu', pl: 'Stan paska zadań', nl: 'Taakbalkstatus',
+  sv: 'Aktivitetsfältets status', da: 'Status for proceslinjen', no: 'Status for oppgavelinjen',
+  fi: 'Tehtäväpalkin tila', cs: 'Stav hlavního panelu', sk: 'Stav panela úloh', hu: 'A tálca állapota',
+  ro: 'Starea barei de activități', uk: 'Стан панелі завдань',
+};
+for (const [lang, label] of Object.entries(taskbarStatusLabels)) I18N[lang]['desktop.widgetStatus'] = label;
