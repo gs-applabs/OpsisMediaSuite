@@ -3,8 +3,8 @@
   "version": "2.4.0",
   "description": "Opsis Media Suite - audio enhancer, converter, video player and photo editor",
   "main": "main.js",
-  "author": "giorstergiopoulos-design",
-  "homepage": "https://github.com/giorstergiopoulos-design/waveframe",
+  "author": "gs-applabs",
+  "homepage": "https://github.com/gs-applabs/waveframe",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -24,7 +24,7 @@
   "build": {
     "appId": "com.example.waveframe",
     "productName": "Opsis Media Suite",
-    "copyright": "Copyright (c) 2026 giorstergiopoulos-design",
+    "copyright": "Copyright (c) 2026 gs-applabs",
     "directories": {
       "output": "release"
     },

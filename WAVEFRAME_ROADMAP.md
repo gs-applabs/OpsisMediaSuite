@@ -55,7 +55,7 @@
 - [ ] Code signing για NSIS/portable builds (SmartScreen trust) — **blocked**: απαιτεί πιστοποιητικό code-signing που πρέπει να προμηθευτεί ο χρήστης (π.χ. Authenticode cert), δεν μπορεί να γίνει αυτόνομα. Το manual update-check (`btnCheckUpdates`) είναι λειτουργικό στον κώδικα αλλά ανενεργό μέχρι να οριστεί πραγματικό public repo στο `WAVEFRAME_REPO` (renderer/app.js).
 
 **Bonus (πέρα από το αρχικό roadmap, ζητήθηκαν σε αυτό το πέρασμα)**
-- [x] Installer μοντελοποιημένος στο GearWin (github.com/giorstergiopoulos-design/GearWin): per-language EULA (`build/license_<lang>.txt` ×20 + fallback), `multiLanguageInstaller`, `oneClick:false`, shortcuts, `fileAssociations` (mp3/wav/flac/ogg/m4a/opus/wma)
+- [x] Installer μοντελοποιημένος στο GearWin (github.com/gs-applabs/GearWin): per-language EULA (`build/license_<lang>.txt` ×20 + fallback), `multiLanguageInstaller`, `oneClick:false`, shortcuts, `fileAssociations` (mp3/wav/flac/ogg/m4a/opus/wma)
 - [x] Animated backgrounds: 3 → **10 συνολικά** (+starfield, aurora, vinylspin, particledrift, mesh, grid, bokeh), scrollable carousel UI με βελάκια
 - [x] Πλήρης μετάφραση: **20/20 γλώσσες 100% complete**, verified με αυτοματοποιημένο keys-diff script
 - [x] Window-state persistence (θέση/μέγεθος, πολλαπλές οθόνες), single-instance lock, file-association open-with, resizable playlist, EQ curve editor (drag), custom accent color, mini-mode floating bar

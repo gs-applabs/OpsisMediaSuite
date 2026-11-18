@@ -125,7 +125,7 @@ npm run dist        # produces a portable build + NSIS installer (Windows x64) i
 
 ## Η οικογένεια Opsis / The Opsis family
 
-Από το Opsis Media Suite (Ρυθμίσεις → Σχετικά → «Η οικογένεια Opsis») βλέπεις τις άλλες εφαρμογές του ίδιου δημιουργού: [Opsis](https://github.com/giorstergiopoulos-design/Opsis), [Opsis News Crawler](https://github.com/giorstergiopoulos-design/OpsisNewsCrawler), [Opsis Appearance](https://github.com/giorstergiopoulos-design/OpsisAppearance), [GearWin](https://github.com/giorstergiopoulos-design/GearWin), [Opsis Media Player Pro](https://github.com/giorstergiopoulos-design/OpsisMediaPlayerPro), [Kombos](https://github.com/giorstergiopoulos-design/Kombos).
+Από το Opsis Media Suite (Ρυθμίσεις → Σχετικά → «Η οικογένεια Opsis») βλέπεις τις άλλες εφαρμογές του ίδιου δημιουργού: [Opsis](https://github.com/gs-applabs/Opsis), [Opsis News Crawler](https://github.com/gs-applabs/OpsisNewsCrawler), [Opsis Appearance](https://github.com/gs-applabs/OpsisAppearance), [GearWin](https://github.com/gs-applabs/GearWin), [Opsis Media Player Pro](https://github.com/gs-applabs/OpsisMediaPlayerPro), [Kombos](https://github.com/gs-applabs/Kombos).
 
 *From Opsis Media Suite (Settings → About → "The Opsis family") you can browse the author's other apps, listed above.*
 
