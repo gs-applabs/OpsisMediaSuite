@@ -484,6 +484,14 @@
             <div><div class="switch-title" id="flyoutAutoLabel" data-i18n="flyout.auto"></div><div class="switch-sub" id="flyoutAutoHint" data-i18n="flyout.autoHint"></div></div>
             <button class="switch" id="swMediaFlyout" aria-labelledby="flyoutAutoLabel" aria-describedby="flyoutAutoHint"></button>
           </div>
+          <div class="switch-row" id="rowLockFlyout" hidden>
+            <div class="switch-title" id="lockFlyoutLabel" data-i18n="desktop.lockKeys"></div>
+            <button class="switch" id="swLockFlyout" aria-labelledby="lockFlyoutLabel"></button>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidget" hidden>
+            <div class="switch-title" id="taskbarWidgetLabel" data-i18n="desktop.widget"></div>
+            <button class="switch" id="swTaskbarWidget" aria-labelledby="taskbarWidgetLabel"></button>
+          </div>
           <div class="switch-row">
             <div><div class="switch-title" data-i18n="settings.autostart">Αυτόματη εκκίνηση</div><div class="switch-sub" data-i18n="settings.autostartSub">Εκκίνηση του Waveframe μαζί με τα Windows</div></div>
             <button class="switch" id="swAutostart"></button>
@@ -572,6 +580,7 @@
   <audio id="audioSlotB" crossorigin="anonymous"></audio>
 
   <script src="i18n.js"></script>
+  <script src="desktop-i18n.js"></script>
   <script src="backgrounds.js"></script>
   <script src="audiolib.js"></script>
   <script src="app.js"></script>

@@ -12,8 +12,13 @@
   <main class="flyout-card">
     <header class="flyout-header">
       <span data-i18n="flyout.title"></span>
-      <button type="button" id="dismiss" data-label="splash.close">×</button>
+      <div class="flyout-header-actions">
+        <button type="button" id="mixer-mode" data-label="desktop.mixer" aria-pressed="false" hidden>☷</button>
+        <button type="button" id="dismiss" data-label="splash.close">×</button>
+      </div>
     </header>
+    <select id="source" data-label="desktop.source" hidden></select>
+    <section id="player-panel" class="flyout-player">
     <div class="flyout-track">
       <div class="flyout-cover" aria-hidden="true"><span>♫</span><img id="cover" alt="" hidden></div>
       <div class="flyout-details">
@@ -38,7 +43,7 @@
       <button type="button" id="next" data-action="next" data-label="vp.next" disabled>⏭</button>
       <button type="button" id="repeat" data-action="repeat" data-label="vp.repeat" aria-pressed="false">↻</button>
     </div>
-    <div class="flyout-volume">
+    <div id="player-volume" class="flyout-volume">
       <button type="button" id="mute" data-action="mute" data-label="vp.mute" aria-pressed="false">🔊</button>
       <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8" data-label="vp.volume">
       <output id="volume-level" for="volume">80%</output>
@@ -47,8 +52,16 @@
       <span data-i18n="flyout.upNext"></span>
       <strong id="upcoming" class="flyout-ellipsis"></strong>
     </div>
+    </section>
+    <section id="mixer-panel" class="flyout-mixer" hidden>
+      <h1 data-i18n="desktop.mixer"></h1>
+      <p id="mixer-empty" data-i18n="desktop.unavailable"></p>
+      <div id="mixer-controls"></div>
+    </section>
+    <p id="notice" class="flyout-notice" role="status" data-i18n="desktop.failed" hidden></p>
   </main>
   <script src="i18n.js"></script>
+  <script src="desktop-i18n.js"></script>
   <script src="flyout.js"></script>
 </body>
 </html>

@@ -253,6 +253,7 @@ function createWindow() {
           results.push(...await suiteApi.selfTest());
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
+          results.push(...await flyout.selfTest());
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
           code = results.every((r) => r.ok) ? 0 : 1;
         } catch (e) { console.log('FAIL self-test could not run: ' + e); }
@@ -279,10 +280,12 @@ function createWindow() {
       if (!win.isDestroyed()) win.webContents.send('media-key', action, true);
     });
   };
-  bindMediaKey('MediaPlayPause', 'playpause');
-  bindMediaKey('MediaNextTrack', 'next');
-  bindMediaKey('MediaPreviousTrack', 'prev');
-  bindMediaKey('MediaStop', 'stop');
+  if (!flyout.usesSystemMedia) {
+    bindMediaKey('MediaPlayPause', 'playpause');
+    bindMediaKey('MediaNextTrack', 'next');
+    bindMediaKey('MediaPreviousTrack', 'prev');
+    bindMediaKey('MediaStop', 'stop');
+  }
   win.on('closed', () => globalShortcut.unregisterAll());
 
   let thumbbarIcons = null;
@@ -500,6 +503,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.example.waveframe');
     reapplyAutostartAfterRename();
     suiteApi = suite.init({
       onLang: (l) => { helpLang = l; },

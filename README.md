@@ -41,7 +41,7 @@
 | 🎨 Εμφάνιση | 20 θέματα (skins), 10 κινούμενα φόντα, 20 visualizers, 2 διατάξεις παραθύρου (Modern/Classic), custom accent color, mini/compact always-on-top mode |
 | 🌐 Γλώσσες | Πλήρης διεπαφή σε 20 γλώσσες (Ελληνικά, Αγγλικά, Γαλλικά, Γερμανικά, Ισπανικά, Ιταλικά, Πορτογαλικά, Ρωσικά, Τουρκικά, Πολωνικά, Ολλανδικά, Σουηδικά, Δανικά, Νορβηγικά, Φινλανδικά, Τσεχικά, Σλοβακικά, Ουγγρικά, Ρουμανικά, Ουκρανικά) |
 | 🖥 Windows integration | SMTC (έλεγχος από lock screen/ακουστικά Bluetooth), taskbar thumbbar & jump list, συσχέτιση αρχείων ήχου, auto-launch on login, toast ειδοποιήσεις αλλαγής κομματιού |
-| 🎵 Χειριστήριο ήχου | Ανοίγει από τη γραμμή τίτλου ή τη μικρογραφία στη γραμμή εργασιών των Windows. Δείχνει το τρέχον και το επόμενο κομμάτι, με ζωντανό φάσμα, επιλογή θέσης, ένταση, τυχαία σειρά και επανάληψη. Ενεργοποίησε την αυτόματη εμφάνιση από τις **Ρυθμίσεις → Σύστημα**. |
+| 🎵 Χειριστήριο ήχου | Ανοίγει από τη γραμμή τίτλου ή τη μικρογραφία στη γραμμή εργασιών των Windows. Δείχνει το τρέχον και το επόμενο κομμάτι, με ζωντανό φάσμα, επιλογή θέσης, ένταση, τυχαία σειρά και επανάληψη. Στον ίδιο πίνακα υπάρχουν οι συνεδρίες πολυμέσων άλλων εφαρμογών και ο μίκτης των Windows. Στις **Ρυθμίσεις → Σύστημα** ενεργοποιείς την αυτόματη εμφάνιση, τις ενδείξεις πλήκτρων κλειδώματος και το χειριστήριο στην κύρια γραμμή εργασιών, όταν υπάρχει ελεύθερος χώρος. |
 | ♿ Προσβασιμότητα | Πλήρης πλοήγηση με πληκτρολόγιο, ορατά focus rings, σεβασμός `prefers-reduced-motion` |
 | 🛡 Αξιοπιστία | Crash overlay με αρχείο καταγραφής αντί για σιωπηλή κατάρρευση, backup/restore ρυθμίσεων σε JSON (για συγχρονισμό μέσω OneDrive/Drive/Dropbox) |
 | 👋 Οδηγός & οικογένεια εφαρμογών | Οδηγός καλωσορίσματος 6 σελίδων σε κάθε νέα έκδοση (major.minor) που «μαζεύεται» στο λογότυπο, παρουσίαση «Η οικογένεια Opsis» με κατάσταση εγκατάστασης και λήψη εγκαταστάτη μόνο με επιβεβαίωση και έλεγχο SHA-256, ειδοποίηση για νέα έκδοση (μία φορά ανά έκδοση, με διακόπτη) |
@@ -60,6 +60,7 @@
 
 ```
 npm install
+npm run build:windows-desktop  # δημιουργία βοηθητικού προγράμματος με το .NET 8 SDK
 npm start          # εκκίνηση σε dev mode
 npm run smoke-test # αυτοματοποιημένος έλεγχος εκκίνησης χωρίς σφάλματα
 npm run dist        # παράγει portable + win-unpacked (Windows x64) στο release/
@@ -90,7 +91,7 @@ Opsis Media Suite is a free, real-time audio enhancer and media player for Windo
 | 🎨 Appearance | 20 skins, 10 animated backgrounds, 20 visualizers, 2 window layouts (Modern/Classic), custom accent color, mini/compact always-on-top mode |
 | 🌐 Languages | Full interface in 20 languages (Greek, English, French, German, Spanish, Italian, Portuguese, Russian, Turkish, Polish, Dutch, Swedish, Danish, Norwegian, Finnish, Czech, Slovak, Hungarian, Romanian, Ukrainian) |
 | 🖥 Windows integration | SMTC (lock screen / Bluetooth headset controls), taskbar thumbbar & jump list, audio file associations, auto-launch on login, track-change toast notifications |
-| 🎵 Audio flyout | Open from the title bar or the Windows taskbar thumbnail. Shows the current track, live spectrum and what plays next, with seek, volume, shuffle and repeat controls. Enable automatic display in **Settings → System**. |
+| 🎵 Audio flyout | Open from the title bar or the Windows taskbar thumbnail. Shows the current track, live spectrum and what plays next, with seek, volume, shuffle and repeat controls. Also controls other apps’ Windows media sessions and opens the system and per-app volume mixer. Use **Settings → System** for automatic display, lock key indicators and the widget in a free slot on the primary taskbar. |
 | ♿ Accessibility | Full keyboard navigation, visible focus rings, respects `prefers-reduced-motion` |
 | 🛡 Reliability | Crash overlay with a log file instead of a silent failure, JSON backup/restore of all settings (for syncing via OneDrive/Drive/Dropbox) |
 | 👋 Guide & app family | 6-page welcome guide on every new major.minor version that shrinks into the header logo, “The Opsis family” showcase with install state and an installer download only after a confirmation and SHA-256 check, new-version notification (once per version, can be switched off) |
@@ -109,6 +110,7 @@ Every release file has a matching `.sha256` file. In PowerShell: `(Get-FileHash 
 
 ```
 npm install
+npm run build:windows-desktop  # build the Windows helper with the .NET 8 SDK
 npm start          # launch in dev mode
 npm run smoke-test # automated startup/crash check
 npm run dist        # produces a portable build + NSIS installer (Windows x64) in release/

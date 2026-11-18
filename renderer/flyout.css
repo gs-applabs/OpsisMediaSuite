@@ -4,7 +4,7 @@ body.media-flyout {
 
 .flyout-card {
   display: grid;
-  grid-template-rows: 24px 52px 21px 36px 26px 28px;
+  grid-template-rows: 24px auto minmax(0, 1fr);
   gap: 7px;
   height: 100%;
   padding: 12px 15px;
@@ -18,6 +18,20 @@ body.media-flyout {
   gap: 9px;
 }
 
+.flyout-card [hidden] { display: none; }
+.flyout-player { grid-row: 3; display: grid; grid-template-rows: 52px 21px 36px 26px 28px; gap: 7px; }
+.flyout-header-actions { display: flex; gap: 4px; }
+#source {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  min-height: 26px;
+  padding-inline: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
 .flyout-header { justify-content: space-between; font-size: 12px; color: var(--text-dim); }
 .flyout-ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .flyout-details { flex: 1; min-width: 0; }
@@ -68,3 +82,16 @@ body.media-flyout {
 .flyout-up-next span { flex-shrink: 0; color: var(--text-dim); }
 .flyout-spectrum { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
 .flyout-spectrum i { width: 3px; height: 100%; background: var(--accent); border-radius: 3px; transform: scaleY(0.12); transform-origin: bottom; transition: transform 130ms ease; }
+
+
+.flyout-mixer { grid-row: 2 / span 2; min-height: 0; overflow: auto; padding: 1px 3px; }
+.flyout-mixer h1 { font-size: 14px; margin: 4px 0 8px; }
+.flyout-mixer p { color: var(--text-dim); }
+.mixer-row { padding-block: 8px; border-bottom: 1px solid var(--panel-border); }
+.mixer-row output { font-variant-numeric: tabular-nums; }
+.mixer-row-label { margin-bottom: 3px; font-size: 12px; }
+.flyout-notice { position: absolute; bottom: 8px; inset-inline: 14px; margin: 0; padding: 7px; border-radius: 6px; background: var(--panel-solid); border: 1px solid var(--panel-border); }
+.lock-toast { display: grid; place-content: center; color: var(--text); background: var(--panel-solid); border: 1px solid var(--panel-border); }
+.lock-toast main { display: flex; align-items: center; gap: 9px; }
+.lock-toast strong { color: var(--text); }
+.lock-toast span { color: var(--text-dim); }

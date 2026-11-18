@@ -22,7 +22,7 @@ test('every BrowserWindow keeps contextIsolation on, nodeIntegration off and the
 });
 
 test('every page has a strict CSP (no inline script/style, no eval, no plugins, no base/form hijack) and no inline style attributes', () => {
-  for (const f of ['index.html', 'help.html', 'splash.html', 'flyout.html']) {
+  for (const f of ['index.html', 'help.html', 'splash.html', 'flyout.html', 'lock-toast.html']) {
     const html = read(path.join('renderer', f));
     const csp = /Content-Security-Policy" content="([^"]+)"/.exec(html);
     assert.ok(csp, `${f}: no CSP`);

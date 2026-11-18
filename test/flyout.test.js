@@ -9,7 +9,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'flyout-main.js'), 'utf8');
 
-function fixture(t) {
+function fixture(t, desktopAvailable = false) {
   const windows = [];
   class Window extends EventEmitter {
     constructor() {
@@ -33,14 +33,25 @@ function fixture(t) {
     async loadFile() { this.webContents.emit('did-finish-load'); }
   }
   const ipcMain = new EventEmitter();
+  const nativeCommands = [];
+  let nativeMessage;
   const screen = {
     getCursorScreenPoint: () => ({ x: 0, y: 0 }),
     getDisplayNearestPoint: () => ({ workArea: { x: -1000, y: 20, width: 1000, height: 700 } }),
   };
   const module = { exports: {} };
   vm.runInNewContext(source, {
-    module, __dirname: path.join(__dirname, '..'), setTimeout, clearTimeout,
-    require: (name) => name === 'electron' ? { BrowserWindow: Window, ipcMain, screen } : require(name),
+    module, __dirname: path.join(__dirname, '..'), setTimeout, clearTimeout, setInterval, clearInterval, process,
+    require(name) {
+      if (name === 'electron') return { BrowserWindow: Window, ipcMain, screen };
+      if (name === './windows-desktop') return {
+        createWindowsDesktop: (receive) => {
+          nativeMessage = receive;
+          return { available: desktopAvailable, send(message) { nativeCommands.push(message); }, close() {} };
+        },
+      };
+      return require(name);
+    },
   });
   const owner = new Window();
   const controller = module.exports.attachFlyout(owner, () => 'light');
@@ -48,7 +59,7 @@ function fixture(t) {
   const send = (win, channel, value, frame = win.webContents.mainFrame) => {
     ipcMain.emit(channel, { sender: win.webContents, senderFrame: frame }, value);
   };
-  return { owner, controller, send, windows, ipcMain };
+  return { owner, controller, send, windows, ipcMain, nativeCommands, nativeMessage };
 }
 
 test('the flyout opens manually by default and automatic events leave focus in the current window', (t) => {
@@ -60,7 +71,7 @@ test('the flyout opens manually by default and automatic events leave focus in t
   const panel = windows[1];
   assert.equal(panel.isVisible(), true);
   assert.equal(panel.isFocused(), false);
-  assert.deepEqual(panel.position, [-372, 452]);
+  assert.deepEqual(panel.position, [-372, 416]);
   assert.deepEqual(owner.messages.at(-1), ['flyout:visible', true]);
 
   send(panel, 'flyout:dismiss');
@@ -93,4 +104,34 @@ test('the flyout accepts commands only from its visible main frame and validates
   owner.destroy();
   assert.equal(panel.isDestroyed(), true);
   assert.equal(ipcMain.eventNames().length, 0);
+});
+
+
+test('system media commands go to the selected Windows session and Windows mixer writes require a known session', (t) => {
+  const { controller, send, windows, owner, nativeCommands, nativeMessage } = fixture(t, true);
+  controller.show('manual');
+  const panel = windows[1];
+  nativeMessage({
+    type: 'snapshot',
+    media: { active: 'browser#0', sessions: [{ id: 'browser#0', name: 'Browser', source: 'browser.exe', title: 'Track' }] },
+    mixer: { master: { id: 'master' }, apps: [{ id: 'browser-audio' }] },
+  });
+
+  send(panel, 'flyout:select', 'browser#0');
+  send(panel, 'flyout:command', { action: 'seek', value: 0.6 });
+  assert.equal(nativeCommands.at(-1).type, 'media');
+  assert.equal(nativeCommands.at(-1).id, 'browser#0');
+  assert.equal(nativeCommands.at(-1).action, 'seek');
+  assert.equal(nativeCommands.at(-1).value, 0.6);
+
+  send(panel, 'flyout:mixer', { action: 'volume', id: 'missing', value: 0.5 });
+  assert.equal(nativeCommands.at(-1).type, 'media');
+  send(panel, 'flyout:mixer', { action: 'volume', id: 'browser-audio', value: 0.5 });
+  assert.equal(nativeCommands.at(-1).type, 'mixer');
+  assert.equal(nativeCommands.at(-1).id, 'browser-audio');
+
+  send(panel, 'flyout:select', '');
+  send(panel, 'flyout:command', { action: 'next' });
+  assert.equal(owner.messages.at(-1)[0], 'flyout:command');
+  assert.equal(owner.messages.at(-1)[1].action, 'next');
 });

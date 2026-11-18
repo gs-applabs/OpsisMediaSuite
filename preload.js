@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   exportSettings: (data) => ipcRenderer.invoke('settings:export', data),
   importSettings: () => ipcRenderer.invoke('settings:import'),
   onMediaKey: (cb) => ipcRenderer.on('media-key', (_event, action, fromKeyboard) => cb(action, fromKeyboard)),
+  onDesktopAvailability: (cb) => ipcRenderer.on('flyout:desktop-availability', (_event, available) => cb(available)),
   openFlyout: (reason) => ipcRenderer.send('flyout:open', reason),
   setFlyoutSettings: (settings) => ipcRenderer.send('flyout:settings', settings),
   updateFlyout: (state) => ipcRenderer.send('flyout:state', state),

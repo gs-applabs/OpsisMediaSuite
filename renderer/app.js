@@ -1281,6 +1281,8 @@ els.volume.addEventListener('input', () => {
 const flyoutSettingsKey = 'waveframe.automaticFlyout';
 const flyoutToggle = document.getElementById('swMediaFlyout');
 const flyoutButton = document.getElementById('btnMediaFlyout');
+const lockFlyoutToggle = document.getElementById('swLockFlyout');
+const taskbarWidgetToggle = document.getElementById('swTaskbarWidget');
 const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
 const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
 let flyoutVisible = false;
@@ -1293,6 +1295,11 @@ function syncFlyoutSettings() {
     automatic: flyoutToggle.classList.contains('active'),
     lang: document.documentElement.lang,
     accent: localStorage.getItem('waveframe.accentColor') || '',
+    locks: lockFlyoutToggle.classList.contains('active'),
+    widget: taskbarWidgetToggle.classList.contains('active'),
+    light: isLightSkin(document.documentElement.dataset.theme),
+    openLabel: t('flyout.title'), prevLabel: t('vp.prev'),
+    playLabel: t('vp.groupPlayback'), nextLabel: t('vp.next'),
   });
 }
 function openFlyoutForMediaKey() {
@@ -1339,6 +1346,16 @@ wireSwitch(flyoutToggle, (enabled) => {
   localStorage.setItem(flyoutSettingsKey, enabled ? '1' : '0');
   syncFlyoutSettings();
 }, localStorage.getItem(flyoutSettingsKey) === '1');
+for (const [toggle, key] of [[lockFlyoutToggle, 'waveframe.lockFlyout'], [taskbarWidgetToggle, 'waveframe.taskbarWidget']]) {
+  wireSwitch(toggle, (enabled) => {
+    localStorage.setItem(key, enabled ? '1' : '0');
+    syncFlyoutSettings();
+  }, localStorage.getItem(key) === '1');
+}
+window.waveframe.onDesktopAvailability((available) => {
+  document.getElementById('rowLockFlyout').hidden = !available;
+  document.getElementById('rowTaskbarWidget').hidden = !available;
+});
 document.addEventListener('waveframe:language-changed', () => {
   syncFlyoutSettings();
   syncRepeatButton();
@@ -1770,6 +1787,7 @@ function applySkin(theme) {
   btnThemeToggle.textContent = light ? '🌙' : '☀️';
   if (!light) localStorage.setItem('waveframe.lastDarkSkin', theme);
   window.waveframe?.sendThemeChange?.(theme);
+  syncFlyoutSettings();
 }
 
 els.skinGrid.addEventListener('click', (e) => {

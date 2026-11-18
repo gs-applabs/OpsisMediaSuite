@@ -925,3 +925,5 @@ body.mini-mode #bgCanvas { display: none; }
 .vp-stage:fullscreen .vp-video { max-height: none; height: 100%; }
 .vp-stage:fullscreen .vp-head, .vp-stage:fullscreen .hint { display: none; }
 @media (max-width: 1250px) { .vp-layout { grid-template-columns: minmax(0, 1fr); } .vp-cards { grid-template-columns: minmax(0, 1fr); } }
+
+.switch-row[hidden] { display: none; }
