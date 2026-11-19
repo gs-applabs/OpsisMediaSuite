@@ -142,6 +142,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         const byId = id => document.getElementById(id);
         const settings = byId('vpSettingsMenu');
         const queue = byId('vpQueue');
+        const queueInView = !queue.hidden && queue.getBoundingClientRect().top + 40 < innerHeight;
         byId('vpSettingsToggle').click();
         const opened = settings.matches(':popover-open') && !byId('vpPlaybackOptions').hidden;
         byId('vpPictureOptionsTab').click();
@@ -157,7 +158,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         byId('vpSourcesToggle').click();
         const sources = byId('vpSources').matches(':popover-open');
         byId('vpSources').hidePopover();
-        return opened && picture && captions && playlist && sources && byId('vpFrame').getBoundingClientRect().height > 200;
+        return queueInView && opened && picture && captions && playlist && sources && byId('vpFrame').getBoundingClientRect().height > 200;
       })()`));
       const ff = await resolveFfmpegPath();
       if (ff) {
