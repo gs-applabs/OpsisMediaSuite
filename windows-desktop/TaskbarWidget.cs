@@ -393,21 +393,27 @@ sealed class TaskbarWidget : IDisposable
             AxisEnd(rect, vertical) - AxisStart(rect, vertical) < span;
 
         int minimum = leading.Where(IsOnBar).Select(rect => AxisEnd(rect, vertical)).DefaultIfEmpty(start).Max() + gap;
-        int maximum = tray.Where(IsOnBar).Select(rect => AxisStart(rect, vertical)).DefaultIfEmpty(end).Min() - gap - extent;
-        if (maximum < minimum) return null;
+        int lastEdge = tray.Where(IsOnBar).Select(rect => AxisStart(rect, vertical)).DefaultIfEmpty(end).Min() - gap;
+        if (lastEdge <= minimum) return null;
 
         int axisOrigin = vertical ? origin.Y : origin.X;
-        var ranges = new List<TaskbarRange>();
+        var gaps = new List<TaskbarRange>();
         int freeStart = minimum;
         foreach (var rect in occupied.Where(IsOnBar).OrderBy(rect => AxisStart(rect, vertical)))
         {
-            int freeEnd = Math.Min(maximum, AxisStart(rect, vertical) - gap - extent);
-            if (freeEnd >= freeStart) ranges.Add(new TaskbarRange(freeStart - axisOrigin, freeEnd - axisOrigin));
+            int freeEnd = Math.Min(lastEdge, AxisStart(rect, vertical) - gap);
+            if (freeEnd > freeStart) gaps.Add(new TaskbarRange(freeStart, freeEnd));
             freeStart = Math.Max(freeStart, AxisEnd(rect, vertical) + gap);
-            if (freeStart > maximum) break;
+            if (freeStart >= lastEdge) break;
         }
-        if (freeStart <= maximum) ranges.Add(new TaskbarRange(freeStart - axisOrigin, maximum - axisOrigin));
-        if (ranges.Count == 0) return null;
+        if (freeStart < lastEdge) gaps.Add(new TaskbarRange(freeStart, lastEdge));
+        if (gaps.Count == 0) return null;
+
+        extent = Math.Min(extent, gaps.Max(range => range.End - range.Start));
+        if (extent < Math.Round((vertical ? 110 : 104) * scale)) return null;
+        int maximum = lastEdge - extent;
+        var available = gaps.Where(range => range.End - range.Start >= extent)
+            .Select(range => new TaskbarRange(range.Start - axisOrigin, range.End - extent - axisOrigin)).ToArray();
 
         int desired = edge switch
         {
@@ -416,7 +422,6 @@ sealed class TaskbarWidget : IDisposable
             Edge.Manual => minimum + (int)Math.Round((maximum - minimum) * fraction),
             _ => maximum,
         };
-        var available = ranges.ToArray();
         int offset = TaskbarRange.Snap(desired - axisOrigin, available);
         int center = near + (cross - thickness) / 2;
         return vertical
@@ -440,7 +445,9 @@ sealed class TaskbarWidget : IDisposable
         var parent = new IntPtr(1);
         Placement? Place(Edge edge, double fraction = 0) => CalculatePlacement(parent, bounds, origin, null,
             [start, search], [tray], [pinned, pinnedRight], 96, edge, fraction);
-        if (Place(Edge.End)?.X != 1480 || Place(Edge.Start)?.X != 835 ||
+        var busyLeft = new Rect { Left = 790, Top = 1000, Right = 1525, Bottom = 1048 };
+        var compact = CalculatePlacement(parent, bounds, origin, null, [start, search], [tray], [busyLeft], 96, Edge.End);
+        if (compact?.X != 1530 || compact?.Width != 155 || Place(Edge.End)?.X != 1480 || Place(Edge.Start)?.X != 835 ||
             Place(Edge.Manual, 0)?.X != 835 || Place(Edge.Manual, 1)?.X != 1480 ||
             Place(Edge.Center) is not { } center || center.X != 857 ||
             TaskbarRange.Snap(1000, center.Ranges) != 900 ||
@@ -458,10 +465,10 @@ sealed class TaskbarWidget : IDisposable
         widget.VerifyAppearance();
     }
 
-    public static bool VerifyExplorer()
+    public static string VerifyExplorer()
     {
         var bars = FindTaskbars();
-        if (bars.Count == 0) return false;
+        if (bars.Count == 0) return "Explorer taskbar not available in this Windows session";
         using var widget = new TaskbarWidget(_ => { }, _ => { });
         widget.ReadTaskbarTheme();
         var bar = bars[0];
@@ -470,11 +477,11 @@ sealed class TaskbarWidget : IDisposable
         {
             if (!widget.measuredAnchors.TryGetValue(bar, out var anchors))
                 throw new InvalidOperationException("Explorer did not return taskbar accessibility bounds");
-            throw new InvalidOperationException($"No safe Explorer taskbar space found ({anchors.Leading.Length} leading controls, {anchors.Tray.Length} tray elements and {anchors.Occupied.Length} other controls)");
+            return $"Measured Explorer controls and correctly left a full taskbar clear ({anchors.Leading.Length} leading, {anchors.Tray.Length} tray and {anchors.Occupied.Length} other controls)";
         }
         using var surface = new TaskbarSurface(placement.Parent, placement.Vertical, placement.Width, placement.Height, _ => { });
         surface.VerifyRenderedPixels(placement.X, placement.Y, placement.Width, placement.Height, widget.light);
-        return true;
+        return $"Verified the themed widget and Greek caption pixels on the Explorer taskbar ({placement.Width} × {placement.Height})";
     }
 
     public void Dispose()
