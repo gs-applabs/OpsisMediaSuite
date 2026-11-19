@@ -78,7 +78,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
 
   const streamFiles = new Map();
   ipcMain.handle('vp:stream-url', (e, file) => {
-    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || !isFile(file) || !SERVE_EXTS.has(extOf(file))) return null;
+    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || typeof file !== 'string' ||
+        /^[\\/]{2}/.test(file) || !SERVE_EXTS.has(extOf(file)) || !isFile(file)) return null;
     const key = randomUUID();
     streamFiles.set(key, file);
     if (streamFiles.size > 24) streamFiles.delete(streamFiles.keys().next().value);
