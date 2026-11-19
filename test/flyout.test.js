@@ -174,3 +174,18 @@ test('the taskbar follows minimization and remembers a valid dragged position', 
   assert.equal(config().widgetPosition, 'manual');
   assert.equal(config().widgetOffset, 0.25);
 });
+
+test('closing the owner tears down an open flyout without querying a destroyed window', (t) => {
+  const { owner, controller, send, windows, ipcMain } = fixture(t, true);
+  owner.isMinimized = () => {
+    if (owner.isDestroyed()) throw new Error('Object has been destroyed');
+    return false;
+  };
+  send(owner, 'flyout:settings', { automatic: false, widget: true, widgetMinimizedOnly: true });
+  controller.show('manual');
+  const panel = windows[1];
+  assert.equal(panel.isVisible(), true);
+  assert.doesNotThrow(() => owner.destroy());
+  assert.equal(panel.isDestroyed(), true);
+  assert.equal(ipcMain.listenerCount('flyout:open'), 0);
+});

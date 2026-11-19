@@ -771,6 +771,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === `tab-${btn.dataset.tab}`));
     if (btn.dataset.tab === 'player') resizeCanvas();
     if (btn.dataset.tab === 'converter') loadConverter();
+    if (btn.dataset.tab === 'settings') refreshDepsStatus();
     if (btn.dataset.tab === 'video') loadVideoPlayer();
     else window.WaveframeVideoPlayer?.hidePanels();
     if (btn.dataset.tab === 'photo') loadPhoto();
@@ -2633,12 +2634,61 @@ const depFfmpegStatus = document.getElementById('depFfmpegStatus');
 const btnInstallDeps = document.getElementById('btnInstallDeps');
 const depsProgress = document.getElementById('depsProgress');
 
-async function refreshDepsStatus() {
-  const status = await window.waveframe.checkDeps();
+const playbackFormats = [
+  ['MP4 · H.264 / AAC', 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'],
+  ['MP4 · H.265 / HEVC', 'video/mp4; codecs="hvc1.1.6.L93.B0"'],
+  ['WebM · VP8 / Vorbis', 'video/webm; codecs="vp8, vorbis"'],
+  ['WebM · VP9 / Opus', 'video/webm; codecs="vp9, opus"'],
+  ['MP4 · AV1', 'video/mp4; codecs="av01.0.05M.08"'],
+];
+const encoderNames = [['h264', 'H.264 / AVC'], ['h265', 'H.265 / HEVC'], ['vp9', 'VP9'], ['av1', 'AV1']];
+let dependencySnapshot;
+
+function renderCodecRows(id, rows) {
+  const list = document.getElementById(id);
+  list.replaceChildren(...rows.map(([name, support]) => {
+    const row = document.createElement('li');
+    const label = document.createElement('span');
+    const status = document.createElement('span');
+    label.textContent = name;
+    status.textContent = support;
+    row.append(label, status);
+    return row;
+  }));
+}
+
+function renderDependencies() {
+  const playback = document.getElementById('vpVideo');
+  renderCodecRows('depPlaybackCodecs', playbackFormats.map(([name, format]) => {
+    const supported = playback.canPlayType(format);
+    return [name, t(supported === 'probably' ? 'deps.supported' : supported === 'maybe' ? 'deps.maybe' : 'deps.unavailable')];
+  }));
+  if (!dependencySnapshot) return;
+  const { status, encoders } = dependencySnapshot;
   const ok = status.ffmpeg.ok;
   depFfmpegStatus.textContent = ok ? t('settings.depsOk') : t('settings.depsMissing');
   depFfmpegStatus.className = 'dep-status ' + (ok ? 'ok' : 'missing');
   btnInstallDeps.style.display = ok ? 'none' : 'inline-block';
+  document.getElementById('depKLiteStatus').textContent = status.kLite ||
+    t(status.kLite === null ? 'deps.notChecked' : 'deps.notDetected');
+  renderCodecRows('depVideoEncoders', encoderNames.map(([key, name]) => {
+    const found = encoders.summary?.[key];
+    const available = [...(found?.hardware || []), ...(found?.software || [])];
+    return [name, available.join(', ') || t('deps.unavailable')];
+  }));
+}
+
+let dependencyCheck;
+function refreshDepsStatus() {
+  if (dependencyCheck) return dependencyCheck;
+  dependencyCheck = Promise.all([
+    window.waveframe.checkDeps().catch(() => ({ ffmpeg: { ok: false }, kLite: null })),
+    window.waveframe.vidEncoders().catch(() => ({ ffmpeg: false })),
+  ]).then(([status, encoders]) => {
+    dependencySnapshot = { status, encoders };
+    renderDependencies();
+  }).finally(() => { dependencyCheck = null; });
+  return dependencyCheck;
 }
 
 window.waveframe.onDepsProgress(({ phase, pct }) => {
@@ -2661,7 +2711,7 @@ btnInstallDeps.addEventListener('click', async () => {
   }
 });
 
-document.addEventListener('waveframe:language-changed', () => refreshDepsStatus());
+document.addEventListener('waveframe:language-changed', renderDependencies);
 
 /* ------------------------------------------------------------------ */
 /* Boot                                                                */
@@ -2672,7 +2722,7 @@ renderUserPresets();
 restorePreferences();
 restorePlaylist();
 updateTrackNameUi();
-refreshDepsStatus();
+renderDependencies();
 
 window.waveframe.onMediaKey((action, fromKeyboard) => {
   if (action === 'playpause' && playlist.length) els.btnPlay.click();

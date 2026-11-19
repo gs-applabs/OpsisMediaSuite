@@ -62,7 +62,8 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
   }
 
   function widgetVisible() {
-    return desktopSettings.widget && (!desktopSettings.widgetMinimizedOnly || isOwnerMinimized());
+    return !disposed && !owner.isDestroyed() && desktopSettings.widget &&
+      (!desktopSettings.widgetMinimizedOnly || isOwnerMinimized());
   }
 
   function sendWindowsAccent() {
@@ -76,6 +77,7 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
   }
 
   function refreshWidgetVisibility() {
+    if (disposed || owner.isDestroyed()) return;
     pushDesktopSettings();
     updatePolling();
     sendToOwner('flyout:visible', !!widgetVisible() || !!flyout?.isVisible());
@@ -87,7 +89,7 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
   function updatePolling() {
     clearInterval(pollTimer);
     pollTimer = undefined;
-    if (disposed || !desktop.available || (!flyout?.isVisible() && !widgetVisible() && !automatic)) return;
+    if (disposed || owner.isDestroyed() || !desktop.available || (!flyout?.isVisible() && !widgetVisible() && !automatic)) return;
     const poll = () => desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || !!widgetVisible(), selected });
     poll();
     pollTimer = setInterval(poll, automatic || widgetVisible() ? 950 : 1200);
@@ -325,6 +327,7 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
     flyout.on('focus', scheduleHide);
     flyout.on('blur', scheduleHide);
     flyout.on('hide', () => {
+      if (disposed || owner.isDestroyed()) return;
       sendToOwner('flyout:visible', !!widgetVisible());
       updatePolling();
     });
@@ -333,6 +336,7 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
       flyout = null;
       ready = hovered = false;
       pending = null;
+      if (disposed || owner.isDestroyed()) return;
       sendToOwner('flyout:visible', !!widgetVisible());
       updatePolling();
     });
@@ -464,7 +468,8 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
     desktop.close();
     if (lockToast && !lockToast.isDestroyed()) lockToast.destroy();
     for (const [channel, listener] of listeners) ipcMain.removeListener(channel, listener);
-    if (flyout && !flyout.isDestroyed()) flyout.destroy();
+    const panel = flyout;
+    if (panel && !panel.isDestroyed()) panel.destroy();
   });
   async function selfTest() {
     const results = [];
