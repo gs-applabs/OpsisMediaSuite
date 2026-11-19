@@ -110,3 +110,44 @@ test('sleep fade: full volume until the last 10 s, then linear to silence', () =
   assert.equal(lib.sleepFadeGain(0), 0);
   assert.equal(lib.sleepFadeGain(-5), 0);
 });
+
+test('local MP3 metadata preserves Unicode and repairs legacy Greek ID3 text', async () => {
+  const { parseBuffer } = await import('music-metadata');
+  const { readTrackText } = require('../audio-tags');
+  const mpegFrame = Buffer.alloc(417);
+  Buffer.from([0xff, 0xfb, 0x90, 0x64]).copy(mpegFrame);
+  const parse = (tag) => parseBuffer(Buffer.concat([tag, mpegFrame, mpegFrame, mpegFrame]), 'audio/mpeg');
+
+  function id3v23(title, artist, album, encoding) {
+    const frames = [['TIT2', title], ['TPE1', artist], ['TALB', album]].map(([id, text]) => {
+      const frame = Buffer.alloc(11);
+      frame.write(id, 'ascii');
+      frame.writeUInt32BE(text.length + 1, 4);
+      frame[10] = encoding;
+      return Buffer.concat([frame, text]);
+    });
+    const tag = Buffer.concat(frames);
+    const header = Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, tag.length >> 7, tag.length & 0x7f]);
+    return Buffer.concat([header, tag]);
+  }
+
+  const title = Buffer.from('d4f1e1e3effde4e9', 'hex'); // Windows-1253: Τραγούδι
+  const artist = Buffer.from('cceff5f3e9eafc', 'hex'); // Windows-1253: Μουσικό
+  const mixed = await parse(id3v23(title, artist, Buffer.from('Café', 'latin1'), 0));
+  assert.deepEqual(readTrackText(mixed), { title: 'Τραγούδι', artist: 'Μουσικό', album: 'Café' });
+
+  const legacy = Buffer.alloc(128);
+  legacy.write('TAG');
+  title.copy(legacy, 3);
+  artist.copy(legacy, 33);
+  const v1 = await parseBuffer(Buffer.concat([mpegFrame, mpegFrame, mpegFrame, legacy]), 'audio/mpeg');
+  assert.deepEqual(readTrackText(v1), { title: 'Τραγούδι', artist: 'Μουσικό', album: null });
+
+  const utf16 = ['Άλμπουμ', 'Ελληνικά', 'Björk'].map((text) => Buffer.from('\ufeff' + text, 'utf16le'));
+  assert.deepEqual(readTrackText(await parse(id3v23(...utf16, 1))),
+    { title: 'Άλμπουμ', artist: 'Ελληνικά', album: 'Björk' });
+
+  const mislabeled = await parse(id3v23(Buffer.from('Νύχτα', 'utf8'), Buffer.from('Pop'), Buffer.from('Best of'), 0));
+  assert.equal(readTrackText(mislabeled).title, 'Νύχτα');
+  assert.equal(readTrackText({ common: { title: 'ÇÅËËÏ' }, native: { vorbis: [] } }).title, 'ÇÅËËÏ');
+});

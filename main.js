@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen } = require('electron');
 const path = require('path');
+const { readTrackText } = require('./audio-tags');
 const fs = require('fs');
 const os = require('os');
 const https = require('https');
@@ -430,9 +431,7 @@ function createWindow() {
         picture = `data:${pic.format};base64,${Buffer.from(pic.data).toString('base64')}`;
       }
       return {
-        title: common.title || null,
-        artist: common.artist || null,
-        album: common.album || null,
+        ...readTrackText(meta),
         picture,
       };
     } catch {
