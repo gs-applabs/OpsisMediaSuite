@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
 jobs:
   build:
     runs-on: windows-latest
@@ -14,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 2658bb19fd4545daf73bc21e5e03e30b83f6fbf3
+          ref: 84cfce17297bcc412a8ee2f6288277ac7baacfb5
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
