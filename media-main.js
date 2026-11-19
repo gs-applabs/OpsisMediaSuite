@@ -137,6 +137,25 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const until = async (code, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await js(code)) return true; await new Promise((r) => setTimeout(r, 150)); } return false; };
     try {
       /* video player */
+      await js("document.querySelector('.tab-btn[data-tab=video]').click(); loadVideoPlayer().then(() => 1)");
+      check('video menus reveal the selected settings and keep the player visible', await js(`(() => {
+        const byId = id => document.getElementById(id);
+        const settings = byId('vpSettingsMenu');
+        const queue = byId('vpQueue');
+        byId('vpSettingsToggle').click();
+        const opened = settings.matches(':popover-open') && !byId('vpPlaybackOptions').hidden;
+        byId('vpPictureOptionsTab').click();
+        const picture = !byId('vpPictureOptions').hidden && byId('vpPlaybackOptions').hidden;
+        byId('vpCaptions').click();
+        const captions = settings.matches(':popover-open') && !byId('vpSubtitlesOptions').hidden;
+        byId('vpQueueToggle').click();
+        const playlist = queue.matches(':popover-open') && !settings.matches(':popover-open');
+        queue.hidePopover();
+        byId('vpSourcesToggle').click();
+        const sources = byId('vpSources').matches(':popover-open');
+        byId('vpSources').hidePopover();
+        return opened && picture && captions && playlist && sources && byId('vpFrame').getBoundingClientRect().height > 200;
+      })()`));
       const ff = await resolveFfmpegPath();
       if (ff) {
         const clip = path.join(dir, 'clip.mp4');
