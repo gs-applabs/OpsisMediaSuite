@@ -9,6 +9,7 @@ const suite = require('./suite-main.js');
 const suiteLib = require('./suite.js');
 const converter = require('./conv-main.js');
 const media = require('./media-main.js');
+const { attachFlyout } = require('./flyout-main.js');
 media.registerScheme(); // the read-only wfmedia: protocol of the video player must be declared before the app is ready
 
 // Isolated profile for tests/self-test (never touches the real settings).
@@ -230,6 +231,7 @@ function createWindow() {
   });
 
   mainWin = win;
+  const flyout = attachFlyout(win, () => currentTheme);
   // Hardening + stability: the app only ever shows its own local pages.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
@@ -251,6 +253,7 @@ function createWindow() {
           results.push(...await suiteApi.selfTest());
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
+          results.push(...await flyout.selfTest());
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
           code = results.every((r) => r.ok) ? 0 : 1;
         } catch (e) { console.log('FAIL self-test could not run: ' + e); }
@@ -274,13 +277,15 @@ function createWindow() {
 
   const bindMediaKey = (accelerator, action) => {
     globalShortcut.register(accelerator, () => {
-      if (!win.isDestroyed()) win.webContents.send('media-key', action);
+      if (!win.isDestroyed()) win.webContents.send('media-key', action, true);
     });
   };
-  bindMediaKey('MediaPlayPause', 'playpause');
-  bindMediaKey('MediaNextTrack', 'next');
-  bindMediaKey('MediaPreviousTrack', 'prev');
-  bindMediaKey('MediaStop', 'stop');
+  if (!flyout.usesSystemMedia) {
+    bindMediaKey('MediaPlayPause', 'playpause');
+    bindMediaKey('MediaNextTrack', 'next');
+    bindMediaKey('MediaPreviousTrack', 'prev');
+    bindMediaKey('MediaStop', 'stop');
+  }
   win.on('closed', () => globalShortcut.unregisterAll());
 
   let thumbbarIcons = null;
@@ -295,6 +300,7 @@ function createWindow() {
         click: () => win.webContents.send('media-key', 'playpause'),
       },
       { icon: thumbbarIcons.next, tooltip: 'Επόμενο', click: () => win.webContents.send('media-key', 'next') },
+      { icon: thumbbarIcons.flyout, tooltip: thumbbarIcons.flyoutLabel, click: () => flyout.show('manual') },
     ]);
   }
 
@@ -305,12 +311,14 @@ function createWindow() {
   const PNG_DATA_URL = /^data:image\/png;base64,[A-Za-z0-9+/=]{1,200000}$/;
 
   ipcMain.on('thumbbar:icons', (event, icons) => {
-    if (!fromMain(event) || !icons || !['prev', 'play', 'pause', 'next'].every((k) => typeof icons[k] === 'string' && PNG_DATA_URL.test(icons[k]))) return;
+    if (!fromMain(event) || !icons || !['prev', 'play', 'pause', 'next', 'flyout'].every((k) => typeof icons[k] === 'string' && PNG_DATA_URL.test(icons[k]))) return;
     thumbbarIcons = {
       prev: nativeImage.createFromDataURL(icons.prev),
       play: nativeImage.createFromDataURL(icons.play),
       pause: nativeImage.createFromDataURL(icons.pause),
       next: nativeImage.createFromDataURL(icons.next),
+      flyout: nativeImage.createFromDataURL(icons.flyout),
+      flyoutLabel: typeof icons.flyoutLabel === 'string' ? icons.flyoutLabel.slice(0, 120) : 'Opsis Media Suite',
     };
     updateThumbbar();
   });
@@ -353,6 +361,7 @@ function createWindow() {
   ipcMain.on('theme:changed', (event, theme) => {
     if (!fromMain(event) || typeof theme !== 'string' || !/^[a-z0-9-]{1,30}$/.test(theme)) return;
     currentTheme = theme;
+    flyout.syncAppearance();
     if (helpWindow && !helpWindow.isDestroyed()) {
       helpWindow.webContents.send('theme:sync', theme);
     }
@@ -494,6 +503,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.example.waveframe');
     reapplyAutostartAfterRename();
     suiteApi = suite.init({
       onLang: (l) => { helpLang = l; },

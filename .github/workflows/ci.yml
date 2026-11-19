@@ -19,6 +19,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build and smoke-test the Windows desktop helper
+        run: |
+          npm run build:windows-desktop
+          node test/windows-desktop.smoke.js
       - name: FFmpeg for the real-conversion tests and the converter self-test
         run: choco install ffmpeg --no-progress -y
       - name: Unit, localisation, security and real-conversion tests

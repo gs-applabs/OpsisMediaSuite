@@ -23,6 +23,7 @@
     </div>
     <div class="titlebar-controls">
       <button id="btnThemeToggle" class="win-btn win-btn-theme" title="Φωτεινή / Σκοτεινή λειτουργία" aria-label="Φωτεινή / Σκοτεινή λειτουργία">☀️</button>
+      <button id="btnMediaFlyout" class="win-btn" data-i18n-title="flyout.title">♫</button>
       <button id="btnMiniMode" class="win-btn" title="Μίνι λειτουργία" aria-label="Μίνι λειτουργία">&#8865;</button>
       <button id="btnMinimize" class="win-btn" title="Ελαχιστοποίηση" aria-label="Ελαχιστοποίηση">&#8211;</button>
       <button id="btnMaximize" class="win-btn" title="Μεγιστοποίηση" aria-label="Μεγιστοποίηση">&#9633;</button>
@@ -480,6 +481,37 @@
             <button class="switch active" id="swTrackNotif"></button>
           </div>
           <div class="switch-row">
+            <div><div class="switch-title" id="flyoutAutoLabel" data-i18n="flyout.auto"></div><div class="switch-sub" id="flyoutAutoHint" data-i18n="flyout.autoHint"></div></div>
+            <button class="switch" id="swMediaFlyout" aria-labelledby="flyoutAutoLabel" aria-describedby="flyoutAutoHint"></button>
+          </div>
+          <div class="switch-row" id="rowLockFlyout" hidden>
+            <div class="switch-title" id="lockFlyoutLabel" data-i18n="desktop.lockKeys"></div>
+            <button class="switch" id="swLockFlyout" aria-labelledby="lockFlyoutLabel"></button>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidget" hidden>
+            <div>
+              <div class="switch-title" id="taskbarWidgetLabel" data-i18n="desktop.widget"></div>
+              <div id="taskbarWidgetStatus" class="switch-sub" role="status" hidden><span data-i18n="desktop.widgetStatus"></span> <output id="taskbarStatusCode"></output></div>
+            </div>
+            <button class="switch" id="swTaskbarWidget" aria-labelledby="taskbarWidgetLabel" aria-describedby="taskbarWidgetStatus"></button>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidgetPosition" hidden>
+            <label for="taskbarWidgetPosition" class="switch-title" data-i18n="desktop.widgetPosition"></label>
+            <select id="taskbarWidgetPosition" class="settings-select">
+              <option value="start" data-i18n="desktop.widgetStart"></option>
+              <option value="center" data-i18n="desktop.widgetCenter"></option>
+              <option value="end" data-i18n="desktop.widgetEnd"></option>
+            </select>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidgetLegacy" hidden>
+            <div><div class="switch-title" id="taskbarLegacyLabel" data-i18n="desktop.widgetLegacy"></div><div class="switch-sub" id="taskbarLegacyHint" data-i18n="desktop.widgetLegacyHint"></div></div>
+            <button class="switch" id="swTaskbarWidgetLegacy" aria-labelledby="taskbarLegacyLabel" aria-describedby="taskbarLegacyHint"></button>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidgetCover" hidden>
+            <div class="switch-title" id="taskbarWidgetCoverLabel" data-i18n="desktop.widgetCoverBackground"></div>
+            <button class="switch" id="swTaskbarWidgetCover" aria-labelledby="taskbarWidgetCoverLabel"></button>
+          </div>
+          <div class="switch-row">
             <div><div class="switch-title" data-i18n="settings.autostart">Αυτόματη εκκίνηση</div><div class="switch-sub" data-i18n="settings.autostartSub">Εκκίνηση του Waveframe μαζί με τα Windows</div></div>
             <button class="switch" id="swAutostart"></button>
           </div>
@@ -567,6 +599,7 @@
   <audio id="audioSlotB" crossorigin="anonymous"></audio>
 
   <script src="i18n.js"></script>
+  <script src="desktop-i18n.js"></script>
   <script src="backgrounds.js"></script>
   <script src="audiolib.js"></script>
   <script src="app.js"></script>

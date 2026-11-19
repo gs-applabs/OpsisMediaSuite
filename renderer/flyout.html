@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; object-src 'none'; base-uri 'none'; form-action 'none';">
+<title>Opsis Media Suite</title>
+<script src="theme-init.js"></script>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="flyout.css">
+</head>
+<body class="media-flyout">
+  <main class="flyout-card">
+    <header class="flyout-header">
+      <span data-i18n="flyout.title"></span>
+      <div class="flyout-header-actions">
+        <button type="button" id="mixer-mode" data-label="desktop.mixer" aria-pressed="false" hidden>☷</button>
+        <button type="button" id="dismiss" data-label="splash.close">×</button>
+      </div>
+    </header>
+    <select id="source" data-label="desktop.source" hidden></select>
+    <section id="player-panel" class="flyout-player">
+    <div class="flyout-track">
+      <div class="flyout-cover" aria-hidden="true"><span>♫</span><img id="cover" alt="" hidden></div>
+      <div class="flyout-details">
+        <div id="title" class="flyout-ellipsis"></div>
+        <div id="artist" class="flyout-ellipsis"></div>
+      </div>
+      <div class="flyout-spectrum" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+    </div>
+    <div class="flyout-progress">
+      <span id="elapsed">0:00</span>
+      <input type="range" id="seek" min="0" max="1" step="0.001" value="0" data-label="vp.seek" disabled>
+      <span id="duration">0:00</span>
+    </div>
+    <div class="flyout-controls">
+      <button type="button" id="shuffle" data-action="shuffle" data-label="vp.repeatShuffle" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h2c6 0 8 12 14 12h2m-4-4 4 4-4 4M3 18h2c2 0 3.5-1.3 5-3m4-6c1.5-2 3-3 5-3h2m-4-4 4 4-4 4"/></svg>
+      </button>
+      <button type="button" id="prev" data-action="prev" data-label="vp.prev" disabled>⏮</button>
+      <button type="button" id="playpause" data-action="playpause" data-label="vp.play" disabled>▶</button>
+      <button type="button" id="next" data-action="next" data-label="vp.next" disabled>⏭</button>
+      <button type="button" id="repeat" data-action="repeat" data-label="vp.repeat" aria-pressed="false">↻</button>
+    </div>
+    <div id="player-volume" class="flyout-volume">
+      <button type="button" id="mute" data-action="mute" data-label="vp.mute" aria-pressed="false">🔊</button>
+      <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8" data-label="vp.volume">
+      <output id="volume-level" for="volume">80%</output>
+    </div>
+    <div id="up-next" class="flyout-up-next" hidden>
+      <span data-i18n="flyout.upNext"></span>
+      <strong id="upcoming" class="flyout-ellipsis"></strong>
+    </div>
+    </section>
+    <section id="mixer-panel" class="flyout-mixer" hidden>
+      <h1 data-i18n="desktop.mixer"></h1>
+      <p id="mixer-empty" data-i18n="desktop.unavailable"></p>
+      <div id="mixer-controls"></div>
+    </section>
+    <p id="notice" class="flyout-notice" role="status" data-i18n="desktop.failed" hidden></p>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="desktop-i18n.js"></script>
+  <script src="flyout.js"></script>
+</body>
+</html>
