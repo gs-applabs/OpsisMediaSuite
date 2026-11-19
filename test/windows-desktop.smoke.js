@@ -4,7 +4,9 @@ const { execFileSync } = require('node:child_process');
 const { createWindowsDesktop, helperPath } = require('../windows-desktop');
 
 if (process.platform !== 'win32') process.exit(0);
-console.log(execFileSync(helperPath(), ['--test-taskbar-placement'], { encoding: 'utf8', timeout: 15_000 }).trim());
+const placement = execFileSync(helperPath(), ['--test-taskbar-placement'], { encoding: 'utf8', timeout: 15_000 }).trim();
+assert.match(placement, /^\.NET 11\./m);
+console.log(placement);
 console.log(execFileSync(helperPath(), ['--test-explorer-taskbar'], { encoding: 'utf8', timeout: 15_000 }).trim());
 const desktop = createWindowsDesktop((message) => {
   if (message.type === 'exit' || message.type === 'error') {

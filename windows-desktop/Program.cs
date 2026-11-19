@@ -22,6 +22,7 @@ static class Program
             TaskbarSpectrum.Verify();
             TaskbarWidget.VerifyPlacement();
             Console.WriteLine("Taskbar placement, Windows theme palettes and artwork styling verified");
+            Console.WriteLine(RuntimeInformation.FrameworkDescription);
             return;
         }
         if (args is ["--test-explorer-taskbar"])

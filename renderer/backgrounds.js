@@ -11,9 +11,8 @@ const Backgrounds = (() => {
     canvas.width = W * DPR;
     canvas.height = H * DPR;
     ctx.scale(DPR, DPR);
+    invalidate();
   }
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
 
   let mode = 'equalizer';
   let t = 0;
@@ -272,28 +271,54 @@ const Backgrounds = (() => {
     ctx.globalAlpha = 1;
   }
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function frame() {
-    // Respect the OS "reduce motion" preference: keep showing the chosen
-    // background (don't force it off), just stop it from continuously animating.
-    if (!reduceMotion) t += 0.016;
-    if (mode === 'equalizer') drawEqualizer();
-    else if (mode === 'waves') drawWaves();
-    else if (mode === 'nebula') drawNebula();
-    else if (mode === 'starfield') drawStarfield();
-    else if (mode === 'aurora') drawAurora();
-    else if (mode === 'vinylspin') drawVinylSpin();
-    else if (mode === 'particledrift') drawParticleDrift();
-    else if (mode === 'mesh') drawGradientMesh();
-    else if (mode === 'grid') drawPulseGrid();
-    else if (mode === 'bokeh') drawBokeh();
-    else drawNone();
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
+  const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let pendingFrame = 0;
+  let lastFrame = 0;
+  let dirty = true;
 
+  function invalidate() {
+    dirty = true;
+    if (!document.hidden && !pendingFrame) pendingFrame = requestAnimationFrame(frame);
+  }
+
+  function frame(now) {
+    pendingFrame = 0;
+    if (document.hidden) return;
+    const animate = mode !== 'none' && !motionPreference.matches;
+    if (dirty || (animate && now - lastFrame >= 1000 / 30)) {
+      if (animate && lastFrame) t += Math.min(now - lastFrame, 80) / 1000;
+      lastFrame = now;
+      dirty = false;
+      if (mode === 'equalizer') drawEqualizer();
+      else if (mode === 'waves') drawWaves();
+      else if (mode === 'nebula') drawNebula();
+      else if (mode === 'starfield') drawStarfield();
+      else if (mode === 'aurora') drawAurora();
+      else if (mode === 'vinylspin') drawVinylSpin();
+      else if (mode === 'particledrift') drawParticleDrift();
+      else if (mode === 'mesh') drawGradientMesh();
+      else if (mode === 'grid') drawPulseGrid();
+      else if (mode === 'bokeh') drawBokeh();
+      else drawNone();
+    }
+    if (animate) pendingFrame = requestAnimationFrame(frame);
+  }
+
+  function resetFrame() {
+    if (pendingFrame) cancelAnimationFrame(pendingFrame);
+    pendingFrame = 0;
+    lastFrame = 0;
+    invalidate();
+  }
+
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  document.addEventListener('visibilitychange', resetFrame);
+  motionPreference.addEventListener('change', resetFrame);
   return {
-    setMode(m) { mode = m; },
-    setAnalyser(analyser, freqData) { analyserRef = analyser; freqDataRef = freqData; },
+    setMode(m) { mode = m; resetFrame(); },
+    invalidate,
+    get animating() { return mode !== 'none' && !motionPreference.matches && !document.hidden; },
+    setAnalyser(analyser, freqData) { analyserRef = analyser; freqDataRef = freqData; invalidate(); },
   };
 })();

@@ -70,6 +70,8 @@ class AudioEngine {
     ];
     this.activeSlot = 0;
     this.crossfadeSeconds = 0;
+    this.trackGeneration = 0;
+    this.micGeneration = 0;
 
     this.micStream = null;
     this.micSource = null;
@@ -274,15 +276,18 @@ class AudioEngine {
   }
 
   stopAlternateSources() {
+    this.micGeneration++;
     this.micGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     if (this.testOsc) {
       try { this.testOsc.stop(); } catch { /* already stopped */ }
+      this.testOsc.disconnect();
       this.testOsc = null;
     }
     if (this.micStream) {
       this.micStream.getTracks().forEach((tr) => tr.stop());
       this.micStream = null;
+      this.micSource?.disconnect();
       this.micSource = null;
     }
   }
@@ -290,10 +295,17 @@ class AudioEngine {
   async startMic() {
     this.stopAlternateSources();
     this.pauseActive();
-    this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const request = this.micGeneration;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (request !== this.micGeneration) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
+    this.micStream = stream;
     this.micSource = this.ctx.createMediaStreamSource(this.micStream);
     this.micSource.connect(this.micGain);
     this.micGain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.05);
+    return true;
   }
 
   playTestTone() {
@@ -313,13 +325,18 @@ class AudioEngine {
     this.resume();
     this.stopAlternateSources();
     const slot = this.slots[this.activeSlot];
+    slot.gain.gain.cancelScheduledValues(this.ctx.currentTime);
     slot.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
     slot.el.playbackRate = this.state.tempo;
     slot.el.preservesPitch = this.state.preservePitch;
     return slot.el.play().catch((e) => { if (e && e.name !== 'AbortError') throw e; });
   }
 
-  pauseActive() { this.slots.forEach((s) => s.el.pause()); }
+  pauseActive() {
+    this.trackGeneration++;
+    this.activeEl.pause();
+    this.releaseSlot(this.slots[1 - this.activeSlot]);
+  }
 
   togglePlay() {
     if (this.activeEl.paused) return this.play();
@@ -365,44 +382,63 @@ class AudioEngine {
     this.slots.forEach((s) => { s.el.preservesPitch = on; });
   }
 
-  switchTrack(loader, onReady) {
-    const nextSlotIndex = this.crossfadeSeconds > 0 ? 1 - this.activeSlot : this.activeSlot;
-    const prevSlotIndex = this.activeSlot;
-    const nextSlot = this.slots[nextSlotIndex];
+  releaseSlot(slot) {
+    clearTimeout(slot.releaseTimer);
+    slot.releaseTimer = undefined;
+    if (!slot.el.hasAttribute('src') && !slot.objectUrl) return;
+    slot.el.pause();
+    slot.el.removeAttribute('src');
+    slot.el.load();
+    if (slot.objectUrl) URL.revokeObjectURL(slot.objectUrl);
+    slot.objectUrl = null;
+    slot.item = null;
+    slot.name = null;
+  }
 
-    if (nextSlotIndex === prevSlotIndex) {
-      loader(nextSlotIndex);
-      nextSlot.gain.gain.value = 1;
-      this.resume();
-      nextSlot.el.playbackRate = this.state.tempo;
-      nextSlot.el.preservesPitch = this.state.preservePitch;
-      nextSlot.el.play().catch(() => {});
-      if (onReady) onReady(nextSlot);
-      return;
-    }
+  loadTrack(slot, item) {
+    this.releaseSlot(slot);
+    slot.objectUrl = item.file ? URL.createObjectURL(item.file) : null;
+    slot.el.src = slot.objectUrl || item.url;
+    slot.name = item.name;
+    slot.item = item;
+  }
 
-    loader(nextSlotIndex);
-    nextSlot.gain.gain.value = 0;
+  switchTrack(item, onReady) {
+    const generation = ++this.trackGeneration;
+    this.stopAlternateSources();
+    const previous = this.slots[this.activeSlot];
+    const duration = this.crossfadeSeconds;
+    const fade = duration > 0 && !previous.el.paused;
+    if (fade) this.activeSlot = 1 - this.activeSlot;
+    const next = this.slots[this.activeSlot];
+
+    this.loadTrack(next, item);
+    if (!fade) this.releaseSlot(this.slots[1 - this.activeSlot]);
     this.resume();
-    nextSlot.el.playbackRate = this.state.tempo;
-    nextSlot.el.preservesPitch = this.state.preservePitch;
+    next.el.playbackRate = this.state.tempo;
+    next.el.preservesPitch = this.state.preservePitch;
 
-    const doCrossfade = () => {
-      const now = this.ctx.currentTime;
-      const dur = this.crossfadeSeconds;
-      const prevSlot = this.slots[prevSlotIndex];
-      nextSlot.gain.gain.cancelScheduledValues(now);
-      nextSlot.gain.gain.setValueAtTime(0, now);
-      nextSlot.gain.gain.linearRampToValueAtTime(1, now + dur);
-      prevSlot.gain.gain.cancelScheduledValues(now);
-      prevSlot.gain.gain.setValueAtTime(prevSlot.gain.gain.value, now);
-      prevSlot.gain.gain.linearRampToValueAtTime(0, now + dur);
-      setTimeout(() => prevSlot.el.pause(), dur * 1000 + 50);
-      this.activeSlot = nextSlotIndex;
-    };
-
-    nextSlot.el.play().then(doCrossfade).catch(doCrossfade);
-    if (onReady) onReady(nextSlot);
+    const now = this.ctx.currentTime;
+    next.gain.gain.cancelScheduledValues(now);
+    next.gain.gain.setValueAtTime(fade ? 0 : 1, now);
+    if (fade) {
+      clearTimeout(previous.releaseTimer);
+      previous.releaseTimer = undefined;
+    }
+    next.el.play().then(() => {
+      if (!fade || generation !== this.trackGeneration) return;
+      const start = this.ctx.currentTime;
+      previous.gain.gain.cancelScheduledValues(start);
+      previous.gain.gain.setValueAtTime(previous.gain.gain.value, start);
+      next.gain.gain.linearRampToValueAtTime(1, start + duration);
+      previous.gain.gain.linearRampToValueAtTime(0, start + duration);
+      previous.releaseTimer = setTimeout(() => this.releaseSlot(previous), duration * 1000 + 50);
+    }).catch(() => {
+      if (!fade || generation !== this.trackGeneration) return;
+      this.releaseSlot(previous);
+      next.gain.gain.setValueAtTime(1, this.ctx.currentTime);
+    });
+    onReady();
   }
 
   setEqBand(index, db) {
@@ -1158,6 +1194,11 @@ if ('mediaSession' in navigator) {
 engine.slots.forEach((s) => {
   s.el.addEventListener('play', syncPlayButton);
   s.el.addEventListener('pause', syncPlayButton);
+  s.el.addEventListener('loadedmetadata', () => {
+    if (s.el === engine.activeEl && s.item === playlist[currentTrackIndex]) {
+      queueLoudnessAnalysis(s.item, s.el.duration);
+    }
+  });
   s.el.addEventListener('timeupdate', () => { if (s.el === engine.activeEl) maybeAnnounceNext(s); });
   s.el.addEventListener('ended', () => {
     if (s.el !== engine.activeEl || s.item !== playlist[currentTrackIndex]) return;
@@ -1165,7 +1206,7 @@ engine.slots.forEach((s) => {
     syncPlayButton();
   });
   s.el.addEventListener('error', () => {
-    if (!s.el.src || engine.activeSlot !== engine.slots.indexOf(s)) return;
+    if (!s.el.src || engine.activeSlot !== engine.slots.indexOf(s) || s.item !== playlist[currentTrackIndex]) return;
     showAlertDialog(t('player.loadErrorTitle'), t('player.loadErrorMsg'));
   });
 });
@@ -1182,21 +1223,87 @@ function measureLoudness(buffer) {
   const gainDb = WaveframeAudio.lufsToGainDb(lufs, -18, 12);
   return { gain: WaveframeAudio.dbToLinear(gainDb), lufs, gainDb };
 }
-function computeLoudnessGain(buffer) { return measureLoudness(buffer).gain; }
-async function analyzeLoudness(item) {
-  if (typeof item.normGain === 'number') return item.normGain;
-  try {
-    const arrayBuf = item.file ? await item.file.arrayBuffer() : await (await fetch(item.url)).arrayBuffer();
-    // OfflineAudioContext: no audio device / audio thread, and (unlike AudioContext) it never counts against Chromium's
-    // limit of live contexts, so loudness analysis of many tracks cannot silently start failing.
-    const analysisCtx = new OfflineAudioContext(1, 1, 44100);
-    const buffer = await analysisCtx.decodeAudioData(arrayBuf);
-    const m = measureLoudness(buffer);
-    item.normGain = m.gain; item.lufs = m.lufs; item.normGainDb = m.gainDb;
-  } catch {
-    item.normGain = 1;
+const loudnessMaxBytes = 24 * 1024 * 1024;
+const loudnessMaxDuration = 15 * 60;
+let loudnessRequest;
+let loudnessBusy = false;
+
+async function readLoudnessInput(item, signal) {
+  if (item.file) return item.file.size <= loudnessMaxBytes ? item.file.arrayBuffer() : null;
+  if (!item.url?.startsWith('file:')) return null;
+  const response = await fetch(item.url, { signal });
+  const size = Number(response.headers.get('content-length'));
+  if (!response.ok || size > loudnessMaxBytes || !response.body) {
+    await response.body?.cancel();
+    return null;
   }
-  return item.normGain;
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.length;
+      if (bytes > loudnessMaxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const data = new Uint8Array(bytes);
+  let offset = 0;
+  for (const part of chunks) {
+    data.set(part, offset);
+    offset += part.length;
+  }
+  return data.buffer;
+}
+
+function queueLoudnessAnalysis(item, duration) {
+  loudnessRequest?.controller.abort();
+  loudnessRequest = null;
+  if (!item || !engine.state.normalizationEnabled) return;
+  if (typeof item.normGain === 'number') {
+    engine.setNormalizationGain(item.normGain);
+    showLoudnessInfo(item);
+    return;
+  }
+  if (!Number.isFinite(duration) || duration <= 0 || duration > loudnessMaxDuration) return;
+  loudnessRequest = { item, controller: new AbortController() };
+  if (!loudnessBusy) drainLoudnessAnalysis();
+}
+
+async function drainLoudnessAnalysis() {
+  loudnessBusy = true;
+  try {
+    while (loudnessRequest) {
+      const request = loudnessRequest;
+      const { item, controller: { signal } } = request;
+      try {
+        const data = await readLoudnessInput(item, signal);
+        if (!data || signal.aborted) continue;
+        const decoder = new OfflineAudioContext(1, 1, 44100);
+        const buffer = await decoder.decodeAudioData(data);
+        signal.throwIfAborted();
+        const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+        const lufs = await WaveframeAudio.integratedLufsAsync(channels, buffer.sampleRate, signal);
+        const gainDb = WaveframeAudio.lufsToGainDb(lufs, -18, 12);
+        item.normGain = WaveframeAudio.dbToLinear(gainDb);
+        item.lufs = lufs;
+        item.normGainDb = gainDb;
+        if (playlist[currentTrackIndex] === item) {
+          engine.setNormalizationGain(item.normGain);
+          showLoudnessInfo(item);
+        }
+      } catch {
+        // The current track can still play if a decoder rejects or the user skips.
+      } finally {
+        if (loudnessRequest === request) loudnessRequest = null;
+      }
+    }
+  } finally { loudnessBusy = false; }
 }
 
 function playTrackAt(index) {
@@ -1207,15 +1314,8 @@ function playTrackAt(index) {
   announcedTrack = null;
   engine.setNormalizationGain(1);
   showLoudnessInfo(null);
-  analyzeLoudness(item).then((gain) => {
-    if (playlist[currentTrackIndex] === item) { engine.setNormalizationGain(gain); showLoudnessInfo(item); }
-  });
-  engine.switchTrack((slotIndex) => {
-    const slot = engine.slots[slotIndex];
-    slot.el.src = item.file ? URL.createObjectURL(item.file) : item.url;
-    slot.name = item.name;
-    slot.item = item;
-  }, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
+  queueLoudnessAnalysis(item);
+  engine.switchTrack(item, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
 }
 function showLoudnessInfo(item) {
   const el = document.getElementById('loudnessInfo');
@@ -1627,7 +1727,7 @@ els.btnUrl.addEventListener('click', async () => {
   if (wasEmpty) playTrackAt(playlist.length - 1);
 });
 els.btnMic.addEventListener('click', async () => {
-  try { await engine.startMic(); els.trackName.textContent = t('player.micLabel'); }
+  try { if (await engine.startMic()) els.trackName.textContent = t('player.micLabel'); }
   catch (err) { await showAlertDialog(t('player.micErrorTitle'), err.message); }
 });
 els.btnTestTone.addEventListener('click', () => {
@@ -1654,7 +1754,13 @@ function renderPlaylist() {
     rm.addEventListener('click', (e) => {
       e.stopPropagation();
       playlist.splice(idx, 1);
-      if (idx === currentTrackIndex) { engine.pauseActive(); currentTrackIndex = -1; updateTrackNameUi(); }
+      if (idx === currentTrackIndex) {
+        engine.pauseActive();
+        engine.releaseSlot(engine.slots[engine.activeSlot]);
+        queueLoudnessAnalysis(null);
+        currentTrackIndex = -1;
+        updateTrackNameUi();
+      }
       else if (idx < currentTrackIndex) currentTrackIndex--;
       renderPlaylist();
     });
@@ -1722,6 +1828,7 @@ wireSwitch(document.getElementById('swNormalize'), (on) => {
   engine.setNormalizationEnabled(on);
   const item = playlist[currentTrackIndex];
   engine.setNormalizationGain(item && typeof item.normGain === 'number' ? item.normGain : 1);
+  queueLoudnessAnalysis(item, engine.activeEl.duration);
 }, engine.state.normalizationEnabled);
 wireSwitch(els.swPreservePitch, (on) => engine.setPreservePitch(on), engine.state.preservePitch);
 els.tempo.addEventListener('input', () => {
@@ -1847,6 +1954,7 @@ function isLightSkin(theme) {
 
 function applySkin(theme) {
   document.documentElement.dataset.theme = theme;
+  Backgrounds.invalidate();
   localStorage.setItem('waveframe.skin', theme);
   [...els.skinGrid.children].forEach((b) => b.classList.toggle('active', b.dataset.theme === theme));
   const light = isLightSkin(theme);
@@ -1914,6 +2022,7 @@ function applyAccentVariables(hex) {
   document.documentElement.style.setProperty('--accent', hex);
   document.documentElement.style.setProperty('--accent-2', hslToHex(h, s, Math.max(0, l - 10)));
   document.documentElement.style.setProperty('--accent-3', hslToHex(h, s, Math.min(100, l + 12)));
+  Backgrounds.invalidate();
 }
 function applyAccentColor(hex) {
   applyAccentVariables(hex);
@@ -1927,6 +2036,7 @@ function resetAccentColor() {
   localStorage.removeItem('waveframe.accentColor');
   if (windowsAccent) applyAccentVariables(windowsAccent);
   else document.getElementById('accentColorPicker').value = '#7c6cf0';
+  Backgrounds.invalidate();
   syncFlyoutSettings();
 }
 document.getElementById('accentColorPicker').addEventListener('input', (e) => applyAccentColor(e.target.value));
@@ -2044,7 +2154,7 @@ hueSlider.addEventListener('input', () => {
 // not at all while the window is hidden/minimized.
 let lastHueTick = 0;
 function tickAutoHue(now) {
-  if (hueMode === 'auto' && !document.hidden && now - lastHueTick >= 66) {
+  if (hueMode === 'auto' && Backgrounds.animating && now - lastHueTick >= 66) {
     autoHue = (autoHue + 0.06 * ((now - lastHueTick) / 16.7)) % 360;
     lastHueTick = now;
     bgCanvasEl.style.filter = `hue-rotate(${autoHue}deg)`;
@@ -2606,12 +2716,12 @@ function updateMiniMeter() {
   });
 }
 const tabPlayerEl = document.getElementById('tab-player');
-function renderLoop() {
-  if (!document.hidden) {
-    // Skip the (potentially expensive, especially the particle-based) canvas
-    // drawing when the Player tab isn't even visible — real CPU/battery win,
-    // since a hidden `.tab-pane { display: none }` doesn't stop rAF on its own.
-    if (tabPlayerEl.classList.contains('active') || document.body.classList.contains('mini-mode')) {
+let lastVisualizerFrame = 0;
+function renderLoop(now) {
+  if (!document.hidden && now - lastVisualizerFrame >= 1000 / 30) {
+    lastVisualizerFrame = now;
+    const playerVisible = tabPlayerEl.classList.contains('active');
+    if (playerVisible || document.body.classList.contains('mini-mode')) {
       if (visMode !== prevVisMode) { particles = []; prevVisMode = visMode; }
       if (visMode !== 'none') {
         engine.analyser.getByteFrequencyData(freqData);
@@ -2619,12 +2729,12 @@ function renderLoop() {
         const draw = VIS_DRAW[visMode] || drawBars;
         draw();
       }
+      if (playerVisible) updateMiniMeter();
     }
-    updateMiniMeter();
   }
   requestAnimationFrame(renderLoop);
 }
-renderLoop();
+requestAnimationFrame(renderLoop);
 
 /* ------------------------------------------------------------------ */
 /* Dependencies (FFmpeg)                                              */
@@ -2679,13 +2789,16 @@ function renderDependencies() {
 }
 
 let dependencyCheck;
-function refreshDepsStatus() {
+let dependencyCheckedAt = 0;
+function refreshDepsStatus(force = false) {
   if (dependencyCheck) return dependencyCheck;
+  if (!force && dependencySnapshot && Date.now() - dependencyCheckedAt < 30_000) return Promise.resolve();
   dependencyCheck = Promise.all([
     window.waveframe.checkDeps().catch(() => ({ ffmpeg: { ok: false }, kLite: null })),
     window.waveframe.vidEncoders().catch(() => ({ ffmpeg: false })),
   ]).then(([status, encoders]) => {
     dependencySnapshot = { status, encoders };
+    dependencyCheckedAt = Date.now();
     renderDependencies();
   }).finally(() => { dependencyCheck = null; });
   return dependencyCheck;
@@ -2702,7 +2815,7 @@ btnInstallDeps.addEventListener('click', async () => {
   depsProgress.textContent = t('settings.depsDownloading') + '0%';
   try {
     const result = await window.waveframe.installDeps();
-    if (result.ok) await refreshDepsStatus();
+    if (result.ok) await refreshDepsStatus(true);
     else depsProgress.textContent = result.cancelled ? '' : t('settings.depsError') + result.error;
   } catch (err) {
     depsProgress.textContent = t('settings.depsError') + err.message;
@@ -2790,6 +2903,29 @@ window.__selfTest = async function () {
     for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = Math.pow(10, -23 / 20) * Math.sin(2 * Math.PI * 997 * i / fs); }
     const m = measureLoudness(buf);
     check('measureLoudness on an AudioBuffer', Math.abs(m.lufs + 23) < 0.15 && Math.abs(m.gainDb - 5) < 0.15, `${m.lufs.toFixed(2)} LUFS, gain ${m.gainDb.toFixed(2)} dB`);
+    const originalSlot = engine.slots[0];
+    const probe = { file: new File(['test'], 'probe.wav', { type: 'audio/wav' }), name: 'probe' };
+    const liveUrls = new Set();
+    const makeUrl = URL.createObjectURL;
+    const revokeUrl = URL.revokeObjectURL;
+    let bounded = true;
+    try {
+      URL.createObjectURL = (...args) => {
+        const url = makeUrl(...args);
+        liveUrls.add(url);
+        return url;
+      };
+      URL.revokeObjectURL = (url) => { liveUrls.delete(url); revokeUrl(url); };
+      for (let i = 0; i < 80; i++) {
+        engine.loadTrack(originalSlot, probe);
+        bounded &&= liveUrls.size === 1;
+      }
+    } finally {
+      engine.releaseSlot(originalSlot);
+      URL.createObjectURL = makeUrl;
+      URL.revokeObjectURL = revokeUrl;
+    }
+    check('changing tracks repeatedly releases every temporary audio URL', bounded && liveUrls.size === 0 && !originalSlot.el.hasAttribute('src'));
     // sleep timer cycle
     setSleepStep(1); check('sleep timer arms (15 min)', SLEEP_STEPS[sleepStep] === 15 && !!sleepTick && document.getElementById('btnSleep').classList.contains('active'));
     setSleepStep(0); check('sleep timer disarms and restores volume', !sleepTick && engine.sleepFactor === 1);

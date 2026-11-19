@@ -60,7 +60,7 @@
 
 ```
 npm install
-npm run build:windows-desktop  # δημιουργία βοηθητικού προγράμματος με το .NET 8 SDK
+npm run build:windows-desktop  # δημιουργία βοηθητικού προγράμματος με το .NET 11 SDK
 npm start          # εκκίνηση σε dev mode
 npm run smoke-test # αυτοματοποιημένος έλεγχος εκκίνησης χωρίς σφάλματα
 npm run dist        # παράγει portable + win-unpacked (Windows x64) στο release/
@@ -110,7 +110,7 @@ Every release file has a matching `.sha256` file. In PowerShell: `(Get-FileHash 
 
 ```
 npm install
-npm run build:windows-desktop  # build the Windows helper with the .NET 8 SDK
+npm run build:windows-desktop  # build the Windows helper with the .NET 11 SDK
 npm start          # launch in dev mode
 npm run smoke-test # automated startup/crash check
 npm run dist        # produces a portable build + NSIS installer (Windows x64) in release/

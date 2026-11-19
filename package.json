@@ -15,8 +15,8 @@
     "selftest": "node selftest.js"
   },
   "devDependencies": {
-    "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
@@ -49,7 +49,10 @@
       "m3u.js"
     ],
     "extraResources": [
-      { "from": "windows-desktop/out", "to": "windows-desktop" }
+      {
+        "from": "windows-desktop/out",
+        "to": "windows-desktop"
+      }
     ],
     "asarUnpack": [
       "node_modules/music-metadata/**/*",
