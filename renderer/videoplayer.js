@@ -35,7 +35,7 @@
     const panel = $('vpSettingsMenu');
     const tabs = [...panel.querySelectorAll('.vp-settings-nav button')];
     let settingsAnchor = $('vpSettingsToggle');
-    const menus = [[panel, () => settingsAnchor], [$('vpSources'), () => $('vpSourcesToggle')], [$('vpQueue'), () => $('vpQueueToggle')]];
+    const menus = [[panel, () => settingsAnchor], [$('vpSources'), () => $('vpSourcesToggle')]];
 
     function placePanels() {
       for (const [menu, anchor] of menus) {
@@ -77,6 +77,7 @@
   /* ---------------- playlist ---------------- */
   function renderList() {
     const ul = $('vpList'); ul.textContent = '';
+    $('vpQueueEmpty').hidden = list.length > 0;
     list.forEach((p, i) => {
       const li = document.createElement('li'); if (i === idx) li.classList.add('current');
       const b = document.createElement('button'); b.className = 'vp-name'; b.textContent = VP.titleOf(p); b.title = p; b.addEventListener('click', () => playAt(i));
@@ -327,6 +328,13 @@
 
     $('vpOpen').addEventListener('click', async () => addPaths(await api.vpPick('files'), true));
     $('vpEmptyOpen').addEventListener('click', () => $('vpOpen').click());
+    $('vpQueueAdd').addEventListener('click', () => $('vpOpen').click());
+    $('vpQueueToggle').addEventListener('click', () => {
+      const queue = $('vpQueue');
+      queue.hidden = !queue.hidden;
+      $('vpQueueToggle').setAttribute('aria-expanded', String(!queue.hidden));
+      if (!queue.hidden) queue.scrollIntoView({ block: 'nearest' });
+    });
     $('vpOpenFolder').addEventListener('click', async () => { hidePanels(); addPaths(await api.vpPick('folder'), true); });
     $('vpOpenUrl').addEventListener('click', async () => { hidePanels(); const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
@@ -401,16 +409,20 @@
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); syncHeading(); });
 
     const frame = $('vpFrame');
-    frame.addEventListener('dragover', (e) => { e.preventDefault(); frame.classList.add('drag'); });
-    frame.addEventListener('dragleave', () => frame.classList.remove('drag'));
-    frame.addEventListener('drop', (e) => {
-      e.preventDefault(); frame.classList.remove('drag');
-      const paths = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);
-      const sub = paths.find((p) => /\.(srt|vtt|ass|ssa)$/i.test(p));
-      const media = paths.filter((p) => !/\.(srt|vtt|ass|ssa)$/i.test(p));
-      if (media.length) addPaths(media, true);
-      else if (sub && current()) say(t('vp.dropSubUseButton'));
-    });
+    for (const target of [frame, $('vpQueue')]) {
+      target.addEventListener('dragover', (e) => { e.preventDefault(); target.classList.add('drag'); });
+      target.addEventListener('dragleave', () => target.classList.remove('drag'));
+      target.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        target.classList.remove('drag');
+        const paths = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);
+        const sub = paths.find((p) => /\.(srt|vtt|ass|ssa)$/i.test(p));
+        const media = paths.filter((p) => !/\.(srt|vtt|ass|ssa)$/i.test(p));
+        if (media.length) addPaths(media, target === frame || !current());
+        else if (sub && current()) say(t('vp.dropSubUseButton'));
+      });
+    }
     document.addEventListener('keydown', (e) => {
       if (!$('tab-video').classList.contains('active') || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey ||
           e.target.closest('input, select, textarea, [popover], [contenteditable]') ||

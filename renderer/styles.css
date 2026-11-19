@@ -681,6 +681,12 @@ input[type=range] { accent-color: var(--accent); }
 .dep-status.missing { color: var(--danger); }
 .dep-hidden { display: none; }
 #depsProgress:empty { display: none; }
+.deps-codecs { margin-top: 12px; border-top: 1px solid var(--panel-border); }
+.deps-codecs h3 { font-size: 13px; margin: 13px 0 4px; }
+.deps-codecs .hint { margin: 4px 0 8px; }
+.deps-codec-list { list-style: none; margin: 0; padding: 0; }
+.deps-codec-list li { display: grid; grid-template-columns: minmax(110px, 1fr) 2fr; gap: 12px; padding: 3px 0; font-size: 12px; }
+.deps-codec-list li span:last-child { overflow-wrap: anywhere; color: var(--text-dim); }
 
 .skin-carousel { display: flex; align-items: center; gap: 8px; }
 .skin-grid {
@@ -888,7 +894,7 @@ body.mini-mode #bgCanvas { display: none; }
 .vp-video::cue { font-size: calc(var(--vp-sub-size, 16) * 1%); color: var(--vp-sub-color, #fff); }
 .ph-canvas { max-width: 100%; max-height: 54vh; display: none; }
 .ph-drop.has-media .ph-canvas { display: block; }
-.ph-drop.drag, .vp-frame.drag { outline: 2px dashed var(--accent); }
+.ph-drop.drag, .vp-frame.drag, .vp-queue.drag { outline: 2px dashed var(--accent); }
 .ph-hist { width: 100%; max-width: 256px; height: 64px; margin-top: 10px; border-radius: 6px; background: rgba(127,127,127,0.12); }
 .ph-slider { display: grid; grid-template-columns: 110px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
 .ph-slider output { text-align: right; font-variant-numeric: tabular-nums; }
@@ -977,8 +983,12 @@ body.mini-mode #bgCanvas { display: none; }
 .vp-popup-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .vp-popup-head h3, .vp-queue > h3 { margin: 0; font-size: 14px; font-weight: 650; }
 .vp-queue > h3 { margin: 16px 0 8px; }
-.vp-queue { width: min(385px, calc(100vw - 24px)); }
-.vp-queue .vp-list { max-height: 160px; }
+.vp-queue { margin-top: 14px; }
+.vp-queue[hidden], #vpQueueEmpty[hidden], .vp-stage:fullscreen #vpQueueToggle { display: none; }
+.vp-queue .vp-list { margin-block: 0; max-height: var(--playlist-h, 220px); }
+.vp-queue-tools { border-top: 1px solid var(--panel-border); margin-top: 10px; padding-top: 8px; }
+.vp-queue-tools summary { cursor: pointer; }
+.vp-queue-tools h3 { font-size: 13px; margin-block: 14px 8px; }
 .vp-sources { width: min(210px, calc(100vw - 24px)); }
 .vp-sources .vp-menu-action { display: flex; justify-content: start; width: 100%; }
 .vp-settings-nav { display: flex; flex-wrap: wrap; gap: 3px; margin-block: 7px; border-bottom: 1px solid #383a42; padding-bottom: 8px; }

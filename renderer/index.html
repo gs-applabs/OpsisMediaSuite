@@ -278,7 +278,7 @@
               <div class="vp-control-group">
                 <button type="button" class="vp-icon" id="vpCaptions" data-i18n-title="vp.subtitles" popovertarget="vpSettingsMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconCaptions"></use></svg></button>
                 <button type="button" class="vp-icon" id="vpSettingsToggle" data-i18n-title="tab.settings" popovertarget="vpSettingsMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconSettings"></use></svg></button>
-                <button type="button" class="vp-icon" id="vpQueueToggle" data-i18n-title="vp.playlist" popovertarget="vpQueue"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconQueue"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpQueueToggle" data-i18n-title="vp.playlist" aria-controls="vpQueue" aria-expanded="true"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconQueue"></use></svg></button>
                 <button type="button" class="vp-icon" id="vpFull" data-i18n-title="vp.fullscreen"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconFull"></use></svg></button>
               </div>
             </div>
@@ -366,12 +366,16 @@
                 </section>
             </div>
           </section>
-          <aside class="vp-popover vp-queue" id="vpQueue" popover aria-labelledby="vpQueueTitle">
-            <div class="vp-popup-head">
-              <h3 id="vpQueueTitle" data-i18n="vp.playlist">Λίστα αναπαραγωγής</h3>
-              <button type="button" class="vp-icon" id="vpQueueClose" data-i18n-title="splash.close" popovertarget="vpQueue" popovertargetaction="hide"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconClose"></use></svg></button>
-            </div>
-            <ul class="vp-list" id="vpList"></ul>
+        </div>
+        <section class="playlist-drawer vp-queue" id="vpQueue" aria-labelledby="vpQueueTitle">
+          <div class="playlist-drawer-header vp-queue-head">
+            <h2 id="vpQueueTitle" data-i18n="vp.playlist">Λίστα αναπαραγωγής</h2>
+            <button type="button" class="small-btn" id="vpQueueAdd" data-i18n="vp.openFiles">Άνοιγμα αρχείων</button>
+          </div>
+          <ul class="playlist vp-list" id="vpList"></ul>
+          <p class="empty-hint" id="vpQueueEmpty" data-i18n="vp.empty">Άνοιξε ή σύρε εδώ ένα βίντεο</p>
+          <details class="vp-queue-tools">
+            <summary data-i18n="vp.savedLists">Αποθηκευμένες λίστες</summary>
             <div class="vp-bar vp-row">
               <button class="small-btn" id="vpClear" data-i18n="vp.clear">Εκκαθάριση</button>
               <button class="small-btn" id="vpSavePl" data-i18n="vp.savePl">Αποθήκευση λίστας</button>
@@ -390,8 +394,8 @@
             <h3 data-i18n="vp.bookmarks">Σελιδοδείκτες</h3>
             <button class="small-btn" id="vpBookmark" data-i18n="vp.addBookmark">Προσθήκη σελιδοδείκτη εδώ</button>
             <ul class="vp-list" id="vpBookmarks"></ul>
-          </aside>
-        </div>
+          </details>
+        </section>
       </section>
 
       <!-- PHOTO TAB -->
@@ -442,6 +446,16 @@
           </div>
           <button id="btnInstallDeps" class="small-btn dep-hidden" data-i18n="settings.depsInstall">⬇ Λήψη &amp; εγκατάσταση</button>
           <p class="hint" id="depsProgress"></p>
+          <div class="deps-codecs">
+            <h3 data-i18n="vp.title">Αναπαραγωγή βίντεο</h3>
+            <p class="hint" data-i18n="deps.playbackHint">Υποστήριξη από τη μηχανή αναπαραγωγής του Opsis για τους παρακάτω συνδυασμούς.</p>
+            <ul class="deps-codec-list" id="depPlaybackCodecs"></ul>
+            <h3 data-i18n="deps.videoEncoders">Κωδικοποιητές μετατροπής βίντεο</h3>
+            <p class="hint" data-i18n="deps.encoderHint">Κωδικοποιητές που δηλώνει το FFmpeg. Οι κωδικοποιητές υλικού εξαρτώνται από την κάρτα γραφικών και τον οδηγό της.</p>
+            <ul class="deps-codec-list" id="depVideoEncoders"></ul>
+            <div class="dep-row"><span class="dep-name">K-Lite Codec Pack</span><span class="dep-status" id="depKLiteStatus">…</span></div>
+            <p class="hint" data-i18n="deps.kLiteHint">Το K-Lite εγκαθιστά φίλτρα DirectShow για συμβατές εφαρμογές Windows. Το Opsis παίζει με τη μηχανή του Electron και μετατρέπει με FFmpeg.</p>
+          </div>
         </div>
         <div class="panel">
           <h2 data-i18n="settings.language">Γλώσσα</h2>

@@ -149,8 +149,11 @@ function init({ getMainWin, resolveFfmpegPath }) {
         byId('vpCaptions').click();
         const captions = settings.matches(':popover-open') && !byId('vpSubtitlesOptions').hidden;
         byId('vpQueueToggle').click();
-        const playlist = queue.matches(':popover-open') && !settings.matches(':popover-open');
-        queue.hidePopover();
+        const collapsed = queue.hidden;
+        byId('vpQueueToggle').click();
+        const playlist = collapsed && !queue.hidden &&
+          Boolean(byId('vpStage').compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+          queue.getBoundingClientRect().top >= byId('vpStage').getBoundingClientRect().bottom;
         byId('vpSourcesToggle').click();
         const sources = byId('vpSources').matches(':popover-open');
         byId('vpSources').hidePopover();
@@ -181,6 +184,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
           check('wfmedia: refuses files that are not media / subtitles', guard === 404 || guard === 'blocked', String(guard));
         }
       }
+      await js("document.querySelector('.tab-btn[data-tab=settings]').click(); refreshDepsStatus().then(() => 1)");
+      check('dependencies distinguish playback codecs, FFmpeg encoders and report K-Lite detection', await js(`(() => {
+        const byId = id => document.getElementById(id);
+        return byId('depPlaybackCodecs').children.length === 5 &&
+          byId('depVideoEncoders').children.length === 4 &&
+          byId('depKLiteStatus').textContent !== '…';
+      })()`));
       /* photo editor */
       const { nativeImage } = require('electron');
       const W = 64, H = 48, buf = Buffer.alloc(W * H * 4);

@@ -62,6 +62,22 @@ async function resolveFfmpegPath() {
   return null;
 }
 
+// The Windows uninstall entry identifies the installed edition without loading any DirectShow filters.
+async function detectKLite() {
+  if (process.platform !== 'win32') return null;
+  const key = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\KLiteCodecPack_is1';
+  const reg = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
+  const readings = await Promise.all(['HKLM', 'HKCU'].flatMap((hive) => ['64', '32'].map((view) =>
+    new Promise((resolve) => {
+      execFile(reg, ['query', hive + '\\' + key, '/v', 'DisplayName', '/reg:' + view],
+        { windowsHide: true, timeout: 2000, maxBuffer: 4096 }, (error, stdout) => {
+          const name = !error && /^\s*DisplayName\s+REG_SZ\s+(K-Lite [^\r\n]+)$/im.exec(stdout)?.[1];
+          resolve(name ? name.trim().slice(0, 140) : '');
+        });
+    }))));
+  return readings.find(Boolean) || '';
+}
+
 // Source, size and SHA-256 of the LGPL ffmpeg build, straight from the GitHub release (asset digest, or the release's checksums.sha256).
 async function getFfmpegAsset() {
   const r = await suiteLib.httpGet(FFMPEG_RELEASE_API, { timeout: 8000, maxBytes: 4 * 1024 * 1024, hostOpts: { hosts: suiteLib.API_HOSTS } });
@@ -286,7 +302,7 @@ function createWindow() {
     });
     win.on('show', leaveTray);
   }
-  const flyout = attachFlyout(win, () => currentTheme, () => minimizedToTray || win.isMinimized());
+  const flyout = attachFlyout(win, () => currentTheme, () => !win.isDestroyed() && (minimizedToTray || win.isMinimized()));
   // Hardening + stability: the app only ever shows its own local pages.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
@@ -468,9 +484,9 @@ function createWindow() {
   ipcMain.on('help:open', (e) => { if (fromMain(e)) createHelpWindow(win); });
 
   ipcMain.handle('deps:check', async (e) => {
-    if (!fromMain(e)) return { ffmpeg: { ok: false, path: null } };
-    const ffmpegPath = await resolveFfmpegPath();
-    return { ffmpeg: { ok: !!ffmpegPath, path: ffmpegPath } };
+    if (!fromMain(e)) return { ffmpeg: { ok: false, path: null }, kLite: null };
+    const [ffmpegPath, kLite] = await Promise.all([resolveFfmpegPath(), detectKLite()]);
+    return { ffmpeg: { ok: !!ffmpegPath, path: ffmpegPath }, kLite };
   });
 
   ipcMain.handle('deps:install', async (e) => {
