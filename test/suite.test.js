@@ -77,6 +77,16 @@ test('the embedded fallback catalogue validates and contains waveframe', () => {
   assert.ok(wf.tagline.el && wf.tagline.en && wf.capabilities.en.length >= 3);
 });
 
+test('trusted-URL checks accept both the new and the old account name, nothing else', () => {
+  assert.equal(S.OWNER, 'gs-applabs');
+  for (const o of ['gs-applabs', 'giorstergiopoulos-design']) {
+    assert.equal(S.isRepoPageUrl(`https://github.com/${o}/waveframe/releases/tag/v1.7.0`, 'waveframe'), true, o);
+    assert.equal(S.isTrustedReleaseDownload(`https://github.com/${o}/waveframe/releases/download/v2.0.0/Waveframe.Setup.2.0.0.exe`, 'waveframe'), true, o);
+    assert.equal(S.validateCatalogue({ schema: 1, owner: o, apps: [] }).error, 'empty', o);
+  }
+  assert.equal(S.isTrustedReleaseDownload('https://github.com/someone-else/waveframe/releases/download/v2.0.0/x.exe', 'waveframe'), false);
+});
+
 test('catalogue validation rejects oversize, malformed, wrong schema/owner, empty', () => {
   assert.equal(S.validateCatalogue('x'.repeat(300 * 1024)).error, 'oversize');
   assert.equal(S.validateCatalogue('{nope').error, 'malformed');

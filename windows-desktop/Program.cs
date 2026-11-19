@@ -20,7 +20,7 @@ static class Program
         if (args is ["--test-taskbar-placement"])
         {
             TaskbarWidget.VerifyPlacement();
-            Console.WriteLine("Taskbar placement and native child window verified");
+            Console.WriteLine("Taskbar placement, Windows theme palettes and artwork styling verified");
             return;
         }
         if (args is ["--test-explorer-taskbar"])
@@ -62,14 +62,15 @@ static class Program
                         keys.Configure(Bool(input, "locks"), Bool(input, "mediaKeys"));
                         widget.Configure(Bool(input, "widget"), Bool(input, "light"),
                             String(input, "openLabel"), String(input, "prevLabel"), String(input, "playLabel"), String(input, "nextLabel"),
-                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"));
+                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"), Bool(input, "widgetCoverBackground"));
                         break;
                     case "widget":
-                        widget.Update(String(input, "title"), Bool(input, "playing"), Bool(input, "canPlay"),
+                        widget.Update(String(input, "title"), String(input, "artist"), String(input, "artwork", 12000),
+                            Bool(input, "playing"), Bool(input, "canPlay"),
                             Bool(input, "canPrev"), Bool(input, "canNext"), ReadLevels(input));
                         break;
                     case "snapshot":
-                        var media = await services.ReadMedia(Bool(input, "mixer"), String(input, "selected", 1024));
+                        var media = await services.ReadMedia(Bool(input, "artwork") || Bool(input, "mixer"), String(input, "selected", 1024));
                         var mixer = Bool(input, "mixer") ? services.ReadMixer() : null;
                         Send(new { type = "snapshot", media, mixer });
                         break;

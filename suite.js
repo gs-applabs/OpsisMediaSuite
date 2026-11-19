@@ -7,13 +7,16 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const OWNER = 'giorstergiopoulos-design';
+const OWNER = 'gs-applabs';
+// The account was renamed giorstergiopoulos-design -> gs-applabs: old clients, old links and redirected URLs carry the old name, so trust checks accept BOTH.
+const OWNERS = ['gs-applabs', 'giorstergiopoulos-design'];
+const isOwner = (o) => OWNERS.includes(String(o || '').toLowerCase());
 // The repository was renamed waveframe -> OpsisMediaSuite (GitHub redirects the old name, but every URL it returns carries the NEW name). Both names
 // are the same repository for all trust checks, so old and new clients, old links and the embedded catalogue keep working.
 const SELF_REPO = 'OpsisMediaSuite';
 const REPO_ALIASES = [['opsismediasuite', 'waveframe']];
 const repoKey = (r) => { const k = String(r || '').toLowerCase(); const g = REPO_ALIASES.find((a) => a.includes(k)); return g ? g[0] : k; };
-const CATALOGUE_URL = 'https://raw.githubusercontent.com/giorstergiopoulos-design/Opsis/master/suite/apps.json';
+const CATALOGUE_URL = 'https://raw.githubusercontent.com/gs-applabs/Opsis/master/suite/apps.json';
 const CATALOGUE_MAX_BYTES = 256 * 1024;
 const RELEASE_MAX_BYTES = 1024 * 1024;
 const INSTALLER_MAX_BYTES = 600 * 1024 * 1024;
@@ -123,7 +126,7 @@ const DOWNLOAD_OPTS = { hosts: API_HOSTS, suffixes: ['.githubusercontent.com'] }
 function isRepoPageUrl(url, repo) {
   if (!isAllowedUrl(url, { hosts: ['github.com'] })) return false;
   const m = /^\/([^/]+)\/([^/]+)(\/|$)/.exec(new URL(url).pathname);
-  return !!m && m[1].toLowerCase() === OWNER.toLowerCase() && repoKey(m[2]) === repoKey(repo);
+  return !!m && isOwner(m[1]) && repoKey(m[2]) === repoKey(repo);
 }
 
 /* ------------------------------ catalogue ------------------------------ */
@@ -161,7 +164,7 @@ function validateCatalogue(raw, { maxBytes = CATALOGUE_MAX_BYTES } = {}) {
   }
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'malformed' };
   if (obj.schema !== 1) return { ok: false, error: 'schema' };
-  if (obj.owner !== OWNER) return { ok: false, error: 'owner' };
+  if (!isOwner(obj.owner)) return { ok: false, error: 'owner' };
   if (!Array.isArray(obj.apps)) return { ok: false, error: 'malformed' };
   const apps = [];
   const seen = new Set();
@@ -253,7 +256,7 @@ function pickInstaller(release, app) {
 function isTrustedReleaseDownload(url, repo) {
   if (!isAllowedUrl(url, { hosts: ['github.com'] })) return false;
   const m = /^\/([^/]+)\/([^/]+)\/releases\/download\//.exec(new URL(url).pathname);
-  return !!m && m[1] === OWNER && repoKey(m[2]) === repoKey(repo);
+  return !!m && isOwner(m[1]) && repoKey(m[2]) === repoKey(repo);
 }
 function findChecksumAsset(release, installerName) {
   return (release && release.assets || []).find((a) => a.name === installerName + '.sha256') || null;
@@ -382,7 +385,7 @@ function downloadVerified(url, destPath, { expectedSha256, expectedSize = 0, max
 
 module.exports = {
   powershellEnv,
-  OWNER, SELF_REPO, repoKey, CATALOGUE_URL, CATALOGUE_MAX_BYTES, API_HOSTS, DOWNLOAD_OPTS,
+  OWNER, OWNERS, SELF_REPO, repoKey, CATALOGUE_URL, CATALOGUE_MAX_BYTES, API_HOSTS, DOWNLOAD_OPTS,
   parseVersion, compareVersions, isNewer, majorMinor,
   STATE_DEFAULTS, sanitizeState, createStore, shouldShowWelcome, shouldNotify,
   isAllowedUrl, isRepoPageUrl, validateCatalogue,

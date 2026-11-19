@@ -1285,6 +1285,7 @@ const lockFlyoutToggle = document.getElementById('swLockFlyout');
 const taskbarWidgetToggle = document.getElementById('swTaskbarWidget');
 const taskbarWidgetPosition = document.getElementById('taskbarWidgetPosition');
 const taskbarWidgetLegacy = document.getElementById('swTaskbarWidgetLegacy');
+const taskbarWidgetCover = document.getElementById('swTaskbarWidgetCover');
 const taskbarPositionKey = 'waveframe.taskbarWidgetPosition';
 const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
 const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
@@ -1295,7 +1296,7 @@ function syncFlyoutSettings() {
   flyoutButton.title = t('flyout.title');
   flyoutButton.setAttribute('aria-label', flyoutButton.title);
   const widget = taskbarWidgetToggle.classList.contains('active');
-  taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = !widget;
+  taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = taskbarWidgetCover.disabled = !widget;
   if (!widget) document.getElementById('taskbarWidgetStatus').hidden = true;
   window.waveframe.setFlyoutSettings({
     automatic: flyoutToggle.classList.contains('active'),
@@ -1305,6 +1306,7 @@ function syncFlyoutSettings() {
     widget,
     widgetPosition: taskbarWidgetPosition.value,
     widgetLegacyBounds: taskbarWidgetLegacy.classList.contains('active'),
+    widgetCoverBackground: taskbarWidgetCover.classList.contains('active'),
     light: isLightSkin(document.documentElement.dataset.theme),
     openLabel: t('flyout.title'), prevLabel: t('vp.prev'),
     playLabel: t('vp.groupPlayback'), nextLabel: t('vp.next'),
@@ -1355,7 +1357,8 @@ wireSwitch(flyoutToggle, (enabled) => {
   syncFlyoutSettings();
 }, localStorage.getItem(flyoutSettingsKey) === '1');
 for (const [toggle, key] of [[lockFlyoutToggle, 'waveframe.lockFlyout'], [taskbarWidgetToggle, 'waveframe.taskbarWidget'],
-  [taskbarWidgetLegacy, 'waveframe.taskbarWidgetLegacyBounds']]) {
+  [taskbarWidgetLegacy, 'waveframe.taskbarWidgetLegacyBounds'],
+  [taskbarWidgetCover, 'waveframe.taskbarWidgetCoverBackground']]) {
   wireSwitch(toggle, (enabled) => {
     localStorage.setItem(key, enabled ? '1' : '0');
     syncFlyoutSettings();
@@ -1373,7 +1376,7 @@ window.waveframe.onTaskbarStatus((status) => {
 });
 window.waveframe.onDesktopAvailability((available) => {
   document.getElementById('rowLockFlyout').hidden = !available;
-  for (const id of ['rowTaskbarWidget', 'rowTaskbarWidgetPosition', 'rowTaskbarWidgetLegacy'])
+  for (const id of ['rowTaskbarWidget', 'rowTaskbarWidgetPosition', 'rowTaskbarWidgetLegacy', 'rowTaskbarWidgetCover'])
     document.getElementById(id).hidden = !available;
 });
 document.addEventListener('waveframe:language-changed', () => {

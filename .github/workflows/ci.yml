@@ -1,4 +1,4 @@
-name: Opsis taskbar rendering Windows x64 test download
+name: Opsis 2.4.1 styled taskbar Windows x64 test download
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c2d81a8903875882558509a64acdce905a15de71
+          ref: 7eecead264368ec999e5dfb1ee573e4cf1dee90a
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -46,11 +46,18 @@ jobs:
           $exe = 'release/win-unpacked/Opsis Media Suite.exe'
           $helper = 'release/win-unpacked/resources/windows-desktop/Opsis.WindowsDesktop.exe'
           if (!(Test-Path $helper) -or !(Test-Path $exe)) { throw 'Missing application or Windows desktop helper' }
+          @'
+          const asar = require('@electron/asar');
+          const pkg = JSON.parse(asar.extractFile('release/win-unpacked/resources/app.asar', 'package.json').toString());
+          if (pkg.version !== '2.4.1') throw new Error('Unexpected packaged version ' + pkg.version);
+          console.log('Verified packaged Opsis version ' + pkg.version);
+          '@ | node
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii "$exe.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: OpsisMediaSuite-2.4.0-Taskbar-rendering-x64
+          name: OpsisMediaSuite-2.4.1-Taskbar-x64
           path: release/win-unpacked/
           if-no-files-found: error
           compression-level: 3

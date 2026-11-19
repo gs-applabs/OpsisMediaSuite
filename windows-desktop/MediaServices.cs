@@ -14,7 +14,7 @@ sealed class MediaServices
     private readonly Dictionary<string, string> names = new();
     private Dictionary<GlobalSystemMediaTransportControlsSession, string> sessionIds = new();
     private int nextId;
-    private string coverKey = "", cover = "";
+    private readonly Dictionary<string, string> covers = new();
 
     public async Task<object?> ReadMedia(bool withCover, string selected)
     {
@@ -49,7 +49,7 @@ sealed class MediaServices
                     if (!names.TryGetValue(source, out var name))
                         names[source] = name = source.Split('!')[0].Split('\\').Last().Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
                     string artwork = "";
-                    if (withCover && (selected == id || (string.IsNullOrEmpty(selected) && isActive)) && track?.Thumbnail is { } thumbnail)
+                    if (withCover && (selected == id || isActive || id == activeBySource) && track?.Thumbnail is { } thumbnail)
                         artwork = await ReadCover(thumbnail, $"{id}|{track.Title}|{track.Artist}|{track.AlbumTitle}");
                     rows.Add(new
                     {
@@ -80,14 +80,14 @@ sealed class MediaServices
 
     private async Task<string> ReadCover(IRandomAccessStreamReference thumbnail, string key)
     {
-        if (key == coverKey) return cover;
-        coverKey = key;
-        cover = "";
+        if (covers.TryGetValue(key, out var saved)) return saved;
+        if (covers.Count >= 12) covers.Remove(covers.Keys.First());
+        string cover = "";
         try
         {
             using var stream = await thumbnail.OpenReadAsync();
             if (stream.Size == 0 || stream.Size > 160_000 || stream.ContentType is not ("image/png" or "image/jpeg" or "image/webp"))
-                return cover;
+                return covers[key] = cover;
             using var reader = new DataReader(stream);
             uint count = await reader.LoadAsync((uint)stream.Size);
             var bytes = new byte[count];
@@ -95,7 +95,7 @@ sealed class MediaServices
             cover = $"data:{stream.ContentType};base64,{Convert.ToBase64String(bytes)}";
         }
         catch (Exception e) when (e is COMException or InvalidOperationException or UnauthorizedAccessException) { }
-        return cover;
+        return covers[key] = cover;
     }
 
     public async Task<bool> ControlMedia(string id, string action, double value)

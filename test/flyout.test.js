@@ -143,6 +143,8 @@ test('taskbar placement settings are passed to the Windows helper with backward-
     return nativeCommands.findLast((command) => command.type === 'configure');
   };
   assert.equal(set({}).widgetPosition, 'end');
+  assert.equal(set({ widgetCoverBackground: true }).widgetCoverBackground, true);
+  assert.equal(set({ widgetCoverBackground: 'true' }).widgetCoverBackground, false);
   assert.equal(set({ widgetPosition: 'center', widgetLegacyBounds: true }).widgetPosition, 'center');
   assert.equal(nativeCommands.findLast((command) => command.type === 'configure').widgetLegacyBounds, true);
   assert.equal(set({ widgetPosition: 'unknown', widgetLegacyBounds: 'true' }).widgetPosition, 'end');

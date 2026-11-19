@@ -1,17 +1,17 @@
 {
   "name": "waveframe",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Opsis Media Suite - audio enhancer, converter, video player and photo editor",
   "main": "main.js",
-  "author": "giorstergiopoulos-design",
-  "homepage": "https://github.com/giorstergiopoulos-design/waveframe",
+  "author": "gs-applabs",
+  "homepage": "https://github.com/gs-applabs/OpsisMediaSuite",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "dist": "npm run build:windows-desktop && electron-builder --win",
     "build:windows-desktop": "dotnet publish windows-desktop/Opsis.WindowsDesktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -o windows-desktop/out",
     "smoke-test": "node smoke-test.js",
-    "test": "node --test test/video.test.js test/video.real.test.js test/audiolib.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/flyout.test.js",
+    "test": "node --test --test-concurrency=1 test/video.test.js test/video.real.test.js test/audiolib.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/photosave.test.js test/flyout.test.js",
     "selftest": "node selftest.js"
   },
   "devDependencies": {
@@ -25,7 +25,7 @@
   "build": {
     "appId": "com.example.waveframe",
     "productName": "Opsis Media Suite",
-    "copyright": "Copyright (c) 2026 giorstergiopoulos-design",
+    "copyright": "Copyright (c) 2026 gs-applabs",
     "directories": {
       "output": "release"
     },

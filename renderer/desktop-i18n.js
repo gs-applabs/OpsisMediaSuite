@@ -63,3 +63,42 @@ const taskbarStatusLabels = {
   ro: 'Starea barei de activități', uk: 'Стан панелі завдань',
 };
 for (const [lang, label] of Object.entries(taskbarStatusLabels)) I18N[lang]['desktop.widgetStatus'] = label;
+
+
+const taskbarCoverLabels = {
+  el: 'Θολωμένο φόντο από το εξώφυλλο', en: 'Blurred album cover background', fr: 'Fond flou de la pochette',
+  de: 'Unscharfes Albumcover als Hintergrund', es: 'Fondo con portada difuminada', it: 'Sfondo sfocato della copertina',
+  pt: 'Fundo desfocado da capa', ru: 'Размытая обложка на фоне', tr: 'Bulanık albüm kapağı arka planı',
+  pl: 'Rozmyta okładka w tle', nl: 'Vervaagde albumhoes als achtergrond', sv: 'Suddigt albumomslag som bakgrund',
+  da: 'Sløret albumcover som baggrund', no: 'Uskarpt albumomslag som bakgrunn', fi: 'Sumennettu albumikansi taustalla',
+  cs: 'Rozmazaný obal alba na pozadí', sk: 'Rozmazaný obal albumu na pozadí', hu: 'Elmosott albumborító-háttér',
+  ro: 'Fundal estompat din coperta albumului', uk: 'Розмита обкладинка на тлі',
+};
+for (const [lang, label] of Object.entries(taskbarCoverLabels)) I18N[lang]['desktop.widgetCoverBackground'] = label;
+
+const flyoutKeys = ["title","upNext","auto","autoHint"];
+const flyoutTranslations = {
+  el: ["Χειριστήριο ήχου","Επόμενο κομμάτι","Αυτόματη εμφάνιση χειριστηρίου","Εμφάνιση με τα πλήκτρα πολυμέσων και λίγο πριν από το επόμενο κομμάτι."],
+  en: ["Audio flyout","Up next","Show audio flyout automatically","Show when you use media keys and shortly before the next track."],
+  fr: ["Panneau audio","À suivre","Afficher automatiquement le panneau audio","Afficher lors de l’utilisation des touches multimédias et juste avant le morceau suivant."],
+  de: ["Audio-Steuerung","Als Nächstes","Audio-Steuerung automatisch anzeigen","Bei Verwendung der Medientasten und kurz vor dem nächsten Titel anzeigen."],
+  es: ["Panel de audio","A continuación","Mostrar el panel de audio automáticamente","Mostrar al usar las teclas multimedia y poco antes de la siguiente pista."],
+  it: ["Pannello audio","Prossimo brano","Mostra automaticamente il pannello audio","Mostra quando usi i tasti multimediali e poco prima del brano successivo."],
+  pt: ["Painel de áudio","A seguir","Mostrar automaticamente o painel de áudio","Mostrar ao usar as teclas multimédia e pouco antes da próxima faixa."],
+  ru: ["Панель звука","Следующий трек","Показывать панель звука автоматически","Показывать при нажатии мультимедийных клавиш и незадолго до следующего трека."],
+  tr: ["Ses paneli","Sıradaki parça","Ses panelini otomatik göster","Medya tuşlarını kullandığınızda ve sonraki parçadan hemen önce göster."],
+  pl: ["Panel audio","Następny utwór","Pokazuj panel audio automatycznie","Pokazuj przy użyciu klawiszy multimedialnych i krótko przed następnym utworem."],
+  nl: ["Audiopaneel","Hierna","Audiopaneel automatisch tonen","Tonen bij gebruik van mediatoetsen en kort voor het volgende nummer."],
+  sv: ["Ljudpanel","Nästa låt","Visa ljudpanelen automatiskt","Visa när medieknapparna används och strax före nästa låt."],
+  da: ["Lydpanel","Næste nummer","Vis lydpanelet automatisk","Vis ved brug af medietaster og kort før næste nummer."],
+  no: ["Lydpanel","Neste spor","Vis lydpanelet automatisk","Vis når medietastene brukes og like før neste spor."],
+  fi: ["Äänipaneeli","Seuraavaksi","Näytä äänipaneeli automaattisesti","Näytä medianäppäimiä käytettäessä ja juuri ennen seuraavaa kappaletta."],
+  cs: ["Panel zvuku","Následuje","Zobrazovat panel zvuku automaticky","Zobrazit při použití multimediálních kláves a krátce před další skladbou."],
+  sk: ["Panel zvuku","Nasleduje","Zobrazovať panel zvuku automaticky","Zobraziť pri použití multimediálnych klávesov a krátko pred ďalšou skladbou."],
+  hu: ["Hangpanel","Következik","A hangpanel automatikus megjelenítése","Megjelenítés a médiagombok használatakor és röviddel a következő szám előtt."],
+  ro: ["Panou audio","Urmează","Afișează automat panoul audio","Afișează la folosirea tastelor multimedia și cu puțin înaintea piesei următoare."],
+  uk: ["Панель звуку","Наступна композиція","Показувати панель звуку автоматично","Показувати під час натискання мультимедійних клавіш і незадовго до наступної композиції."],
+};
+for (const [lang, labels] of Object.entries(flyoutTranslations)) {
+  flyoutKeys.forEach((key, index) => { I18N[lang]['flyout.' + key] = labels[index]; });
+}

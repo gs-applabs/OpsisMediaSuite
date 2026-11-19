@@ -1,5 +1,9 @@
 using System.Drawing;
 using System.ComponentModel;
+using System.IO;
+using Microsoft.Win32;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using Forms = System.Windows.Forms;
@@ -14,8 +18,9 @@ sealed class TaskbarWidget : IDisposable
     private bool enabled, locating;
     private int generation;
     private string lastStatus = "";
-    private string title = "", open = "", previous = "", playback = "", next = "";
-    private bool playing, canPlay, canPrev, canNext, light;
+    private string title = "", artist = "", coverData = "", open = "", previous = "", playback = "", next = "";
+    private bool playing, canPlay, canPrev, canNext, light, fallbackLight, coverBackground;
+    private ImageSource? cover;
     private double[] spectrum = [];
     private Edge position = Edge.End;
     private bool legacyBounds;
@@ -30,9 +35,11 @@ sealed class TaskbarWidget : IDisposable
     }
 
     public void Configure(bool show, bool lightTheme, string openLabel, string prevLabel, string playLabel, string nextLabel,
-        string placement, bool legacy)
+        string placement, bool legacy, bool useCoverBackground)
     {
-        light = lightTheme;
+        fallbackLight = lightTheme;
+        coverBackground = useCoverBackground;
+        ReadTaskbarTheme();
         open = openLabel;
         previous = prevLabel;
         playback = playLabel;
@@ -61,9 +68,15 @@ sealed class TaskbarWidget : IDisposable
         Paint();
     }
 
-    public void Update(string track, bool isPlaying, bool playEnabled, bool prevEnabled, bool nextEnabled, double[] levels)
+    public void Update(string track, string performer, string artwork, bool isPlaying, bool playEnabled, bool prevEnabled, bool nextEnabled, double[] levels)
     {
         title = track;
+        artist = performer;
+        if (coverData != artwork)
+        {
+            coverData = artwork;
+            cover = ReadCover(artwork);
+        }
         playing = isPlaying;
         canPlay = playEnabled;
         canPrev = prevEnabled;
@@ -75,7 +88,40 @@ sealed class TaskbarWidget : IDisposable
     private void Paint()
     {
         foreach (var surface in surfaces.Values)
-            surface.UpdateView(title, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, spectrum);
+            surface.UpdateView(title, artist, cover, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, coverBackground, spectrum);
+    }
+
+    private void ReadTaskbarTheme()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            light = key?.GetValue("SystemUsesLightTheme") is int value ? value != 0 : fallbackLight;
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            light = fallbackLight;
+        }
+    }
+
+    private static ImageSource? ReadCover(string encoded)
+    {
+        if (string.IsNullOrEmpty(encoded)) return null;
+        try
+        {
+            using var bytes = new MemoryStream(Convert.FromBase64String(encoded));
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.StreamSource = bytes;
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception e) when (e is FormatException or NotSupportedException or IOException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private void Report(string value)
@@ -108,6 +154,7 @@ sealed class TaskbarWidget : IDisposable
         int request = generation;
         try
         {
+            ReadTaskbarTheme();
             var bars = FindTaskbars();
             var placements = await Task.WhenAll(bars.Select(FindPlacement));
             if (!enabled || request != generation) return;
@@ -236,7 +283,7 @@ sealed class TaskbarWidget : IDisposable
         int gap = Math.Clamp((int)Math.Round(5 * scale), 2, span / 4);
         int inset = (int)Math.Round(20 * scale);
         int extent = Math.Min(span - 2 * gap, (int)Math.Round((vertical ? 156 : 205) * scale));
-        int thickness = Math.Min(cross - 4, (int)Math.Round(32 * scale));
+        int thickness = Math.Min(cross - 4, (int)Math.Round((cross / scale < 40 ? 30 : 42) * scale));
         int midpoint = start + span / 2;
         int? widgetStart = widgets is { } w ? AxisStart(w, vertical) : null;
         int? widgetEnd = widgets is { } lead ? AxisEnd(lead, vertical) : null;
@@ -286,6 +333,7 @@ sealed class TaskbarWidget : IDisposable
         coveringSibling.Place(8, 8, 205, 32);
         widget.Place(8, 8, 205, 32);
         widget.VerifyVisibleChild();
+        widget.VerifyAppearance();
     }
 
     public static bool VerifyExplorer()

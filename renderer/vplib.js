@@ -106,7 +106,7 @@
     return Object.fromEntries(e.slice(Math.max(0, e.length - LIMITS.resume)));
   }
   // A path from storage is only offered for playback when it looks like something the main process would serve.
-  const playable = (p) => typeof p === 'string' && (isUrl(p) || (/^[A-Za-z]:[\\/]/.test(p) && kindOf(p) !== '')) && p.length < 2048;
+  const playable = (p) => typeof p === 'string' && (isUrl(p) || (/^[A-Za-z]:[\\/]/.test(p) && kindOf(p) !== '')) && p.length < 2048 && !/[\0\r\n]/.test(p);
 
   // What plays after the current item. mode: off | list | file | shuffle. rnd: a number in [0,1) (injected for tests).
   function nextIndex(mode, idx, len, rnd) {

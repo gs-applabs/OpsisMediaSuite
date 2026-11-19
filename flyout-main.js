@@ -1,4 +1,4 @@
-const { BrowserWindow, ipcMain, screen } = require('electron');
+const { BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
 const path = require('node:path');
 const { createWindowsDesktop } = require('./windows-desktop');
 
@@ -34,6 +34,8 @@ function attachFlyout(owner, getTheme) {
   let localState;
   let localArtwork = '';
   let widgetState = '';
+  let sourceArtwork = '';
+  let widgetArtwork = '';
   let desktopSettings = { locks: false, widget: false, light: false };
   const mediaActions = new Set(['playpause', 'prev', 'next', 'seek', 'shuffle', 'repeat']);
   const ownSource = process.execPath.toLowerCase().replaceAll('\\', '/');
@@ -62,7 +64,7 @@ function attachFlyout(owner, getTheme) {
     clearInterval(pollTimer);
     pollTimer = undefined;
     if (disposed || !desktop.available || (!flyout?.isVisible() && !desktopSettings.widget && !automatic)) return;
-    const poll = () => desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), selected });
+    const poll = () => desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || desktopSettings.widget, selected });
     poll();
     pollTimer = setInterval(poll, automatic || desktopSettings.widget ? 950 : 1200);
   }
@@ -82,12 +84,29 @@ function attachFlyout(owner, getTheme) {
     send('flyout:system', { available: desktop.available, selected, sessions, mixer });
   }
 
+  function thumbnail(data) {
+    if (data === sourceArtwork) return widgetArtwork;
+    sourceArtwork = data;
+    widgetArtwork = '';
+    if (typeof data !== 'string' || !data || data.length > 2000000) return widgetArtwork;
+    try {
+      const image = nativeImage.createFromDataURL(data);
+      if (image.isEmpty()) return widgetArtwork;
+      const { width, height } = image.getSize();
+      const size = width >= height ? { width: 80 } : { height: 80 };
+      const encoded = image.resize({ ...size, quality: 'good' }).toJPEG(78).toString('base64');
+      if (encoded.length <= 12000) widgetArtwork = encoded;
+    } catch { /* a corrupt cover uses the widget's music icon */ }
+    return widgetArtwork;
+  }
+
   function pushWidget() {
     if (!desktopSettings.widget) return;
     const current = external.find((session) => session.id === activeSession) ||
       (!localState?.playing && external.find((session) => session.playing)) || localState;
     const view = JSON.stringify({
-      type: 'widget', title: current?.title, playing: current?.playing,
+      type: 'widget', title: label(current?.title), artist: label(current?.artist),
+      artwork: thumbnail((current === localState ? localArtwork : current?.artwork) || ''), playing: current?.playing,
       canPlay: current?.canPlay, canPrev: current?.canPrev ?? current?.canPlay,
       canNext: current?.canNext, spectrum: current?.spectrum,
     });
@@ -163,7 +182,7 @@ function attachFlyout(owner, getTheme) {
     }
     if (message.type === 'result') {
       if (!message.ok) send('flyout:notice', 'failed');
-      desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), selected });
+      desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || desktopSettings.widget, selected });
     }
     if (message.type === 'error') send('flyout:notice', 'failed');
     if (message.type === 'exit') {
@@ -323,6 +342,7 @@ function attachFlyout(owner, getTheme) {
       locks: data.locks === true, widget: data.widget === true, light: data.light === true,
       widgetPosition: ['start', 'center', 'end'].includes(data.widgetPosition) ? data.widgetPosition : 'end',
       widgetLegacyBounds: data.widgetLegacyBounds === true,
+      widgetCoverBackground: data.widgetCoverBackground === true,
       openLabel: label(data.openLabel), prevLabel: label(data.prevLabel),
       playLabel: label(data.playLabel), nextLabel: label(data.nextLabel),
     };
@@ -356,6 +376,7 @@ function attachFlyout(owner, getTheme) {
     localArtwork = typeof artwork === 'string' && artwork.length <= 2000000 &&
       /^data:image\/(?:png|jpe?g|webp|gif|bmp|avif);base64,[a-z0-9+/=]+$/i.test(artwork) ? artwork : '';
     if (!selected) send('flyout:artwork', localArtwork);
+    pushWidget();
   });
   listen('flyout:hover', fromFlyout, (value) => {
     if (typeof value !== 'boolean' || !flyout.isVisible()) return;
