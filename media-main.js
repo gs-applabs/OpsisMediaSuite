@@ -2,11 +2,11 @@
 // IPC glue for the video player (file picker, subtitle discovery, a read-only "wfmedia" protocol with range support), the photo editor (open / save)
 // and M3U playlist import. Only the main window may call these channels; payloads are validated here.
 
-const { ipcMain, dialog, protocol, net, app } = require('electron');
+const { ipcMain, dialog, protocol, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('node:crypto');
-const { pathToFileURL } = require('url');
+const { Readable } = require('node:stream');
 const M3U = require('./m3u.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
@@ -25,6 +25,25 @@ const isFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p)
 // Must run before the app is ready.
 function registerScheme() {
   protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false } }]);
+}
+
+const MEDIA_TYPES = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mkv: 'video/x-matroska',
+  webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', flac: 'audio/flac',
+  aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+};
+
+function byteRange(header, size) {
+  if (!header) return { start: 0, end: size - 1 };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header);
+  if (!match || size <= 0 || (!match[1] && !match[2])) return null;
+  const a = match[1] ? Number(match[1]) : null;
+  const b = match[2] ? Number(match[2]) : null;
+  if ((a !== null && !Number.isSafeInteger(a)) || (b !== null && !Number.isSafeInteger(b))) return null;
+  if (a === null) return b > 0 ? { start: Math.max(0, size - b), end: size - 1 } : null;
+  const end = b === null ? size - 1 : Math.min(b, size - 1);
+  return a <= end ? { start: a, end } : null;
 }
 
 // Subtitle bytes -> text: UTF-8 (with or without BOM), otherwise Windows-1253 (Greek) which is what old .srt files from Greek sites use.
@@ -68,31 +87,41 @@ function init({ getMainWin, resolveFfmpegPath }) {
 
   protocol.handle('wfmedia', async (request) => {
     const url = new URL(request.url);
+    // Only the trusted main frame can mint these unguessable, short-lived-in-memory URLs.
     const file = url.hostname === 'f' && streamFiles.get(url.pathname.slice(1));
-    const origin = request.headers.get('origin');
-    if (!file || (origin && origin !== 'null' && origin !== 'file://')) return new Response('not found', { status: 404 });
-    const allowOrigin = origin || 'null';
+    const headers = new Headers({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    if (!file) return new Response(null, { status: 404, headers });
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: {
-        'Access-Control-Allow-Origin': allowOrigin,
-        'Access-Control-Allow-Headers': 'Range',
-        'Access-Control-Allow-Methods': 'GET, HEAD',
-      } });
+      headers.set('Access-Control-Allow-Headers', 'Range');
+      headers.set('Access-Control-Allow-Methods', 'GET, HEAD');
+      return new Response(null, { status: 204, headers });
     }
-    if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
+    if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405, headers });
+
     try {
-      const headers = new Headers();
+      const stat = await fs.promises.stat(file);
+      if (!stat.isFile()) return new Response(null, { status: 404, headers });
+      const size = stat.size;
       const range = request.headers.get('range');
-      if (range) headers.set('Range', range);
-      const response = await net.fetch(pathToFileURL(file).toString(), {
-        headers, method: request.method, bypassCustomProtocolHandlers: true,
-      });
-      const replyHeaders = new Headers(response.headers);
-      replyHeaders.set('Access-Control-Allow-Origin', allowOrigin);
-      replyHeaders.set('Access-Control-Expose-Headers', 'Content-Range');
-      return new Response(response.body, { status: response.status, statusText: response.statusText, headers: replyHeaders });
+      const bounds = byteRange(range, size);
+      headers.set('Accept-Ranges', 'bytes');
+      if (!bounds) {
+        headers.set('Content-Range', `bytes */${size}`);
+        return new Response(null, { status: 416, headers });
+      }
+      const { start, end } = bounds;
+      headers.set('Content-Type', MEDIA_TYPES[extOf(file)] || 'application/octet-stream');
+      headers.set('Content-Length', String(end - start + 1));
+      if (range) headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+      const body = request.method === 'HEAD' || end < start
+        ? null : Readable.toWeb(fs.createReadStream(file, { start, end }));
+      return new Response(body, { status: range ? 206 : 200, headers });
     } catch {
-      return new Response(null, { status: 404 });
+      return new Response(null, { status: 404, headers });
     }
   });
 
@@ -202,8 +231,11 @@ function init({ getMainWin, resolveFfmpegPath }) {
           await js(`window.WaveframeVideoPlayer.open(${JSON.stringify(file)}); 1`);
           const range = await js(`(async () => {
             const url = await window.waveframe.vpStreamUrl(${JSON.stringify(file)});
-            const response = await fetch(url, { headers: { Range: 'bytes=0-15' } });
-            return { status: response.status, bytes: (await response.arrayBuffer()).byteLength };
+            if (!url) return { error: 'no URL issued' };
+            try {
+              const response = await fetch(url, { headers: { Range: 'bytes=0-15' } });
+              return { status: response.status, bytes: (await response.arrayBuffer()).byteLength };
+            } catch (error) { return { error: String(error) }; }
           })()`);
           check('local media URL returns the requested 16-byte range', range.status === 206 && range.bytes === 16, JSON.stringify(range));
           const ok = await until("(() => { const v = document.getElementById('vpVideo'); return v && v.readyState >= 2 && v.videoWidth === 320; })()", 15000);
@@ -295,4 +327,4 @@ function init({ getMainWin, resolveFfmpegPath }) {
   return { selfTest };
 }
 
-module.exports = { init, registerScheme, decodeText, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };
+module.exports = { init, registerScheme, decodeText, byteRange, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };

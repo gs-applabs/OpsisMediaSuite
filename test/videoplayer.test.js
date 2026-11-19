@@ -89,3 +89,14 @@ test('A-B loop goes none -> A -> loop -> none and ignores a B that is not after 
   s = V.abStep(s, 25); assert.deepEqual(s, { stage: 'loop', a: 10, b: 25 });
   assert.equal(V.abStep(s, 30).stage, 'off');
 });
+
+test('local media byte ranges are clamped and malformed requests are rejected', () => {
+  assert.deepEqual(M.byteRange(null, 100), { start: 0, end: 99 });
+  assert.deepEqual(M.byteRange('bytes=0-15', 100), { start: 0, end: 15 });
+  assert.deepEqual(M.byteRange('bytes=95-', 100), { start: 95, end: 99 });
+  assert.deepEqual(M.byteRange('bytes=-4', 100), { start: 96, end: 99 });
+  assert.deepEqual(M.byteRange('bytes=90-999', 100), { start: 90, end: 99 });
+  for (const range of ['bytes=100-', 'bytes=80-7', 'bytes=-0', 'bytes=0-5,7-8', 'bytes=9007199254740993-']) {
+    assert.equal(M.byteRange(range, 100), null);
+  }
+});
