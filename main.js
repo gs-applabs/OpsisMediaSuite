@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen, Menu, Tray } = require('electron');
 const path = require('path');
 const { readTrackText } = require('./audio-tags');
 const fs = require('fs');
@@ -203,6 +203,18 @@ function updateJumpList() {
 }
 
 let mainWin = null;
+let restoreMainWindow = null;
+
+const trayLabels = {
+  el: ['Εμφάνιση του Opsis', 'Έξοδος'], en: ['Show Opsis', 'Quit'],
+  fr: ['Afficher Opsis', 'Quitter'], de: ['Opsis anzeigen', 'Beenden'],
+  es: ['Mostrar Opsis', 'Salir'], it: ['Mostra Opsis', 'Esci'], pt: ['Mostrar Opsis', 'Sair'],
+  ru: ['Показать Opsis', 'Выход'], tr: ['Opsis’i göster', 'Çıkış'], pl: ['Pokaż Opsis', 'Zakończ'],
+  nl: ['Opsis tonen', 'Afsluiten'], sv: ['Visa Opsis', 'Avsluta'], da: ['Vis Opsis', 'Afslut'],
+  no: ['Vis Opsis', 'Avslutt'], fi: ['Näytä Opsis', 'Lopeta'], cs: ['Zobrazit Opsis', 'Ukončit'],
+  sk: ['Zobraziť Opsis', 'Ukončiť'], hu: ['Opsis megjelenítése', 'Kilépés'],
+  ro: ['Afișează Opsis', 'Ieșire'], uk: ['Показати Opsis', 'Вийти'],
+};
 let suiteApi = null;
 let converterApi = null;
 let mediaApi = null;
@@ -232,7 +244,49 @@ function createWindow() {
   });
 
   mainWin = win;
-  const flyout = attachFlyout(win, () => currentTheme);
+  let tray = null;
+  let minimizedToTray = false;
+  const destroyTray = () => {
+    if (tray && !tray.isDestroyed()) tray.destroy();
+    tray = null;
+  };
+  const leaveTray = () => {
+    if (!minimizedToTray) return;
+    minimizedToTray = false;
+    win.setSkipTaskbar(false);
+    destroyTray();
+  };
+  restoreMainWindow = () => {
+    if (win.isDestroyed()) return;
+    leaveTray();
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  };
+  if (process.platform === 'win32') {
+    win.on('minimize', () => {
+      if (minimizedToTray) return;
+      try {
+        const [show, quit] = trayLabels[helpLang] || trayLabels.en;
+        tray = new Tray(path.join(__dirname, 'icon.ico'));
+        tray.setToolTip('Opsis Media Suite');
+        tray.on('click', restoreMainWindow);
+        tray.setContextMenu(Menu.buildFromTemplate([
+          { label: show, click: restoreMainWindow },
+          { type: 'separator' },
+          { label: quit, click: () => app.quit() },
+        ]));
+      } catch {
+        destroyTray();
+        return;
+      }
+      minimizedToTray = true;
+      win.setSkipTaskbar(true);
+      win.hide();
+    });
+    win.on('show', leaveTray);
+  }
+  const flyout = attachFlyout(win, () => currentTheme, () => minimizedToTray || win.isMinimized());
   // Hardening + stability: the app only ever shows its own local pages.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
@@ -255,6 +309,13 @@ function createWindow() {
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
           results.push(...await flyout.selfTest());
+          if (process.platform === 'win32') {
+            win.minimize();
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            results.push({ name: 'minimizing hides Opsis in the Windows notification area', ok: minimizedToTray && !win.isVisible() && !!tray && !tray.isDestroyed() });
+            restoreMainWindow();
+            results.push({ name: 'restoring from the tray shows the same window', ok: win.isVisible() && !minimizedToTray && !tray });
+          }
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
           code = results.every((r) => r.ok) ? 0 : 1;
         } catch (e) { console.log('FAIL self-test could not run: ' + e); }
@@ -262,7 +323,13 @@ function createWindow() {
       }, 1500);
     });
   }
-  win.on('closed', () => { if (mainWin === win) mainWin = null; });
+  win.on('closed', () => {
+    destroyTray();
+    if (mainWin === win) {
+      mainWin = null;
+      restoreMainWindow = null;
+    }
+  });
   updateJumpList();
 
   let isMiniMode = false;
@@ -494,8 +561,7 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (event, argv) => {
     if (mainWin) {
-      if (mainWin.isMinimized()) mainWin.restore();
-      mainWin.focus();
+      restoreMainWindow?.();
       forwardJumpListAction(argv);
       forwardOpenFile(argv);
     }
@@ -525,6 +591,7 @@ if (!gotSingleInstanceLock) {
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      else if (mainWin && !mainWin.isVisible()) restoreMainWindow?.();
     });
   });
 

@@ -227,109 +227,150 @@
 
       <!-- VIDEO TAB -->
       <section id="tab-video" class="tab-pane">
-        <div class="vp-layout">
-          <div class="vp-main">
-            <div class="panel vp-stage" id="vpStage">
-              <div class="vp-head">
-                <h2 data-i18n="vp.title">Αναπαραγωγή βίντεο</h2>
-                <div class="vp-open">
-                  <button class="small-btn" id="vpOpen" data-i18n="vp.openFiles">Άνοιγμα αρχείων</button>
-                  <button class="small-btn" id="vpOpenFolder" data-i18n="vp.openFolder">Φάκελος</button>
-                  <button class="small-btn" id="vpOpenUrl" data-i18n="vp.openUrl">Διεύθυνση URL</button>
-                </div>
-              </div>
-              <div class="vp-frame" id="vpFrame">
-                <video id="vpVideo" class="vp-video" preload="metadata"></video>
-                <p class="vp-empty" id="vpEmpty" data-i18n="vp.empty">Άνοιξε ή σύρε εδώ ένα βίντεο</p>
-              </div>
-              <div class="time-row vp-timerow">
-                <input type="range" id="vpSeek" min="0" max="1000" value="0" step="1" />
-                <span id="vpTime" class="vp-time">0:00 / 0:00</span>
-              </div>
-              <div class="transport vp-transport">
-                <button id="vpPrev">⏮</button>
-                <button id="vpPlay" class="play-btn">▶</button>
-                <button id="vpNext">⏭</button>
-                <button id="vpStop">⏹</button>
-                <button id="vpSnap">📷</button>
-                <span class="vp-spacer"></span>
-                <button id="vpMute" class="toggle-icon">🔊</button>
-                <input type="range" id="vpVolume" min="0" max="100" value="100" />
-                <button id="vpFull">⛶</button>
-              </div>
-              <p class="hint" id="vpStatus" role="status" aria-live="polite"></p>
+        <svg class="vp-symbols" aria-hidden="true" width="0" height="0">
+          <symbol id="vpIconOpen" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1M3 7v12h15l3-9H6l-3 9"/></symbol>
+          <symbol id="vpIconExpand" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+          <symbol id="vpIconPrev" viewBox="0 0 24 24"><path d="M5 5v14m14-14L8 12l11 7z" fill="currentColor"/></symbol>
+          <symbol id="vpIconPlay" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7z" fill="currentColor"/></symbol>
+          <symbol id="vpIconPause" viewBox="0 0 24 24"><path d="M9 5v14m6-14v14" stroke-width="3.5"/></symbol>
+          <symbol id="vpIconNext" viewBox="0 0 24 24"><path d="M19 5v14M5 5l11 7-11 7z" fill="currentColor"/></symbol>
+          <symbol id="vpIconStop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></symbol>
+          <symbol id="vpIconVolume" viewBox="0 0 24 24"><path d="M4 9h4l4-4v14l-4-4H4zm12 .5a4 4 0 0 1 0 5M18 6a8 8 0 0 1 0 12"/></symbol>
+          <symbol id="vpIconMute" viewBox="0 0 24 24"><path d="M4 9h4l4-4v14l-4-4H4zm12 1 5 5m0-5-5 5"/></symbol>
+          <symbol id="vpIconCaptions" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10H7v4h3m7-4h-3v4h3"/></symbol>
+          <symbol id="vpIconQueue" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h9m4-2 4 2-4 2z"/></symbol>
+          <symbol id="vpIconSettings" viewBox="0 0 24 24"><path d="m10 3-.6 2.1-2 .9-2-.9-2 3.4 1.6 1.5v2.3l-1.6 1.5 2 3.4 2-.8 2 .9.6 2.2h4l.6-2.2 2-.9 2 .8 2-3.4-1.6-1.5V10l1.6-1.5-2-3.4-2 .9-2-.9L14 3z"/><circle cx="12" cy="11.5" r="2.6"/></symbol>
+          <symbol id="vpIconFull" viewBox="0 0 24 24"><path d="M9 4H4v5m11-5h5v5m0 6v5h-5m-6 0H4v-5"/></symbol>
+          <symbol id="vpIconExitFull" viewBox="0 0 24 24"><path d="M4 9h5V4m11 5h-5V4m5 11h-5v5M4 15h5v5"/></symbol>
+          <symbol id="vpIconClose" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+          <symbol id="vpIconFilm" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h4m-4 4h4m10-4h4m-4 4h4"/></symbol>
+        </svg>
+        <div class="vp-stage" id="vpStage">
+          <header class="vp-head">
+            <div class="vp-heading">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconFilm"></use></svg>
+              <h2 id="vpNowPlaying" data-i18n="vp.title">Αναπαραγωγή βίντεο</h2>
             </div>
-            <div class="vp-cards">
-              <section class="panel vp-card" aria-labelledby="vpGPlay">
-                <h3 id="vpGPlay" data-i18n="vp.groupPlayback">Αναπαραγωγή</h3>
-                <div class="vp-bar vp-row">
-                  <label class="vp-inline"><span data-i18n="vp.speed">Ταχύτητα</span>
-                    <select id="vpSpeed"></select></label>
-                  <label class="vp-inline"><span data-i18n="vp.repeat">Επανάληψη</span>
-                    <select id="vpRepeat">
-                      <option value="off" data-i18n="vp.repeatOff">Καμία</option>
-                      <option value="list" data-i18n="vp.repeatList">Λίστα</option>
-                      <option value="file" data-i18n="vp.repeatFile">Αρχείο</option>
-                      <option value="shuffle" data-i18n="vp.repeatShuffle">Τυχαία σειρά</option>
-                    </select></label>
-                </div>
-                <div class="vp-bar vp-row">
-                  <label class="vp-inline"><input type="checkbox" id="vpStopAfter" /><span data-i18n="vp.stopAfter">Διακοπή μετά το τρέχον</span></label>
-                </div>
-                <div class="vp-bar vp-row">
-                  <button class="small-btn" id="vpFramePrev">◂|</button>
-                  <button class="small-btn" id="vpFrameNext">|▸</button>
-                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button>
-                </div>
-              </section>
-              <section class="panel vp-card" aria-labelledby="vpGPic">
-                <h3 id="vpGPic" data-i18n="vp.picture">Εικόνα</h3>
-                <div class="vp-field"><label for="vpBright" data-i18n="vp.brightness">Φωτεινότητα</label><input type="range" id="vpBright" min="50" max="150" step="1" value="100" /></div>
-                <div class="vp-field"><label for="vpContrast" data-i18n="ph.contrast">Αντίθεση</label><input type="range" id="vpContrast" min="50" max="150" step="1" value="100" /></div>
-                <div class="vp-field"><label for="vpSat" data-i18n="ph.saturation">Κορεσμός</label><input type="range" id="vpSat" min="0" max="200" step="1" value="100" /></div>
-                <div class="vp-bar vp-row">
-                  <button class="small-btn" id="vpRot" data-i18n="ph.rotR">↷ 90°</button>
-                  <button class="small-btn" id="vpFlipH" data-i18n="ph.flipH">Αναστροφή ↔</button>
-                  <button class="small-btn" id="vpFlipV" data-i18n="ph.flipV">Αναστροφή ↕</button>
-                  <button class="small-btn" id="vpPicReset" data-i18n="ph.reset">Επαναφορά</button>
-                </div>
-              </section>
-              <section class="panel vp-card" aria-labelledby="vpGSound">
-                <h3 id="vpGSound" data-i18n="vp.groupSound">Ήχος</h3>
-                <div class="vp-bar vp-row">
-                  <button class="small-btn" id="vpFx" aria-pressed="false" data-i18n="vp.fx">Ισοσταθμιστής ήχου</button>
-                </div>
-                <p class="hint" data-i18n="vp.fxHint">Εφαρμόζει τον ισοσταθμιστή της καρτέλας Ενισχυτής Ήχου στον ήχο του βίντεο (τοπικά αρχεία).</p>
-              </section>
-              <section class="panel vp-card" aria-labelledby="vpGSub">
-                <h3 id="vpGSub" data-i18n="vp.subtitles">Υπότιτλοι</h3>
-                <div class="vp-bar vp-row">
-                  <label class="vp-inline"><span data-i18n="vp.subtitles">Υπότιτλοι</span>
-                    <select id="vpSubTrack"></select></label>
-                  <button class="small-btn" id="vpSubLoad" data-i18n="vp.subLoad">Φόρτωση αρχείου…</button>
-                </div>
-                <div class="vp-bar vp-row">
-                  <button class="small-btn" id="vpSubMinus" aria-label="-0.5 s">−0,5″</button>
-                  <span class="vp-delay" id="vpSubDelay" aria-live="polite">0 s</span>
-                  <button class="small-btn" id="vpSubPlus" aria-label="+0.5 s">+0,5″</button>
-                </div>
-                <div class="vp-field"><label for="vpSubSize" data-i18n="vp.subSize">Μέγεθος</label><input type="range" id="vpSubSize" min="8" max="48" step="1" value="16" /></div>
-                <div class="vp-bar vp-row">
-                  <label class="vp-inline"><span data-i18n="vp.subColor">Χρώμα</span>
-                    <input type="color" id="vpSubColor" value="#ffffff" /></label>
-                </div>
-              </section>
-              <section class="panel vp-card vp-card-wide" aria-labelledby="vpGAdv">
-                <h3 id="vpGAdv" data-i18n="vp.groupAdvanced">Προχωρημένα</h3>
-                <div class="vp-bar vp-row">
-                  <button class="small-btn" id="vpInfo" data-i18n="vp.info">Πληροφορίες αρχείου</button>
-                </div>
-                <p class="hint" data-i18n="vp.shortcuts">Πλήκτρα: διάστημα = αναπαραγωγή/παύση, ←/→ = ±5 s (Shift ±30 s), ↑/↓ = ένταση, M = σίγαση, F = πλήρης οθόνη, N/P = επόμενο/προηγούμενο, B = σελιδοδείκτης, L = επανάληψη A-B, S = στιγμιότυπο, . και , = καρέ-καρέ.</p>
-              </section>
+            <div class="vp-source-buttons">
+              <button type="button" class="vp-open-btn" id="vpOpen"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconOpen"></use></svg><span data-i18n="ph.open">Άνοιγμα</span></button>
+              <button type="button" class="vp-icon" id="vpSourcesToggle" data-i18n-title="ph.open" popovertarget="vpSources"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconExpand"></use></svg></button>
+            </div>
+          </header>
+          <div class="vp-frame" id="vpFrame">
+            <video id="vpVideo" class="vp-video" preload="metadata"></video>
+            <div class="vp-empty" id="vpEmpty">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconFilm"></use></svg>
+              <p data-i18n="vp.empty">Άνοιξε ή σύρε εδώ ένα βίντεο</p>
+              <button type="button" class="vp-open-btn" id="vpEmptyOpen"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconOpen"></use></svg><span data-i18n="vp.openFiles">Άνοιγμα αρχείων</span></button>
             </div>
           </div>
-          <div class="panel vp-side">
-            <h2 data-i18n="vp.playlist">Λίστα αναπαραγωγής</h2>
+          <footer class="vp-controls">
+            <input type="range" id="vpSeek" min="0" max="1000" value="0" step="1" disabled />
+            <div class="vp-transport">
+              <div class="vp-control-group">
+                <button type="button" class="vp-icon" id="vpPrev" data-i18n-title="vp.prev"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconPrev"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpPlay" data-i18n-title="vp.play"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconPlay"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpNext" data-i18n-title="vp.next"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconNext"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpMute" data-i18n-title="vp.mute"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconVolume"></use></svg></button>
+                <input type="range" id="vpVolume" min="0" max="100" value="100" />
+                <span id="vpTime" class="vp-time">0:00 / 0:00</span>
+              </div>
+              <div class="vp-control-group">
+                <button type="button" class="vp-icon" id="vpCaptions" data-i18n-title="vp.subtitles" popovertarget="vpSettingsMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconCaptions"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpSettingsToggle" data-i18n-title="tab.settings" popovertarget="vpSettingsMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconSettings"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpQueueToggle" data-i18n-title="vp.playlist" popovertarget="vpQueue"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconQueue"></use></svg></button>
+                <button type="button" class="vp-icon" id="vpFull" data-i18n-title="vp.fullscreen"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconFull"></use></svg></button>
+              </div>
+            </div>
+            <p class="vp-status" id="vpStatus" role="status"></p>
+          </footer>
+          <div class="vp-popover vp-sources" id="vpSources" popover aria-label="Άνοιγμα" data-i18n-title="ph.open">
+            <button type="button" class="vp-menu-action" id="vpOpenFolder" data-i18n="vp.openFolder">Φάκελος</button>
+            <button type="button" class="vp-menu-action" id="vpOpenUrl" data-i18n="vp.openUrl">Διεύθυνση URL</button>
+          </div>
+          <section class="vp-popover vp-settings-menu" id="vpSettingsMenu" popover aria-labelledby="vpSettingsTitle">
+            <div class="vp-popup-head">
+              <h3 id="vpSettingsTitle" data-i18n="tab.settings">Ρυθμίσεις</h3>
+              <button type="button" class="vp-icon" id="vpSettingsClose" data-i18n-title="splash.close" popovertarget="vpSettingsMenu" popovertargetaction="hide"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconClose"></use></svg></button>
+            </div>
+            <div class="vp-settings-nav">
+              <button type="button" class="vp-menu-action" id="vpPlaybackOptionsTab" aria-controls="vpPlaybackOptions" aria-pressed="true" data-i18n="vp.groupPlayback"></button>
+              <button type="button" class="vp-menu-action" id="vpPictureOptionsTab" aria-controls="vpPictureOptions" aria-pressed="false" data-i18n="vp.picture"></button>
+              <button type="button" class="vp-menu-action" id="vpSoundOptionsTab" aria-controls="vpSoundOptions" aria-pressed="false" data-i18n="vp.groupSound"></button>
+              <button type="button" class="vp-menu-action" id="vpSubtitlesOptionsTab" aria-controls="vpSubtitlesOptions" aria-pressed="false" data-i18n="vp.subtitles"></button>
+              <button type="button" class="vp-menu-action" id="vpAdvancedOptionsTab" aria-controls="vpAdvancedOptions" aria-pressed="false" data-i18n="vp.groupAdvanced"></button>
+            </div>
+            <div class="vp-options-content">
+                <section class="vp-options" id="vpPlaybackOptions" aria-labelledby="vpPlaybackOptionsTab">
+                  <div class="vp-bar vp-row">
+                    <label class="vp-inline"><span data-i18n="vp.speed">Ταχύτητα</span>
+                      <select id="vpSpeed"></select></label>
+                    <label class="vp-inline"><span data-i18n="vp.repeat">Επανάληψη</span>
+                      <select id="vpRepeat">
+                        <option value="off" data-i18n="vp.repeatOff">Καμία</option>
+                        <option value="list" data-i18n="vp.repeatList">Λίστα</option>
+                        <option value="file" data-i18n="vp.repeatFile">Αρχείο</option>
+                        <option value="shuffle" data-i18n="vp.repeatShuffle">Τυχαία σειρά</option>
+                      </select></label>
+                  </div>
+                  <div class="vp-bar vp-row">
+                    <label class="vp-inline"><input type="checkbox" id="vpStopAfter" /><span data-i18n="vp.stopAfter">Διακοπή μετά το τρέχον</span></label>
+                  </div>
+                  <div class="vp-bar vp-row">
+                    <button class="small-btn" id="vpFramePrev">◂|</button>
+                    <button class="small-btn" id="vpFrameNext">|▸</button>
+                    <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button>
+                    <button class="small-btn" id="vpStop" data-i18n="vp.stop">Διακοπή</button>
+                  </div>
+                </section>
+                <section class="vp-options" id="vpPictureOptions" aria-labelledby="vpPictureOptionsTab" hidden>
+                  <div class="vp-field"><label for="vpBright" data-i18n="vp.brightness">Φωτεινότητα</label><input type="range" id="vpBright" min="50" max="150" step="1" value="100" /></div>
+                  <div class="vp-field"><label for="vpContrast" data-i18n="ph.contrast">Αντίθεση</label><input type="range" id="vpContrast" min="50" max="150" step="1" value="100" /></div>
+                  <div class="vp-field"><label for="vpSat" data-i18n="ph.saturation">Κορεσμός</label><input type="range" id="vpSat" min="0" max="200" step="1" value="100" /></div>
+                  <div class="vp-bar vp-row">
+                    <button class="small-btn" id="vpRot" data-i18n="ph.rotR">↷ 90°</button>
+                    <button class="small-btn" id="vpFlipH" data-i18n="ph.flipH">Αναστροφή ↔</button>
+                    <button class="small-btn" id="vpFlipV" data-i18n="ph.flipV">Αναστροφή ↕</button>
+                    <button class="small-btn" id="vpPicReset" data-i18n="ph.reset">Επαναφορά</button>
+                  </div>
+                </section>
+                <section class="vp-options" id="vpSoundOptions" aria-labelledby="vpSoundOptionsTab" hidden>
+                  <div class="vp-bar vp-row">
+                    <button class="small-btn" id="vpFx" aria-pressed="false" data-i18n="vp.fx">Ισοσταθμιστής ήχου</button>
+                  </div>
+                  <p class="hint" data-i18n="vp.fxHint">Εφαρμόζει τον ισοσταθμιστή της καρτέλας Ενισχυτής Ήχου στον ήχο του βίντεο (τοπικά αρχεία).</p>
+                </section>
+                <section class="vp-options" id="vpSubtitlesOptions" aria-labelledby="vpSubtitlesOptionsTab" hidden>
+                  <div class="vp-bar vp-row">
+                    <label class="vp-inline"><span data-i18n="vp.subtitles">Υπότιτλοι</span>
+                      <select id="vpSubTrack"></select></label>
+                    <button class="small-btn" id="vpSubLoad" data-i18n="vp.subLoad">Φόρτωση αρχείου…</button>
+                  </div>
+                  <div class="vp-bar vp-row">
+                    <button class="small-btn" id="vpSubMinus" aria-label="-0.5 s">−0,5″</button>
+                    <span class="vp-delay" id="vpSubDelay" aria-live="polite">0 s</span>
+                    <button class="small-btn" id="vpSubPlus" aria-label="+0.5 s">+0,5″</button>
+                  </div>
+                  <div class="vp-field"><label for="vpSubSize" data-i18n="vp.subSize">Μέγεθος</label><input type="range" id="vpSubSize" min="8" max="48" step="1" value="16" /></div>
+                  <div class="vp-bar vp-row">
+                    <label class="vp-inline"><span data-i18n="vp.subColor">Χρώμα</span>
+                      <input type="color" id="vpSubColor" value="#ffffff" /></label>
+                  </div>
+                </section>
+                <section class="vp-options" id="vpAdvancedOptions" aria-labelledby="vpAdvancedOptionsTab" hidden>
+                  <div class="vp-bar vp-row">
+                    <button class="small-btn" id="vpInfo" data-i18n="vp.info">Πληροφορίες αρχείου</button>
+                    <button class="small-btn" id="vpSnap" data-i18n="vp.snapshot">Στιγμιότυπο</button>
+                  </div>
+                  <p class="hint" data-i18n="vp.shortcuts">Πλήκτρα: διάστημα = αναπαραγωγή/παύση, ←/→ = ±5 s (Shift ±30 s), ↑/↓ = ένταση, M = σίγαση, F = πλήρης οθόνη, N/P = επόμενο/προηγούμενο, B = σελιδοδείκτης, L = επανάληψη A-B, S = στιγμιότυπο, . και , = καρέ-καρέ.</p>
+                </section>
+            </div>
+          </section>
+          <aside class="vp-popover vp-queue" id="vpQueue" popover aria-labelledby="vpQueueTitle">
+            <div class="vp-popup-head">
+              <h3 id="vpQueueTitle" data-i18n="vp.playlist">Λίστα αναπαραγωγής</h3>
+              <button type="button" class="vp-icon" id="vpQueueClose" data-i18n-title="splash.close" popovertarget="vpQueue" popovertargetaction="hide"><svg aria-hidden="true" viewBox="0 0 24 24"><use href="#vpIconClose"></use></svg></button>
+            </div>
             <ul class="vp-list" id="vpList"></ul>
             <div class="vp-bar vp-row">
               <button class="small-btn" id="vpClear" data-i18n="vp.clear">Εκκαθάριση</button>
@@ -349,7 +390,7 @@
             <h3 data-i18n="vp.bookmarks">Σελιδοδείκτες</h3>
             <button class="small-btn" id="vpBookmark" data-i18n="vp.addBookmark">Προσθήκη σελιδοδείκτη εδώ</button>
             <ul class="vp-list" id="vpBookmarks"></ul>
-          </div>
+          </aside>
         </div>
       </section>
 

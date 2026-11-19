@@ -772,6 +772,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     if (btn.dataset.tab === 'player') resizeCanvas();
     if (btn.dataset.tab === 'converter') loadConverter();
     if (btn.dataset.tab === 'video') loadVideoPlayer();
+    else window.WaveframeVideoPlayer?.hidePanels();
     if (btn.dataset.tab === 'photo') loadPhoto();
   });
 });

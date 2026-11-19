@@ -17,7 +17,7 @@ function bounded(value, max) {
   return Number.isFinite(value) ? Math.min(max, Math.max(0, value)) : 0;
 }
 
-function attachFlyout(owner, getTheme) {
+function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimized?.()) {
   const desktop = createWindowsDesktop(onDesktopMessage);
   let lockToast;
   let lockTimer;
@@ -62,7 +62,7 @@ function attachFlyout(owner, getTheme) {
   }
 
   function widgetVisible() {
-    return desktopSettings.widget && (!desktopSettings.widgetMinimizedOnly || owner.isMinimized?.());
+    return desktopSettings.widget && (!desktopSettings.widgetMinimizedOnly || isOwnerMinimized());
   }
 
   function sendWindowsAccent() {
@@ -452,7 +452,7 @@ function attachFlyout(owner, getTheme) {
     pushDesktopSettings();
     hide();
   });
-  for (const event of ['minimize', 'restore']) owner.on(event, refreshWidgetVisibility);
+  for (const event of ['minimize', 'restore', 'show']) owner.on(event, refreshWidgetVisibility);
   systemPreferences?.on('accent-color-changed', sendWindowsAccent);
 
   owner.on('closed', () => {

@@ -17,6 +17,62 @@
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
   const current = () => (idx >= 0 ? list[idx] : null);
+  const setIcon = (button, icon) => button.querySelector('use').setAttribute('href', '#vpIcon' + icon);
+
+  function syncHeading() {
+    const name = current() ? VP.titleOf(current()) : '';
+    const heading = $('vpNowPlaying');
+    heading.textContent = name || t('vp.title');
+    if (name) heading.title = name;
+    else heading.removeAttribute('title');
+  }
+
+  function hidePanels() {
+    for (const panel of document.querySelectorAll('#vpStage [popover]:popover-open')) panel.hidePopover();
+  }
+
+  function bindPanels() {
+    const panel = $('vpSettingsMenu');
+    const tabs = [...panel.querySelectorAll('.vp-settings-nav button')];
+    let settingsAnchor = $('vpSettingsToggle');
+    const menus = [[panel, () => settingsAnchor], [$('vpSources'), () => $('vpSourcesToggle')], [$('vpQueue'), () => $('vpQueueToggle')]];
+
+    function placePanels() {
+      for (const [menu, anchor] of menus) {
+        if (!menu.matches(':popover-open')) continue;
+        const box = anchor().getBoundingClientRect();
+        const pad = 12;
+        const left = Math.min(innerWidth - menu.offsetWidth - pad, box.right - menu.offsetWidth);
+        const below = box.bottom + 6;
+        const above = box.top - menu.offsetHeight - 6;
+        const top = below + menu.offsetHeight <= innerHeight - pad ? below : above;
+        menu.style.setProperty('--vp-popup-x', Math.max(pad, left) + 'px');
+        menu.style.setProperty('--vp-popup-y', Math.max(pad, top) + 'px');
+      }
+    }
+
+    function selectTab(selected) {
+      for (const tab of tabs) {
+        tab.setAttribute('aria-pressed', String(tab === selected));
+        $(tab.getAttribute('aria-controls')).hidden = tab !== selected;
+      }
+      placePanels();
+    }
+
+    for (const tab of tabs) tab.addEventListener('click', () => selectTab(tab));
+    $('vpSettingsToggle').addEventListener('click', (e) => { settingsAnchor = e.currentTarget; });
+    $('vpCaptions').addEventListener('click', (e) => {
+      settingsAnchor = e.currentTarget;
+      selectTab($('vpSubtitlesOptionsTab'));
+      if (panel.matches(':popover-open')) {
+        e.preventDefault();
+        $('vpSubTrack').focus();
+      }
+    });
+    for (const [menu] of menus) menu.addEventListener('toggle', placePanels);
+    window.addEventListener('resize', placePanels);
+    document.addEventListener('scroll', placePanels, true);
+  }
 
   /* ---------------- playlist ---------------- */
   function renderList() {
@@ -28,6 +84,7 @@
       li.append(b, x); ul.append(li);
     });
     put(K.queue, list.slice(0, VP.LIMITS.playlist));
+    syncHeading();
   }
   function addPaths(paths, play) {
     const ok = (paths || []).filter(VP.playable);
@@ -55,7 +112,7 @@
     video.playbackRate = Number($('vpSpeed').value) || 1;
     renderList(); renderBookmarks();
     put(K.recent, VP.pushRecent(get(K.recent, []), p)); fillRecent();
-    say(fmt(t('vp.playing'), { name: VP.titleOf(p) }));
+    say('');
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     video.play().catch(() => { /* the error event reports unsupported media */ });
     if (!VP.isUrl(p)) loadSiblingSubs(p);
@@ -97,6 +154,7 @@
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
     subSrc.forEach((s, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = s.name; sel.append(o); });
     sel.value = String(subSel);
+    $('vpCaptions').setAttribute('aria-pressed', String(subSel >= 0));
   }
   function rebuildTrack() {
     video.querySelectorAll('track').forEach((tr) => { if (tr.src.startsWith('blob:')) URL.revokeObjectURL(tr.src); tr.remove(); });
@@ -231,16 +289,18 @@
   // transport: icon buttons like the music player; labels / tooltips come from the language files
   function syncTransport() {
     const playing = video && !video.paused && !video.ended, p = $('vpPlay');
-    p.textContent = playing ? '⏸' : '▶';
+    setIcon(p, playing ? 'Pause' : 'Play');
     const lbl = playing ? t('vp.pause') : t('vp.play'); p.title = lbl; p.setAttribute('aria-label', lbl);
     const m = $('vpMute'), muted = video.muted || video.volume === 0;
-    m.textContent = muted ? '🔇' : '🔊'; m.classList.toggle('active', muted);
+    setIcon(m, muted ? 'Mute' : 'Volume');
     const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
   }
   function syncTime() {
-    const d = video.duration || 0, c = video.currentTime || 0;
+    const d = Number.isFinite(video.duration) ? video.duration : 0, c = video.currentTime || 0;
     $('vpTime').textContent = VP.clock(c * 1000) + ' / ' + VP.clock(d * 1000);
-    if (!seeking && d > 0) $('vpSeek').value = String(Math.round(c / d * 1000));
+    const seek = $('vpSeek');
+    seek.disabled = d <= 0;
+    if (!seeking || seek.disabled) seek.value = String(d > 0 ? Math.round(c / d * 1000) : 0);
   }
   let seeking = false;
   function iconLabels() {
@@ -255,6 +315,7 @@
   function build() {
     if (built) return; built = true;
     video = $('vpVideo');
+    bindPanels();
     for (const s of VP.SPEEDS) { const o = document.createElement('option'); o.value = String(s); o.textContent = `${s}×`; $('vpSpeed').append(o); }
     $('vpSpeed').value = String(get(K.speed, 1)); if (!$('vpSpeed').value) $('vpSpeed').value = '1';
     const subs = get(K.subs, {});
@@ -265,8 +326,9 @@
     renderList(); fillPlaylists(); fillRecent(); fillSubSelect();
 
     $('vpOpen').addEventListener('click', async () => addPaths(await api.vpPick('files'), true));
-    $('vpOpenFolder').addEventListener('click', async () => addPaths(await api.vpPick('folder'), true));
-    $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
+    $('vpEmptyOpen').addEventListener('click', () => $('vpOpen').click());
+    $('vpOpenFolder').addEventListener('click', async () => { hidePanels(); addPaths(await api.vpPick('folder'), true); });
+    $('vpOpenUrl').addEventListener('click', async () => { hidePanels(); const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
     $('vpPlay').addEventListener('click', () => { if (!current() && list.length) playAt(0); else if (video.paused) video.play().catch(() => {}); else video.pause(); });
@@ -277,13 +339,24 @@
     $('vpSeek').addEventListener('input', () => { seeking = true; if (video.duration) video.currentTime = Number($('vpSeek').value) / 1000 * video.duration; });
     $('vpSeek').addEventListener('change', () => { seeking = false; });
     video.addEventListener('timeupdate', syncTime); video.addEventListener('durationchange', syncTime);
+    video.addEventListener('emptied', () => { seeking = false; syncTime(); });
     for (const ev of ['play', 'pause', 'ended', 'emptied']) video.addEventListener(ev, syncTransport);
     video.addEventListener('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
     video.addEventListener('dblclick', () => $('vpFull').click());
     $('vpSpeed').addEventListener('change', () => { video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
     $('vpFx').addEventListener('click', toggleFx);
-    $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
-    $('vpSubTrack').addEventListener('change', () => { subSel = Number($('vpSubTrack').value); rebuildTrack(); });
+    $('vpFull').addEventListener('click', () => {
+      hidePanels();
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else $('vpStage').requestFullscreen().catch(() => {});
+    });
+    document.addEventListener('fullscreenchange', () => {
+      const fullscreen = document.fullscreenElement === $('vpStage');
+      setIcon($('vpFull'), fullscreen ? 'ExitFull' : 'Full');
+      $('vpFull').setAttribute('aria-pressed', String(fullscreen));
+      applyPicture();
+    });
+    $('vpSubTrack').addEventListener('change', () => { subSel = Number($('vpSubTrack').value); $('vpCaptions').setAttribute('aria-pressed', String(subSel >= 0)); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));
     $('vpSubPlus').addEventListener('click', () => setDelay(subDelay + 0.5));
@@ -325,7 +398,7 @@
     saveTimer = setInterval(() => { if (!video.paused) saveResume(); }, 5000);
     window.addEventListener('beforeunload', saveResume);
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
-    document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
+    document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); syncHeading(); });
 
     const frame = $('vpFrame');
     frame.addEventListener('dragover', (e) => { e.preventDefault(); frame.classList.add('drag'); });
@@ -339,9 +412,11 @@
       else if (sub && current()) say(t('vp.dropSubUseButton'));
     });
     document.addEventListener('keydown', (e) => {
-      if (!$('tab-video').classList.contains('active') || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (!$('tab-video').classList.contains('active') || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey ||
+          e.target.closest('input, select, textarea, [popover], [contenteditable]') ||
+          (e.key === ' ' && e.target.closest('button'))) return;
       const k = e.key; let used = true;
-      if (k === ' ') { if (video.paused) video.play(); else video.pause(); }
+      if (k === ' ') $('vpPlay').click();
       else if (k === 'ArrowRight') video.currentTime += e.shiftKey ? 30 : 5;
       else if (k === 'ArrowLeft') video.currentTime -= e.shiftKey ? 30 : 5;
       else if (k === 'ArrowUp') video.volume = Math.min(1, video.volume + 0.05);
@@ -362,6 +437,7 @@
 
   window.WaveframeVideoPlayer = {
     show() { build(); },
+    hidePanels,
     open(p) { build(); addPaths([p], true); },
     pause() { if (built && video && !video.paused) video.pause(); },
     get playing() { return built && video && !video.paused; },
