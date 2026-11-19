@@ -228,7 +228,7 @@ sealed class TaskbarWidget : IDisposable
         {
             ReadTaskbarTheme();
             var bars = FindTaskbars();
-            var placements = await Task.WhenAll(bars.Select(FindPlacement));
+            var placements = await Task.WhenAll(bars.Select(bar => FindPlacement(bar)));
             if (!enabled || request != generation) return;
             foreach (var bar in surfaces.Keys.Where(bar => !bars.Contains(bar)).ToArray()) CloseSurface(bar);
             foreach (var bar in queries.Keys.Where(bar => !bars.Contains(bar)).ToArray()) queries.Remove(bar);
@@ -279,7 +279,7 @@ sealed class TaskbarWidget : IDisposable
     private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical, int Min, int Max, TaskbarRange[] Ranges);
     private readonly record struct Anchors(bool Available, Rect? Frame, Rect[] Leading, Rect[] Tray, Rect[] Occupied);
 
-    private async Task<Placement?> FindPlacement(IntPtr bar)
+    private async Task<Placement?> FindPlacement(IntPtr bar, int queryTimeoutMs = 2000)
     {
         if (!GetWindowRect(bar, out var bounds)) return null;
 
@@ -288,7 +288,7 @@ sealed class TaskbarWidget : IDisposable
             queries[bar] = query = Task.Run(() => ReadAnchors(bar));
         try
         {
-            var measured = await query.WaitAsync(TimeSpan.FromMilliseconds(450));
+            var measured = await query.WaitAsync(TimeSpan.FromMilliseconds(queryTimeoutMs));
             if (measured.Available) measuredAnchors[bar] = measured;
         }
         catch (TimeoutException) { }
@@ -464,8 +464,14 @@ sealed class TaskbarWidget : IDisposable
         if (bars.Count == 0) return false;
         using var widget = new TaskbarWidget(_ => { }, _ => { });
         widget.ReadTaskbarTheme();
-        var placement = widget.FindPlacement(bars[0]).GetAwaiter().GetResult()
-            ?? throw new InvalidOperationException("Could not calculate placement on the Explorer taskbar");
+        var bar = bars[0];
+        var result = widget.FindPlacement(bar, 6000).GetAwaiter().GetResult();
+        if (result is not { } placement)
+        {
+            if (!widget.measuredAnchors.TryGetValue(bar, out var anchors))
+                throw new InvalidOperationException("Explorer did not return taskbar accessibility bounds");
+            throw new InvalidOperationException($"No safe Explorer taskbar space found ({anchors.Leading.Length} leading controls, {anchors.Tray.Length} tray elements and {anchors.Occupied.Length} other controls)");
+        }
         using var surface = new TaskbarSurface(placement.Parent, placement.Vertical, placement.Width, placement.Height, _ => { });
         surface.VerifyRenderedPixels(placement.X, placement.Y, placement.Width, placement.Height, widget.light);
         return true;
