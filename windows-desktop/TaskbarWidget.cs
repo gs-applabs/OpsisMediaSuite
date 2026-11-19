@@ -88,7 +88,6 @@ sealed class TaskbarWidget : IDisposable
             {
                 Report("CHECKING");
                 timer.Start();
-                meterTimer.Start();
                 _ = Relocate();
             }
             else
@@ -118,7 +117,14 @@ sealed class TaskbarWidget : IDisposable
         canPrev = prevEnabled;
         canNext = nextEnabled;
         spectrum = levels;
+        if (!playing) taskbarSpectrum.SetActive(false);
+        StartMeterIfNeeded();
         Paint();
+    }
+
+    private void StartMeterIfNeeded()
+    {
+        if (enabled && playing && surfaces.Values.Any(surface => surface.IsExposed)) meterTimer.Start();
     }
 
     private void Paint()
@@ -141,8 +147,10 @@ sealed class TaskbarWidget : IDisposable
         {
             double target = i < levels.Length ? levels[i] : 0;
             smoothed[i] += (target - smoothed[i]) * (target > smoothed[i] ? 0.72 : 0.32);
+            if (smoothed[i] < 0.01) smoothed[i] = 0;
         }
         foreach (var surface in surfaces.Values) surface.SetSpectrum(smoothed);
+        if (!active && smoothed.All(value => value == 0)) meterTimer.Stop();
     }
 
     private void SavePosition(double value)
@@ -267,6 +275,7 @@ sealed class TaskbarWidget : IDisposable
                 }
             }
             Paint();
+            StartMeterIfNeeded();
             Report(attached == 0 ? failure : attached == bars.Count ? $"ATTACHED-{attached}" : $"PARTIAL-{attached}");
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException or ArgumentException or COMException)

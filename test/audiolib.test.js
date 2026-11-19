@@ -151,3 +151,11 @@ test('local MP3 metadata preserves Unicode and repairs legacy Greek ID3 text', a
   assert.equal(readTrackText(mislabeled).title, 'Νύχτα');
   assert.equal(readTrackText({ common: { title: 'ÇÅËËÏ' }, native: { vorbis: [] } }).title, 'ÇÅËËÏ');
 });
+
+test('cooperative loudness matches the synchronous path and can be cancelled', async () => {
+  const source = sine(997, 1, 11025, 0.1);
+  assert.equal(await lib.integratedLufsAsync([source], 11025), lib.integratedLufs([source], 11025));
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(lib.integratedLufsAsync([source], 11025, controller.signal), { name: 'AbortError' });
+});

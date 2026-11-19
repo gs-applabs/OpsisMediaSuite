@@ -1,4 +1,4 @@
-name: Opsis 2.4.1 video playlist and codec fixes Windows x64 test download
+name: Opsis 2.4.1 NET 11 audit Windows x64 test download
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 6c85935ab585dfab10374b10fe80931fe3f06fdb
+          ref: 2658bb19fd4545daf73bc21e5e03e30b83f6fbf3
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -22,7 +22,7 @@ jobs:
           cache: npm
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '11.0.x'
       - run: npm ci
       - name: Build and test the Windows desktop helper
         shell: pwsh
@@ -55,9 +55,29 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii "$exe.sha256"
+      - name: Scan packaged Opsis with Microsoft Defender
+        id: defender
+        shell: pwsh
+        run: |
+          'verified=false' >> $env:GITHUB_OUTPUT
+          $svc = Get-Service WinDefend -ErrorAction SilentlyContinue
+          if (!$svc -or $svc.Status -ne 'Running') {
+            Write-Host '::warning::Defender is not running. No executable artifact will be uploaded.'
+            return
+          }
+          $mp = Join-Path $env:ProgramFiles 'Windows Defender/MpCmdRun.exe'
+          if (!(Test-Path $mp)) {
+            Write-Host '::warning::Defender scanner is unavailable. No executable artifact will be uploaded.'
+            return
+          }
+          Update-MpSignature -ErrorAction Stop
+          & $mp -Scan -ScanType 3 -File (Resolve-Path 'release/win-unpacked').Path -DisableRemediation
+          if ($LASTEXITCODE -ne 0) { throw "Defender returned exit code $LASTEXITCODE" }
+          'verified=true' >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
+        if: steps.defender.outputs.verified == 'true'
         with:
-          name: OpsisMediaSuite-2.4.1-Video-Codec-Fix-x64
+          name: OpsisMediaSuite-2.4.1-Net11-Audit-x64
           path: release/win-unpacked/
           if-no-files-found: error
           compression-level: 3

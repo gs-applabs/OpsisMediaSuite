@@ -235,6 +235,38 @@ let suiteApi = null;
 let converterApi = null;
 let mediaApi = null;
 
+async function auditAppResources(win) {
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const run = (code) => win.webContents.executeJavaScript(code);
+  const metrics = () => app.getAppMetrics().reduce((total, process) => ({
+    privateMiB: total.privateMiB + (process.memory.privateBytes ?? process.memory.workingSetSize) / 1024,
+    cpuPercent: total.cpuPercent + process.cpu.percentCPUUsage,
+    processes: total.processes + 1,
+  }), { privateMiB: 0, cpuPercent: 0, processes: 0 });
+  await run("showTab('settings'); showTab('video'); showTab('player'); 1");
+  await delay(750);
+  const windows = BrowserWindow.getAllWindows().length;
+  const initial = metrics();
+  const samples = [];
+  for (let round = 0; round < 8; round++) {
+    for (const tab of ['player', 'enhance', 'converter', 'video', 'photo', 'settings']) {
+      await run(`showTab(${JSON.stringify(tab)}); 1`);
+    }
+    await delay(250);
+    samples.push(metrics());
+  }
+  await run("showTab('player'); 1");
+  await delay(750);
+  const final = metrics();
+  const peakCpu = Math.max(...samples.map((sample) => sample.cpuPercent));
+  const peakMemory = Math.max(...samples.map((sample) => sample.privateMiB));
+  return {
+    name: '48 tab changes leave the same number of application windows',
+    ok: BrowserWindow.getAllWindows().length === windows,
+    extra: `processes ${initial.processes}→${final.processes}, memory ${initial.privateMiB.toFixed(1)}→${final.privateMiB.toFixed(1)} MiB, sampled peak ${peakMemory.toFixed(1)} MiB / ${peakCpu.toFixed(1)}% CPU`,
+  };
+}
+
 function createWindow() {
   const savedState = loadWindowState();
   const win = new BrowserWindow({
@@ -305,9 +337,12 @@ function createWindow() {
   const flyout = attachFlyout(win, () => currentTheme, () => !win.isDestroyed() && (minimizedToTray || win.isMinimized()));
   // Hardening + stability: the app only ever shows its own local pages.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
+  win.webContents.on('will-navigate', (event) => event.preventDefault());
   // Only the microphone input (getUserMedia) is a legitimate permission here; everything else is denied.
-  win.webContents.session.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
+  win.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const audioOnly = details.mediaTypes?.length === 1 && details.mediaTypes[0] === 'audio';
+    callback(contents === win.webContents && permission === 'media' && details.isMainFrame && audioOnly);
+  });
   // A crashed/killed renderer (GPU driver reset, out of memory on low-RAM PCs) used to leave a blank window until restart.
   win.webContents.on('render-process-gone', (_e, details) => {
     if (details.reason === 'clean-exit' || win.isDestroyed()) return;
@@ -325,6 +360,7 @@ function createWindow() {
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
           results.push(...await flyout.selfTest());
+          results.push(await auditAppResources(win));
           if (process.platform === 'win32') {
             win.minimize();
             await new Promise((resolve) => setTimeout(resolve, 350));

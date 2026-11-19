@@ -211,10 +211,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
       check('photo editor rotates 90 degrees (64x48 -> 48x64)', await js("document.getElementById('phCanvas').width === 48 && document.getElementById('phCanvas').height === 64"));
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     try {
-      /* layout of the three new areas in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */
+      /* layout of the main tabs in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */
     try {
       const audit = `(async () => {
-        const tabs = ['video', 'photo', 'settings'], bad = [];
+        const tabs = ['player', 'enhance', 'converter', 'video', 'photo', 'settings'], bad = [];
         const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
         for (const l of LANGUAGES.map((x) => x.code)) {
           setLanguage(l);
@@ -245,7 +245,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         return JSON.stringify(bad.slice(0, 12));
       })()`;
       const bad = JSON.parse(await js(audit));
-      check('video / photo / import areas: no overlapping or clipped controls (20 languages x 100 % / 150 %)', bad.length === 0, bad.join(' ; '));
+      check('all six main tabs: no overlapping or clipped checked controls (20 languages x 100 % / 150 %)', bad.length === 0, bad.join(' ; '));
     } catch (e) { check('media layout audit threw', false, e && e.stack || e); }
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ } }
