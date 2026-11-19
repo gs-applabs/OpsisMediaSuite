@@ -26,7 +26,7 @@ static class Program
         if (args is ["--test-explorer-taskbar"])
         {
             Console.WriteLine(TaskbarWidget.VerifyExplorer()
-                ? "Verified widget pixels on the Explorer taskbar"
+                ? "Verified the themed widget and Greek caption pixels on the Explorer taskbar"
                 : "Explorer taskbar not available in this Windows session");
             return;
         }
@@ -62,7 +62,7 @@ static class Program
                         keys.Configure(Bool(input, "locks"), Bool(input, "mediaKeys"));
                         widget.Configure(Bool(input, "widget"), Bool(input, "light"),
                             String(input, "openLabel"), String(input, "prevLabel"), String(input, "playLabel"), String(input, "nextLabel"),
-                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"), Bool(input, "widgetCoverBackground"));
+                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"), Bool(input, "widgetCoverBackground"), String(input, "lang", 2));
                         break;
                     case "widget":
                         widget.Update(String(input, "title"), String(input, "artist"), String(input, "artwork", 12000),

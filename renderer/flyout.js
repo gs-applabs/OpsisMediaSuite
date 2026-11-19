@@ -191,7 +191,7 @@ api.onArtwork((image) => {
   else $('cover').removeAttribute('src');
 });
 function applyLanguage(lang) {
-  currentLang = Object.hasOwn(I18N, lang) ? lang : 'el';
+  currentLang = resolveDesktopLanguage(lang);
   applyI18n();
   translate();
 }

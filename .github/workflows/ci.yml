@@ -1,4 +1,4 @@
-name: Opsis 2.4.1 styled taskbar Windows x64 test download
+name: Opsis 2.4.1 taskbar and Greek Windows x64 test download
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 7eecead264368ec999e5dfb1ee573e4cf1dee90a
+          ref: 6f21a1505f61ed88f7b468faf51bd14bea4e5d64
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -57,7 +57,7 @@ jobs:
           "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii "$exe.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: OpsisMediaSuite-2.4.1-Taskbar-x64
+          name: OpsisMediaSuite-2.4.1-Taskbar-Greek-x64
           path: release/win-unpacked/
           if-no-files-found: error
           compression-level: 3

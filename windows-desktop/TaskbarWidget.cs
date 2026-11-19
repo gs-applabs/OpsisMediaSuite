@@ -17,7 +17,7 @@ sealed class TaskbarWidget : IDisposable
     private readonly Dictionary<IntPtr, Task<Anchors>> queries = new();
     private bool enabled, locating;
     private int generation;
-    private string lastStatus = "";
+    private string lastStatus = "", locale = "el";
     private string title = "", artist = "", coverData = "", open = "", previous = "", playback = "", next = "";
     private bool playing, canPlay, canPrev, canNext, light, fallbackLight, coverBackground;
     private ImageSource? cover;
@@ -35,8 +35,9 @@ sealed class TaskbarWidget : IDisposable
     }
 
     public void Configure(bool show, bool lightTheme, string openLabel, string prevLabel, string playLabel, string nextLabel,
-        string placement, bool legacy, bool useCoverBackground)
+        string placement, bool legacy, bool useCoverBackground, string language)
     {
+        locale = language.Length == 2 && language.All(char.IsAsciiLetterLower) ? language : "el";
         fallbackLight = lightTheme;
         coverBackground = useCoverBackground;
         ReadTaskbarTheme();
@@ -88,7 +89,10 @@ sealed class TaskbarWidget : IDisposable
     private void Paint()
     {
         foreach (var surface in surfaces.Values)
+        {
+            surface.SetLanguage(locale);
             surface.UpdateView(title, artist, cover, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, coverBackground, spectrum);
+        }
     }
 
     private void ReadTaskbarTheme()
@@ -344,8 +348,7 @@ sealed class TaskbarWidget : IDisposable
         var placement = widget.FindPlacement(bars[0]).GetAwaiter().GetResult()
             ?? throw new InvalidOperationException("Could not calculate placement on the Explorer taskbar");
         using var surface = new TaskbarSurface(placement.Parent, placement.Vertical, placement.Width, placement.Height, _ => { });
-        surface.Place(placement.X, placement.Y, placement.Width, placement.Height);
-        surface.VerifyRenderedPixels();
+        surface.VerifyRenderedPixels(placement.X, placement.Y, placement.Width, placement.Height);
         return true;
     }
 

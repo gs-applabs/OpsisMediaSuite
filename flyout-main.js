@@ -339,7 +339,7 @@ function attachFlyout(owner, getTheme) {
       accent: typeof data.accent === 'string' && /^#[0-9a-f]{6}$/i.test(data.accent) ? data.accent : '',
     };
     desktopSettings = {
-      locks: data.locks === true, widget: data.widget === true, light: data.light === true,
+      locks: data.locks === true, widget: data.widget === true, light: data.light === true, lang: appearance.lang,
       widgetPosition: ['start', 'center', 'end'].includes(data.widgetPosition) ? data.widgetPosition : 'end',
       widgetLegacyBounds: data.widgetLegacyBounds === true,
       widgetCoverBackground: data.widgetCoverBackground === true,
@@ -438,11 +438,21 @@ function attachFlyout(owner, getTheme) {
       return false;
     };
 
+    const originalLang = await owner.webContents.executeJavaScript('currentLang');
     try {
+      await owner.webContents.executeJavaScript("setLanguage('el')");
       show('manual');
       const panel = await waitFor(() => flyout?.isVisible());
       results.push({ name: 'desktop flyout opens and shows its renderer', ok: panel });
       if (!panel) return results;
+      results.push({
+        name: 'desktop flyout renders the Greek title and accessible close label',
+        ok: await waitFor(() => flyout.webContents.executeJavaScript(`
+          document.documentElement.lang === 'el' &&
+          document.querySelector('[data-i18n="flyout.title"]').textContent === 'Χειριστήριο ήχου' &&
+          document.querySelector('[data-label="splash.close"]').getAttribute('aria-label') === 'Κλείσιμο'
+        `)),
+      });
 
       await flyout.webContents.executeJavaScript(`
         const slider = document.getElementById('volume');
@@ -463,7 +473,7 @@ function attachFlyout(owner, getTheme) {
         results.push({
           name: 'lock-key toast renders a status without switching focus',
           ok: await waitFor(() => lockToast?.isVisible() &&
-            lockToast.webContents.executeJavaScript("!!document.getElementById('lock-state').textContent")) &&
+            lockToast.webContents.executeJavaScript("document.getElementById('lock-state').textContent === 'Ενεργό'")) &&
             !lockToast.isFocused(),
         });
       }
@@ -471,6 +481,7 @@ function attachFlyout(owner, getTheme) {
     } finally {
       hide();
       lockToast?.hide();
+      await owner.webContents.executeJavaScript(`setLanguage(${JSON.stringify(originalLang)})`);
     }
   }
 
