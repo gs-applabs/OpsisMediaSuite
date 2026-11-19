@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('waveframe', {
   onMediaKey: (cb) => ipcRenderer.on('media-key', (_event, action, fromKeyboard) => cb(action, fromKeyboard)),
   onDesktopAvailability: (cb) => ipcRenderer.on('flyout:desktop-availability', (_event, available) => cb(available)),
   onTaskbarStatus: (cb) => ipcRenderer.on('flyout:taskbar-status', (_event, status) => cb(status)),
+  onTaskbarPosition: (cb) => ipcRenderer.on('flyout:taskbar-position', (_event, position) => cb(position)),
+  onWindowsAccent: (cb) => ipcRenderer.on('flyout:windows-accent', (_event, color) => cb(color)),
   openFlyout: (reason) => ipcRenderer.send('flyout:open', reason),
   setFlyoutSettings: (settings) => ipcRenderer.send('flyout:settings', settings),
   updateFlyout: (state) => ipcRenderer.send('flyout:state', state),

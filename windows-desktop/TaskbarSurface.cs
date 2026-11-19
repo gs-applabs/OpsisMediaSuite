@@ -13,6 +13,7 @@ using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
 using Color = System.Windows.Media.Color;
+using Control = System.Windows.Controls.Control;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using Image = System.Windows.Controls.Image;
 using SystemColors = System.Windows.SystemColors;
@@ -27,8 +28,7 @@ sealed class TaskbarSurface : IDisposable
     private readonly IntPtr parent;
     private readonly HwndSource source;
     private readonly Grid layout = new() { ClipToBounds = true };
-    private readonly Border plate = new() { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), IsHitTestVisible = false };
-    private readonly Image backdrop = new() { Stretch = Stretch.UniformToFill, Opacity = 0.24, IsHitTestVisible = false, Effect = new BlurEffect { Radius = 15 } };
+    private readonly Image backdrop = new() { Stretch = Stretch.UniformToFill, Opacity = 1, IsHitTestVisible = false, Effect = new BlurEffect { Radius = 15 } };
     private readonly TextBlock track = new() { TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = FontWeights.SemiBold };
     private readonly TextBlock artist = new() { TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 10, Opacity = 0.68 };
     private readonly Image artwork = new() { Stretch = Stretch.UniformToFill };
@@ -39,13 +39,21 @@ sealed class TaskbarSurface : IDisposable
     private readonly Button playback = CreateButton();
     private readonly Button next = CreateButton("⏭");
     private readonly Border[] meterBars = new Border[8];
-    private static readonly Brush LightBase = BrushFrom(244, 244, 246);
-    private static readonly Brush DarkBase = BrushFrom(32, 32, 36);
+    private static readonly ControlTemplate ButtonTemplate = CreateButtonTemplate();
+    private static readonly Brush HitArea = BrushFrom(255, 255, 255, 1);
     private static readonly Brush LightText = BrushFrom(24, 24, 26);
     private static readonly Brush LightHover = BrushFrom(255, 255, 255, 100);
     private static readonly Brush DarkHover = BrushFrom(255, 255, 255, 20);
-    private static readonly Brush LightOutline = BrushFrom(24, 24, 26, 30);
-    private static readonly Brush DarkOutline = BrushFrom(255, 255, 255, 35);
+    private readonly TextBlock grip = new()
+    {
+        Text = "⋮", FontSize = 14, Background = HitArea, HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center, Cursor = System.Windows.Input.Cursors.SizeWE,
+    };
+    private readonly DispatcherTimer dragTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly Action<double>? positionChanged;
+    private Brush? accentBrush;
+    private Color? systemAccent;
+    private int x, y, width, height, min, max, dragOrigin, cursorOrigin;
     private bool light, compact, hasArtist, coverBackground;
     private ImageSource? currentCover;
 
@@ -53,7 +61,7 @@ sealed class TaskbarSurface : IDisposable
     public bool IsAlive => !source.IsDisposed && IsWindow(source.Handle);
     public bool IsExposed => IsAlive && IsWindowVisible(source.Handle) && GetTopWindow(parent) == source.Handle;
 
-    public TaskbarSurface(IntPtr parent, bool vertical, int width, int height, Action<string> command)
+    public TaskbarSurface(IntPtr parent, bool vertical, int width, int height, Action<string> command, Action<double>? positionChanged = null)
     {
         this.parent = parent;
         Vertical = vertical;
@@ -66,7 +74,10 @@ sealed class TaskbarSurface : IDisposable
             // Layer the child into Explorer's composition instead of relying on its normal child paint order.
             UsesPerPixelTransparency = true,
         };
+        this.positionChanged = positionChanged;
         source = new HwndSource(parameters);
+        dragTimer.Tick += (_, _) => MoveGrip();
+        if (Vertical) grip.Cursor = System.Windows.Input.Cursors.SizeNS;
         // The cross-process, layered child needs a reliable software surface even when Explorer uses GPU composition.
         source.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
         source.AddHook(WindowMessage);
@@ -74,6 +85,7 @@ sealed class TaskbarSurface : IDisposable
         {
             var coverContent = new Grid { ClipToBounds = true };
             coverContent.Children.Add(artwork);
+            coverContent.Children.Add(backdrop);
             coverContent.Children.Add(musicIcon);
             cover.Child = coverContent;
             cover.SizeChanged += (_, _) =>
@@ -89,11 +101,15 @@ sealed class TaskbarSurface : IDisposable
             title.HorizontalContentAlignment = vertical ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
 
             var content = new Grid();
-            layout.Children.Add(backdrop);
-            layout.Children.Add(plate);
             layout.Children.Add(content);
-            layout.MouseEnter += (_, _) => RefreshPalette();
-            layout.MouseLeave += (_, _) => RefreshPalette();
+            grip.MouseLeftButtonDown += (_, e) =>
+            {
+                if (positionChanged is null || !GetCursorPos(out var point)) return;
+                dragOrigin = Vertical ? y : x;
+                cursorOrigin = Vertical ? point.Y : point.X;
+                dragTimer.Start();
+                e.Handled = true;
+            };
             var meter = new UniformGrid { Rows = 1, VerticalAlignment = VerticalAlignment.Center, Height = 16, IsHitTestVisible = false };
             for (int i = 0; i < meterBars.Length; i++)
             {
@@ -102,17 +118,17 @@ sealed class TaskbarSurface : IDisposable
             }
             foreach (var (button, action) in new[] { (title, "open"), (previous, "prev"), (playback, "playpause"), (next, "next") })
                 button.Click += (_, _) => command(action);
-            UIElement[] elements = [title, meter, previous, playback, next];
+            UIElement[] elements = [grip, title, meter, previous, playback, next];
             for (int i = 0; i < elements.Length; i++)
             {
                 if (vertical)
                 {
-                    content.RowDefinitions.Add(new RowDefinition());
+                    content.RowDefinitions.Add(i == 0 ? new RowDefinition { Height = new GridLength(13) } : new RowDefinition());
                     Grid.SetRow(elements[i], i);
                 }
                 else
                 {
-                    content.ColumnDefinitions.Add(new ColumnDefinition { Width = i == 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(i == 1 ? 20 : 25) });
+                    content.ColumnDefinitions.Add(new ColumnDefinition { Width = i == 1 ? new GridLength(1, GridUnitType.Star) : new GridLength(i == 0 ? 11 : i == 2 ? 20 : 25) });
                     Grid.SetColumn(elements[i], i);
                 }
                 content.Children.Add(elements[i]);
@@ -133,10 +149,50 @@ sealed class TaskbarSurface : IDisposable
             layout.Language = XmlLanguage.GetLanguage(language);
     }
 
-    public void Place(int x, int y, int width, int height)
+    public void SetDragLabel(string label)
+    {
+        AutomationProperties.SetName(grip, label);
+        grip.ToolTip = label;
+    }
+
+    public void SetSystemAccent(Color? color)
+    {
+        if (color == systemAccent) return;
+        systemAccent = color;
+        accentBrush = color is { } rgb ? BrushFrom(rgb.R, rgb.G, rgb.B) : null;
+        RefreshPalette();
+    }
+
+    private void MoveGrip()
+    {
+        if (!IsAlive) { dragTimer.Stop(); return; }
+        if (GetCursorPos(out var point))
+        {
+            int axis = Vertical ? point.Y : point.X;
+            int primary = Math.Clamp(dragOrigin + axis - cursorOrigin, min, max);
+            int nextX = Vertical ? x : primary;
+            int nextY = Vertical ? primary : y;
+            if ((nextX != x || nextY != y) && SetWindowPos(source.Handle, IntPtr.Zero, nextX, nextY, width, height, ShowAtTop))
+                (x, y) = (nextX, nextY);
+        }
+        if ((GetAsyncKeyState(1) & 0x8000) != 0) return;
+        dragTimer.Stop();
+        int final = Vertical ? y : x;
+        if (final != dragOrigin && max > min) positionChanged?.Invoke((double)(final - min) / (max - min));
+    }
+
+    public void Place(int x, int y, int width, int height, int min = 0, int max = 0)
     {
         if (!IsAlive || GetAncestor(source.Handle, 1) != parent || (GetWindowLong(source.Handle, WindowStyle) & Child) == 0)
             throw new InvalidOperationException("The taskbar widget lost its native parent");
+        this.min = min;
+        this.max = max;
+        if (dragTimer.IsEnabled)
+        {
+            if (Vertical) y = Math.Clamp(this.y, min, max);
+            else x = Math.Clamp(this.x, min, max);
+        }
+        (this.x, this.y, this.width, this.height) = (x, y, width, height);
         // Explorer's composition window can cover the entire taskbar. Raise and show the widget as an Explorer child.
         if (!SetWindowPos(source.Handle, IntPtr.Zero, x, y, width, height, ShowAtTop))
             throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -155,14 +211,14 @@ sealed class TaskbarSurface : IDisposable
     }
 
     // Runs only in the Windows smoke test. Inspect the normal themed widget rather than substituting a test paint.
-    public void VerifyRenderedPixels(int x, int y, int width, int height)
+    public void VerifyRenderedPixels(int x, int y, int width, int height, bool lightTheme)
     {
         var origin = new System.Drawing.Point(x, y);
         if (!ClientToScreen(parent, ref origin)) throw new Win32Exception(Marshal.GetLastWin32Error());
         using var before = ReadScreen(origin.X, origin.Y, width, height);
         SetLanguage("el");
         UpdateView("Δοκιμή ήχου", "Καλλιτέχνης", null, "Άνοιγμα", "Προηγούμενο", "Αναπαραγωγή", "Επόμενο",
-            false, true, true, true, false, false, []);
+            false, true, true, true, lightTheme, false, []);
         Place(x, y, width, height);
         VerifyVisibleChild();
         layout.UpdateLayout();
@@ -176,18 +232,23 @@ sealed class TaskbarSurface : IDisposable
             using var after = ReadScreen(origin.X, origin.Y, width, height);
             int changed = 0;
             int caption = 0;
+            int unchanged = 0;
             for (int row = 3; row < height - 3; row++)
             {
                 for (int column = Math.Min(35, width / 5); column < width - 8; column++)
                 {
                     var old = before.GetPixel(column, row);
                     var pixel = after.GetPixel(column, row);
-                    if (Math.Abs(old.R - pixel.R) + Math.Abs(old.G - pixel.G) + Math.Abs(old.B - pixel.B) < 15) continue;
+                    if (Math.Abs(old.R - pixel.R) + Math.Abs(old.G - pixel.G) + Math.Abs(old.B - pixel.B) < 15)
+                    {
+                        unchanged++;
+                        continue;
+                    }
                     changed++;
-                    if ((Vertical || column < width / 2) && pixel.R >= 225 && pixel.G >= 225 && pixel.B >= 225) caption++;
+                    if ((Vertical || column < width / 2) && (lightTheme ? pixel.R < 65 && pixel.G < 65 && pixel.B < 65 : pixel.R > 215 && pixel.G > 215 && pixel.B > 215)) caption++;
                 }
             }
-            rendered = changed >= 40 && (caption >= 4 || SystemParameters.HighContrast);
+            rendered = unchanged > changed && changed >= 25 && (caption >= 4 || SystemParameters.HighContrast);
             if (rendered || ++attempts >= 12) frame.Continue = false;
         };
         timer.Start();
@@ -226,10 +287,25 @@ sealed class TaskbarSurface : IDisposable
 
     private static Button CreateButton(string text = "") => new()
     {
-        Content = text, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+        Content = text, Template = ButtonTemplate, Background = HitArea, VerticalContentAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(0),
         Padding = new Thickness(0), Focusable = false, FontSize = 12, MinWidth = 0,
         FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Arial"),
     };
+
+    private static ControlTemplate CreateButtonTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        var content = new FrameworkElementFactory(typeof(ContentPresenter));
+        content.SetValue(FrameworkElement.HorizontalAlignmentProperty, new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
+        content.SetValue(FrameworkElement.VerticalAlignmentProperty, new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
+        border.AppendChild(content);
+        var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+        var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+        disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.40));
+        template.Triggers.Add(disabled);
+        return template;
+    }
 
     private static Brush BrushFrom(byte red, byte green, byte blue, byte alpha = 255)
     {
@@ -242,14 +318,14 @@ sealed class TaskbarSurface : IDisposable
     {
         bool highContrast = SystemParameters.HighContrast;
         Brush foreground = highContrast ? SystemColors.WindowTextBrush : light ? LightText : Brushes.WhiteSmoke;
-        layout.Background = highContrast ? SystemColors.WindowBrush : light ? LightBase : DarkBase;
-        plate.Background = layout.IsMouseOver && !highContrast ? light ? LightHover : DarkHover : Brushes.Transparent;
-        plate.BorderBrush = highContrast ? SystemColors.WindowTextBrush : layout.IsMouseOver ? light ? LightOutline : DarkOutline : Brushes.Transparent;
+        layout.Background = Brushes.Transparent;
         backdrop.Visibility = !highContrast && coverBackground && currentCover is not null ? Visibility.Visible : Visibility.Collapsed;
         cover.Background = highContrast ? SystemColors.WindowBrush : light ? LightHover : DarkHover;
         musicIcon.Foreground = foreground;
         foreach (var button in new[] { title, previous, playback, next }) button.Foreground = foreground;
-        foreach (var bar in meterBars) bar.Background = foreground;
+        Brush accent = highContrast ? foreground : accentBrush ?? foreground;
+        grip.Foreground = foreground;
+        foreach (var bar in meterBars) bar.Background = accent;
     }
 
     public void UpdateView(string name, string performer, ImageSource? image, string open, string back, string play, string forward,
@@ -276,9 +352,14 @@ sealed class TaskbarSurface : IDisposable
             AutomationProperties.SetName(button, label);
             button.ToolTip = label;
         }
+        SetSpectrum(levels);
+        RefreshPalette();
+    }
+
+    public void SetSpectrum(ReadOnlySpan<double> levels)
+    {
         for (int i = 0; i < meterBars.Length; i++)
             meterBars[i].Height = 2 + (i < levels.Length ? levels[i] * 12 : 0);
-        RefreshPalette();
     }
 
     public void VerifyAppearance()
@@ -288,12 +369,16 @@ sealed class TaskbarSurface : IDisposable
         if (musicIcon.Visibility != Visibility.Collapsed || backdrop.Visibility != Visibility.Collapsed)
             throw new InvalidOperationException("Album art should replace the placeholder without adding a backdrop");
         if (SystemParameters.HighContrast) return;
+        var sampleAccent = Color.FromRgb(37, 111, 209);
+        SetSystemAccent(sampleAccent);
+        if (meterBars[0].Background is not SolidColorBrush brush || brush.Color != sampleAccent)
+            throw new InvalidOperationException("The meter must use the exact Windows accent RGB");
         var lightForeground = title.Foreground;
-        if (!Equals(layout.Background, LightBase))
+        if (!Equals(layout.Background, Brushes.Transparent))
             throw new InvalidOperationException("The idle widget must use the visible taskbar palette");
         UpdateView("Test title", "Test artist", currentCover, "", "", "", "",
             false, true, true, true, false, true, []);
-        if (Equals(lightForeground, title.Foreground) || !Equals(layout.Background, DarkBase) || backdrop.Visibility != Visibility.Visible)
+        if (Equals(lightForeground, title.Foreground) || !Equals(layout.Background, Brushes.Transparent) || backdrop.Visibility != Visibility.Visible)
             throw new InvalidOperationException("Dark text contrast and optional album-art backdrop must update independently");
     }
 
@@ -304,7 +389,14 @@ sealed class TaskbarSurface : IDisposable
         return new IntPtr(3); // MA_NOACTIVATE keeps the click and does not focus the widget.
     }
 
-    public void Dispose() => source.Dispose();
+    public void Dispose()
+    {
+        dragTimer.Stop();
+        source.Dispose();
+    }
+
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out System.Drawing.Point point);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
 
     [DllImport("user32.dll", SetLastError = true)] private static extern bool ClientToScreen(IntPtr window, ref System.Drawing.Point point);
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr GetDC(IntPtr window);

@@ -1,4 +1,4 @@
-const { BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
+const { BrowserWindow, ipcMain, nativeImage, screen, systemPreferences } = require('electron');
 const path = require('node:path');
 const { createWindowsDesktop } = require('./windows-desktop');
 
@@ -37,6 +37,7 @@ function attachFlyout(owner, getTheme) {
   let sourceArtwork = '';
   let widgetArtwork = '';
   let desktopSettings = { locks: false, widget: false, light: false };
+  let lastSystemAccent;
   const mediaActions = new Set(['playpause', 'prev', 'next', 'seek', 'shuffle', 'repeat']);
   const ownSource = process.execPath.toLowerCase().replaceAll('\\', '/');
   let flyout;
@@ -60,18 +61,41 @@ function attachFlyout(owner, getTheme) {
     return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   }
 
+  function widgetVisible() {
+    return desktopSettings.widget && (!desktopSettings.widgetMinimizedOnly || owner.isMinimized?.());
+  }
+
+  function sendWindowsAccent() {
+    if (process.platform !== 'win32' || !systemPreferences?.getAccentColor) return;
+    const color = systemPreferences.getAccentColor();
+    if (!/^[0-9a-f]{8}$/i.test(color)) return;
+    const hex = '#' + color.slice(0, 6).toLowerCase();
+    if (hex === lastSystemAccent) return;
+    lastSystemAccent = hex;
+    sendToOwner('flyout:windows-accent', hex);
+  }
+
+  function refreshWidgetVisibility() {
+    pushDesktopSettings();
+    updatePolling();
+    sendToOwner('flyout:visible', !!widgetVisible() || !!flyout?.isVisible());
+    if (widgetVisible()) pushWidget();
+    else if (desktopSettings.widget && desktopSettings.widgetMinimizedOnly)
+      sendToOwner('flyout:taskbar-status', 'WAITING-MINIMIZE');
+  }
+
   function updatePolling() {
     clearInterval(pollTimer);
     pollTimer = undefined;
-    if (disposed || !desktop.available || (!flyout?.isVisible() && !desktopSettings.widget && !automatic)) return;
-    const poll = () => desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || desktopSettings.widget, selected });
+    if (disposed || !desktop.available || (!flyout?.isVisible() && !widgetVisible() && !automatic)) return;
+    const poll = () => desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || !!widgetVisible(), selected });
     poll();
-    pollTimer = setInterval(poll, automatic || desktopSettings.widget ? 950 : 1200);
+    pollTimer = setInterval(poll, automatic || widgetVisible() ? 950 : 1200);
   }
 
   function pushDesktopSettings() {
     if (disposed || !desktop.available || (!desktop.running && !automatic && !desktopSettings.locks && !desktopSettings.widget && !flyout?.isVisible())) return;
-    desktop.send({ type: 'configure', ...desktopSettings, mediaKeys: automatic });
+    desktop.send({ type: 'configure', ...desktopSettings, widget: !!widgetVisible(), mediaKeys: automatic });
   }
 
   function isOurSession(source) {
@@ -101,7 +125,7 @@ function attachFlyout(owner, getTheme) {
   }
 
   function pushWidget() {
-    if (!desktopSettings.widget) return;
+    if (!widgetVisible()) return;
     const current = external.find((session) => session.id === activeSession) ||
       (!localState?.playing && external.find((session) => session.playing)) || localState;
     const view = JSON.stringify({
@@ -161,12 +185,20 @@ function attachFlyout(owner, getTheme) {
       }
       return;
     }
-    if (message.type === 'taskbar-status' && typeof message.status === 'string' &&
-        /^(?:CHECKING|NO-TASKBAR|NO-BOUNDS|NOT-VISIBLE|ATTACH-FAILED|(?:WIN32|ATTACHED|PARTIAL)-[0-9]{1,10})?$/.test(message.status)) {
-      sendToOwner('flyout:taskbar-status', message.status);
+    if (message.type === 'taskbar-position' && widgetVisible() && Number.isFinite(message.position) &&
+        message.position >= 0 && message.position <= 1) {
+      desktopSettings.widgetPosition = 'manual';
+      desktopSettings.widgetOffset = message.position;
+      sendToOwner('flyout:taskbar-position', message.position);
       return;
     }
-    if (message.type === 'widget' && desktopSettings.widget) {
+    if (message.type === 'taskbar-status' && typeof message.status === 'string' &&
+        /^(?:CHECKING|NO-TASKBAR|NO-BOUNDS|NOT-VISIBLE|ATTACH-FAILED|(?:WIN32|ATTACHED|PARTIAL)-[0-9]{1,10})?$/.test(message.status)) {
+      if (widgetVisible() || !desktopSettings.widget)
+        sendToOwner('flyout:taskbar-status', message.status);
+      return;
+    }
+    if (message.type === 'widget' && widgetVisible()) {
       if (message.action === 'open') {
         selected = external.some((item) => item.id === activeSession) ? activeSession : '';
         show('manual');
@@ -182,7 +214,7 @@ function attachFlyout(owner, getTheme) {
     }
     if (message.type === 'result') {
       if (!message.ok) send('flyout:notice', 'failed');
-      desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || desktopSettings.widget, selected });
+      desktop.send({ type: 'snapshot', mixer: !!flyout?.isVisible(), artwork: !!flyout?.isVisible() || !!widgetVisible(), selected });
     }
     if (message.type === 'error') send('flyout:notice', 'failed');
     if (message.type === 'exit') {
@@ -293,7 +325,7 @@ function attachFlyout(owner, getTheme) {
     flyout.on('focus', scheduleHide);
     flyout.on('blur', scheduleHide);
     flyout.on('hide', () => {
-      sendToOwner('flyout:visible', desktopSettings.widget);
+      sendToOwner('flyout:visible', !!widgetVisible());
       updatePolling();
     });
     flyout.on('closed', () => {
@@ -301,7 +333,7 @@ function attachFlyout(owner, getTheme) {
       flyout = null;
       ready = hovered = false;
       pending = null;
-      sendToOwner('flyout:visible', desktopSettings.widget);
+      sendToOwner('flyout:visible', !!widgetVisible());
       updatePolling();
     });
     flyout.webContents.on('render-process-gone', () => flyout?.destroy());
@@ -340,25 +372,26 @@ function attachFlyout(owner, getTheme) {
     };
     desktopSettings = {
       locks: data.locks === true, widget: data.widget === true, light: data.light === true, lang: appearance.lang,
-      widgetPosition: ['start', 'center', 'end'].includes(data.widgetPosition) ? data.widgetPosition : 'end',
+      widgetMinimizedOnly: data.widgetMinimizedOnly === true,
+      widgetOffset: Number.isFinite(data.widgetOffset) && data.widgetOffset >= 0 && data.widgetOffset <= 1 ? data.widgetOffset : null,
+      widgetPosition: ['start', 'center', 'end', 'manual'].includes(data.widgetPosition) ? data.widgetPosition : 'end',
       widgetLegacyBounds: data.widgetLegacyBounds === true,
       widgetCoverBackground: data.widgetCoverBackground === true,
       openLabel: label(data.openLabel), prevLabel: label(data.prevLabel),
-      playLabel: label(data.playLabel), nextLabel: label(data.nextLabel),
+      playLabel: label(data.playLabel), nextLabel: label(data.nextLabel), dragLabel: label(data.dragLabel),
     };
     if (!desktopSettings.locks) lockToast?.hide();
     if (!desktopSettings.widget) widgetState = '';
-    pushDesktopSettings();
-    updatePolling();
+    if (desktop.available) refreshWidgetVisibility();
+    sendWindowsAccent();
     if (notifyDesktopAvailability !== desktop.available) {
       notifyDesktopAvailability = desktop.available;
       sendToOwner('flyout:desktop-availability', desktop.available);
     }
-    if (desktop.available) sendToOwner('flyout:visible', desktopSettings.widget || !!flyout?.isVisible());
     syncAppearance();
   });
   listen('flyout:state', fromOwner, (state) => {
-    if ((!flyout?.isVisible() && !desktopSettings.widget) || !state || typeof state !== 'object') return;
+    if ((!flyout?.isVisible() && !widgetVisible()) || !state || typeof state !== 'object') return;
     const duration = bounded(state.duration, Number.MAX_SAFE_INTEGER);
     localState = {
       title: label(state.title), artist: label(state.artist), upcoming: label(state.upcoming),
@@ -372,7 +405,7 @@ function attachFlyout(owner, getTheme) {
     pushWidget();
   });
   listen('flyout:artwork', fromOwner, (artwork) => {
-    if (!flyout?.isVisible() && !desktopSettings.widget) return;
+    if (!flyout?.isVisible() && !widgetVisible()) return;
     localArtwork = typeof artwork === 'string' && artwork.length <= 2000000 &&
       /^data:image\/(?:png|jpe?g|webp|gif|bmp|avif);base64,[a-z0-9+/=]+$/i.test(artwork) ? artwork : '';
     if (!selected) send('flyout:artwork', localArtwork);
@@ -414,12 +447,17 @@ function attachFlyout(owner, getTheme) {
   owner.webContents.on('did-start-loading', () => {
     automatic = false;
     notifyDesktopAvailability = undefined;
+    lastSystemAccent = undefined;
     desktopSettings = { locks: false, widget: false, light: false };
     pushDesktopSettings();
     hide();
   });
+  for (const event of ['minimize', 'restore']) owner.on(event, refreshWidgetVisibility);
+  systemPreferences?.on('accent-color-changed', sendWindowsAccent);
+
   owner.on('closed', () => {
     disposed = true;
+    systemPreferences?.removeListener('accent-color-changed', sendWindowsAccent);
     clearTimeout(hideTimer);
     clearTimeout(lockTimer);
     clearInterval(pollTimer);
