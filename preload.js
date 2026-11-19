@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   convReveal: (p) => ipcRenderer.send('conv:reveal', p),
   onConvProgress: (cb) => ipcRenderer.on('conv:progress', (event, data) => cb(data)),
   onOpenVideo: (cb) => ipcRenderer.on('open-video', (event, filePath) => cb(filePath)),
+  vpStreamUrl: (file) => ipcRenderer.invoke('vp:stream-url', file),
   vpPick: (kind) => ipcRenderer.invoke('vp:pick', kind),
   vpSubsFor: (p) => ipcRenderer.invoke('vp:subs-for', p),
   vpPickSub: () => ipcRenderer.invoke('vp:pick-sub'),

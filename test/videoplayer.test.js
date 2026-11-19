@@ -45,9 +45,6 @@ test('file kinds, titles and URLs', () => {
   assert.equal(V.kindOf('C:\\a\\b.MKV'), 'video'); assert.equal(V.kindOf('C:\\a\\b.flac'), 'audio'); assert.equal(V.kindOf('C:\\a\\b.txt'), '');
   assert.equal(V.kindOf('https://x.org/live'), 'video');
   assert.equal(V.titleOf('C:\\Films\\My.Movie.2020.mkv'), 'My.Movie.2020'); assert.equal(V.titleOf('https://x.org/a/b.mp4?token=1'), 'b');
-  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), 'wfmedia://f/C%3A%5CFilms%5Ca%20b.mp4');
-  assert.equal(V.mediaUrl('https://x.org/a.mp4'), 'https://x.org/a.mp4');
-  assert.equal(decodeURIComponent(new URL(V.mediaUrl('C:\\Films\\a b.mp4')).pathname.replace(/^\//, '')), 'C:\\Films\\a b.mp4', 'round-trips through the URL the main process parses');
   assert.equal(V.playable('C:\\x\\y.mp4'), true); assert.equal(V.playable('C:\\x\\y.exe'), false); assert.equal(V.playable('..\\y.mp4'), false); assert.equal(V.playable(5), false);
   assert.equal(V.playable('C:\\x\\y.mp4\n'), false); assert.equal(V.playable('C:\\x\\y\0.mp4'), false); assert.equal(V.playable('\\\\srv\\share\\y.mp4'), false);
 });
@@ -58,9 +55,10 @@ test('subtitle bytes: UTF-8, UTF-8 BOM and Windows-1253 (Greek) all decode', () 
   assert.equal(M.decodeText(Buffer.from([0xca, 0xe1, 0xeb, 0xe7, 0xec, 0xdd, 0xf1, 0xe1])), 'Καλημέρα');
 });
 
-test('the main process side only serves media and subtitles, never other file types', () => {
+test('the main process side serves media only through URLs assigned to validated files', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'media-main.js'), 'utf8');
-  assert.match(src, /SERVE_EXTS = new Set\(\[\.\.\.VIDEO_EXTS, \.\.\.AUDIO_EXTS, \.\.\.SUB_EXTS\]\)/);
+  assert.match(src, /streamFiles\.get/);
+  assert.match(src, /SERVE_EXTS = new Set\(\[\.\.\.VIDEO_EXTS, \.\.\.AUDIO_EXTS\]\)/);
   for (const ch of ['vp:pick', 'vp:subs-for', 'vp:pick-sub', 'vp:exists', 'photo:pick', 'photo:read', 'photo:save', 'vp:pick-m3u']) {
     const i = src.indexOf(`'${ch}'`); assert.ok(i > 0, ch);
     assert.ok(/trusted\(e\)/.test(src.slice(i, i + 220)), ch + ' checks the sender');

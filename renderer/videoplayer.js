@@ -13,6 +13,7 @@
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
+  let loadGeneration = 0;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, saveTimer = 0, built = false, fx = null;
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
@@ -100,23 +101,37 @@
     if (i < idx) idx--; else if (i === idx) { idx = -1; stop(); }
     renderList();
   }
-  function stop() { saveResume(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); }
-
-  function playAt(i) {
-    if (i < 0 || i >= list.length) return;
+  function stop() {
+    loadGeneration++;
     saveResume();
-    idx = i; const p = list[i];
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    $('vpFrame').classList.remove('has-media');
+  }
+
+  async function playAt(i) {
+    const file = list[i];
+    if (!file) return;
+    const generation = ++loadGeneration;
+    const remote = VP.isUrl(file);
+    const url = remote ? file : await api.vpStreamUrl(file).catch(() => null);
+    if (generation !== loadGeneration || list[i] !== file) return;
+    if (!url) { say(t('vp.cantPlay')); return; }
+    saveResume();
+    idx = i;
     clearSubs();
-    if (VP.isUrl(p)) video.removeAttribute('crossorigin'); else video.crossOrigin = 'anonymous';
-    video.src = VP.mediaUrl(p);
+    if (remote) video.removeAttribute('crossorigin');
+    else video.crossOrigin = 'anonymous';
+    video.src = url;
     $('vpFrame').classList.add('has-media');
     video.playbackRate = Number($('vpSpeed').value) || 1;
     renderList(); renderBookmarks();
-    put(K.recent, VP.pushRecent(get(K.recent, []), p)); fillRecent();
+    put(K.recent, VP.pushRecent(get(K.recent, []), file)); fillRecent();
     say('');
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     video.play().catch(() => { /* the error event reports unsupported media */ });
-    if (!VP.isUrl(p)) loadSiblingSubs(p);
+    if (!remote) loadSiblingSubs(file);
     refreshFx();
   }
   const next = (d) => { if (list.length) playAt((idx + d + list.length) % list.length); };

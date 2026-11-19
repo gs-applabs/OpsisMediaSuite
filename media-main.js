@@ -5,6 +5,7 @@
 const { ipcMain, dialog, protocol, net, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('url');
 const M3U = require('./m3u.js');
 
@@ -12,7 +13,7 @@ const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mp
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
 const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub'];
 const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
-const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS, ...SUB_EXTS]);
+const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS]);
 const MAX_SUB_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 200 * 1024 * 1024;
 const MAX_SAVE_BYTES = 256 * 1024 * 1024;
@@ -23,7 +24,7 @@ const isFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p)
 
 // Must run before the app is ready.
 function registerScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, bypassCSP: false } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false } }]);
 }
 
 // Subtitle bytes -> text: UTF-8 (with or without BOM), otherwise Windows-1253 (Greek) which is what old .srt files from Greek sites use.
@@ -56,17 +57,43 @@ function init({ getMainWin, resolveFfmpegPath }) {
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
-  protocol.handle('wfmedia', (req) => {
+  const streamFiles = new Map();
+  ipcMain.handle('vp:stream-url', (e, file) => {
+    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || !isFile(file) || !SERVE_EXTS.has(extOf(file))) return null;
+    const key = randomUUID();
+    streamFiles.set(key, file);
+    if (streamFiles.size > 24) streamFiles.delete(streamFiles.keys().next().value);
+    return 'wfmedia://f/' + key;
+  });
+
+  protocol.handle('wfmedia', async (request) => {
+    const url = new URL(request.url);
+    const file = url.hostname === 'f' && streamFiles.get(url.pathname.slice(1));
+    const origin = request.headers.get('origin');
+    if (!file || (origin && origin !== 'null' && origin !== 'file://')) return new Response('not found', { status: 404 });
+    const allowOrigin = origin || 'null';
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: {
+        'Access-Control-Allow-Origin': allowOrigin,
+        'Access-Control-Allow-Headers': 'Range',
+        'Access-Control-Allow-Methods': 'GET, HEAD',
+      } });
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
     try {
-      const u = new URL(req.url);
-      const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
-      if (!isFile(p) || !SERVE_EXTS.has(extOf(p))) return new Response('not found', { status: 404 });
-      return net.fetch(pathToFileURL(p).toString(), { headers: req.headers, bypassCustomProtocolHandlers: true }).then((r) => {
-        // the page is file:// (another origin): CORS headers are needed so the equaliser can read the video's sound
-        const h = new Headers(r.headers); h.set('Access-Control-Allow-Origin', '*');
-        return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
+      const headers = new Headers();
+      const range = request.headers.get('range');
+      if (range) headers.set('Range', range);
+      const response = await net.fetch(pathToFileURL(file).toString(), {
+        headers, method: request.method, bypassCustomProtocolHandlers: true,
       });
-    } catch (_) { return new Response('bad request', { status: 400 }); }
+      const replyHeaders = new Headers(response.headers);
+      replyHeaders.set('Access-Control-Allow-Origin', allowOrigin);
+      replyHeaders.set('Access-Control-Expose-Headers', 'Content-Range');
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers: replyHeaders });
+    } catch {
+      return new Response(null, { status: 404 });
+    }
   });
 
   /* ---------------- video player ---------------- */
@@ -173,8 +200,14 @@ function init({ getMainWin, resolveFfmpegPath }) {
           await js("document.querySelector('.tab-btn[data-tab=\"video\"]').click(); loadVideoPlayer().then(() => 1)");
           await until("!!window.WaveframeVideoPlayer", 8000);
           await js(`window.WaveframeVideoPlayer.open(${JSON.stringify(file)}); 1`);
+          const range = await js(`(async () => {
+            const url = await window.waveframe.vpStreamUrl(${JSON.stringify(file)});
+            const response = await fetch(url, { headers: { Range: 'bytes=0-15' } });
+            return { status: response.status, bytes: (await response.arrayBuffer()).byteLength };
+          })()`);
+          check('local media URL returns the requested 16-byte range', range.status === 206 && range.bytes === 16, JSON.stringify(range));
           const ok = await until("(() => { const v = document.getElementById('vpVideo'); return v && v.readyState >= 2 && v.videoWidth === 320; })()", 15000);
-          const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.code, media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.querySelectorAll('track').length }); })()");
+          const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.message, h264: v.canPlayType('video/mp4; codecs=\"avc1.42E01E\"'), media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.querySelectorAll('track').length }); })()");
           check('video player plays a local clip through wfmedia: (320x180, ~2 s)', ok, info);
           const subOk = await until("document.getElementById('vpVideo').querySelectorAll('track').length === 1", 6000);
           check('video player finds and shows the subtitle next to the clip', subOk, await js("document.getElementById('vpSubTrack').options.length + ' options'"));
