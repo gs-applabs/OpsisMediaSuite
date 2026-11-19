@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
@@ -46,6 +47,8 @@ sealed class TaskbarSurface : IDisposable
             ParentWindow = parent,
             WindowStyle = Child | ClipSiblings,
             ExtendedWindowStyle = NoActivate,
+            // Layer the child into Explorer's composition instead of relying on its normal child paint order.
+            UsesPerPixelTransparency = true,
         };
         source = new HwndSource(parameters);
         source.AddHook(WindowMessage);
@@ -102,6 +105,52 @@ sealed class TaskbarSurface : IDisposable
             throw new InvalidOperationException("The widget must be a visible top child of its taskbar");
     }
 
+    public void VerifyRenderedPixels()
+    {
+        VerifyVisibleChild();
+        var marker = System.Drawing.Color.FromArgb(222, 37, 149);
+        layout.Background = BrushFrom(marker.R, marker.G, marker.B);
+        layout.UpdateLayout();
+        if (!GetWindowRect(source.Handle, out var rect) || rect.Right - rect.Left < 8 || rect.Bottom - rect.Top < 8)
+            throw new InvalidOperationException("The widget has no visible test region");
+
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(120) };
+        bool rendered = false;
+        int attempts = 0;
+        timer.Tick += (_, _) =>
+        {
+            rendered = ReadScreenPixel(rect.Left + 3, rect.Top + 3).ToArgb() == marker.ToArgb() ||
+                ReadScreenPixel(rect.Right - 4, rect.Bottom - 4).ToArgb() == marker.ToArgb();
+            if (rendered || ++attempts >= 12) frame.Continue = false;
+        };
+        timer.Start();
+        try { Dispatcher.PushFrame(frame); }
+        finally { timer.Stop(); }
+        if (!rendered) throw new InvalidOperationException("The widget HWND was visible but its pixels were not on the taskbar");
+    }
+
+    private static System.Drawing.Color ReadScreenPixel(int x, int y)
+    {
+        using var pixel = new System.Drawing.Bitmap(1, 1);
+        using var graphics = System.Drawing.Graphics.FromImage(pixel);
+        var sourceDc = GetDC(IntPtr.Zero);
+        if (sourceDc == IntPtr.Zero) return System.Drawing.Color.Empty;
+        var destination = graphics.GetHdc();
+        bool copied;
+        try
+        {
+            const uint SourceCopyAndCaptureLayers = 0x00CC0020 | 0x40000000;
+            copied = BitBlt(destination, 0, 0, 1, 1, sourceDc, x, y, SourceCopyAndCaptureLayers);
+        }
+        finally
+        {
+            graphics.ReleaseHdc(destination);
+            ReleaseDC(IntPtr.Zero, sourceDc);
+        }
+        return copied ? pixel.GetPixel(0, 0) : System.Drawing.Color.Empty;
+    }
+
     private static Button CreateButton(string text = "") => new()
     {
         Content = text, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
@@ -147,6 +196,11 @@ sealed class TaskbarSurface : IDisposable
 
     public void Dispose() => source.Dispose();
 
+    [StructLayout(LayoutKind.Sequential)] private struct ScreenRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out ScreenRect rect);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
+    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr destination, int dx, int dy, int w, int h, IntPtr source, int sx, int sy, uint operation);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern IntPtr GetTopWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);

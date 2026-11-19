@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
 static class Program
@@ -25,19 +26,17 @@ static class Program
         if (args is ["--test-explorer-taskbar"])
         {
             Console.WriteLine(TaskbarWidget.VerifyExplorer()
-                ? "Verified a visible widget above Explorer taskbar siblings"
+                ? "Verified widget pixels on the Explorer taskbar"
                 : "Explorer taskbar not available in this Windows session");
             return;
         }
-        using var context = new Forms.ApplicationContext();
-        using var receiver = new Forms.Control();
-        _ = receiver.Handle;
-        receiver.BeginInvoke(new Action(async () =>
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        dispatcher.InvokeAsync(async () =>
         {
             try { await Run(); }
-            finally { context.ExitThread(); }
-        }));
-        Forms.Application.Run(context);
+            finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal); }
+        });
+        Dispatcher.Run();
     }
 
     private static void Send(object message) => Console.WriteLine(JsonSerializer.Serialize(message, JsonOptions));
