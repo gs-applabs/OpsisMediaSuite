@@ -10,6 +10,21 @@ using Windows.UI.ViewManagement;
 using Color = System.Windows.Media.Color;
 using Forms = System.Windows.Forms;
 
+readonly record struct TaskbarRange(int Start, int End)
+{
+    public static int Snap(int desired, TaskbarRange[] ranges)
+    {
+        int nearest = ranges[0].Start;
+        foreach (var range in ranges)
+        {
+            int candidate = Math.Clamp(desired, range.Start, range.End);
+            if (candidate == desired) return candidate;
+            if (Math.Abs(candidate - desired) < Math.Abs(nearest - desired)) nearest = candidate;
+        }
+        return nearest;
+    }
+}
+
 sealed class TaskbarWidget : IDisposable
 {
     private readonly Action<string> command;
@@ -25,6 +40,7 @@ sealed class TaskbarWidget : IDisposable
     private readonly double[] smoothed = new double[8];
     private readonly Dictionary<IntPtr, TaskbarSurface> surfaces = new();
     private readonly Dictionary<IntPtr, Task<Anchors>> queries = new();
+    private readonly Dictionary<IntPtr, Anchors> measuredAnchors = new();
     private bool enabled, locating;
     private int generation;
     private string lastStatus = "", locale = "el";
@@ -216,7 +232,8 @@ sealed class TaskbarWidget : IDisposable
             if (!enabled || request != generation) return;
             foreach (var bar in surfaces.Keys.Where(bar => !bars.Contains(bar)).ToArray()) CloseSurface(bar);
             foreach (var bar in queries.Keys.Where(bar => !bars.Contains(bar)).ToArray()) queries.Remove(bar);
-            string failure = bars.Count == 0 ? "NO-TASKBAR" : "NO-BOUNDS";
+            foreach (var bar in measuredAnchors.Keys.Where(bar => !bars.Contains(bar)).ToArray()) measuredAnchors.Remove(bar);
+            string failure = bars.Count == 0 ? "NO-TASKBAR" : "NO-SPACE";
             int attached = 0;
             for (int i = 0; i < bars.Count; i++)
             {
@@ -234,7 +251,7 @@ sealed class TaskbarWidget : IDisposable
                         surface = new TaskbarSurface(bar, p.Vertical, p.Width, p.Height, command, SavePosition);
                         surfaces.Add(bar, surface);
                     }
-                    surface.Place(p.X, p.Y, p.Width, p.Height, p.Min, p.Max);
+                    surface.Place(p.X, p.Y, p.Width, p.Height, p.Min, p.Max, p.Ranges);
                     if (surface.IsExposed) attached++;
                     else failure = "NOT-VISIBLE";
                 }
@@ -259,35 +276,44 @@ sealed class TaskbarWidget : IDisposable
         finally { locating = false; }
     }
 
-    private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical, int Min, int Max);
-    private readonly record struct Anchors(Rect? Frame, Rect? Tray, Rect? Widgets);
+    private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical, int Min, int Max, TaskbarRange[] Ranges);
+    private readonly record struct Anchors(bool Available, Rect? Frame, Rect[] Leading, Rect[] Tray, Rect[] Occupied);
 
     private async Task<Placement?> FindPlacement(IntPtr bar)
     {
         if (!GetWindowRect(bar, out var bounds)) return null;
 
-        Anchors anchors = default;
-        if (!legacyBounds)
+        // Keep one in-flight query per bar and reuse its last measurement if Explorer temporarily stalls.
+        if (!queries.TryGetValue(bar, out var query))
+            queries[bar] = query = Task.Run(() => ReadAnchors(bar));
+        try
         {
-            // Keep at most one query per taskbar if Explorer's accessibility provider stalls.
-            if (!queries.TryGetValue(bar, out var query))
-                queries[bar] = query = Task.Run(() => ReadAnchors(bar));
-            try { anchors = await query.WaitAsync(TimeSpan.FromMilliseconds(450)); }
-            catch (TimeoutException) { }
-            if (query.IsCompleted) queries.Remove(bar);
+            var measured = await query.WaitAsync(TimeSpan.FromMilliseconds(450));
+            if (measured.Available) measuredAnchors[bar] = measured;
+        }
+        catch (TimeoutException) { }
+        if (query.IsCompleted) queries.Remove(bar);
+        if (!measuredAnchors.TryGetValue(bar, out var anchors)) return null;
+
+        Rect[] leading = anchors.Leading;
+        foreach (var windowClass in new[] { "Start", "TraySearchBox", "SearchBox" })
+        {
+            var control = FindWindowEx(bar, IntPtr.Zero, windowClass, null);
+            if (control != IntPtr.Zero && IsWindowVisible(control) && GetWindowRect(control, out var nativeBounds))
+                leading = [.. leading, nativeBounds];
         }
 
-        Rect? tray = anchors.Tray;
-        if (tray is null)
-        {
-            var trayWindow = FindWindowEx(bar, IntPtr.Zero, "TrayNotifyWnd", null);
-            if (trayWindow != IntPtr.Zero && GetWindowRect(trayWindow, out var nativeTray)) tray = nativeTray;
-        }
+        Rect[] tray = anchors.Tray;
+        var trayWindow = FindWindowEx(bar, IntPtr.Zero, "TrayNotifyWnd", null);
+        if (trayWindow != IntPtr.Zero && IsWindowVisible(trayWindow) && GetWindowRect(trayWindow, out var nativeTray))
+            tray = [.. tray, nativeTray];
+
         var origin = new Point(0, 0);
         if (!ClientToScreen(bar, ref origin)) return null;
         if (GetClientRect(bar, out var client) && client.Right > 0 && client.Bottom > 0)
             bounds = new Rect { Left = origin.X, Top = origin.Y, Right = origin.X + client.Right, Bottom = origin.Y + client.Bottom };
-        return CalculatePlacement(bar, bounds, origin, anchors.Frame, tray, anchors.Widgets, GetDpiForWindow(bar), position, offset);
+        return CalculatePlacement(bar, bounds, origin, legacyBounds ? null : anchors.Frame,
+            leading, tray, anchors.Occupied, GetDpiForWindow(bar), position, offset);
     }
 
     private static Anchors ReadAnchors(IntPtr taskbar)
@@ -295,7 +321,46 @@ sealed class TaskbarWidget : IDisposable
         try
         {
             var root = AutomationElement.FromHandle(taskbar);
-            return new Anchors(ReadBounds(root, "TaskbarFrame"), ReadBounds(root, "SystemTrayIcon"), ReadBounds(root, "WidgetsButton"));
+            var request = new CacheRequest();
+            foreach (var property in new[] { AutomationElement.AutomationIdProperty, AutomationElement.ClassNameProperty,
+                AutomationElement.ProcessIdProperty, AutomationElement.ControlTypeProperty,
+                AutomationElement.IsOffscreenProperty, AutomationElement.BoundingRectangleProperty })
+                request.Add(property);
+            request.AutomationElementMode = AutomationElementMode.None;
+            using var cache = request.Activate();
+            var elements = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            Rect? frame = null;
+            var leading = new List<Rect>();
+            var tray = new List<Rect>();
+            var occupied = new List<Rect>();
+            foreach (AutomationElement element in elements)
+            {
+                var properties = element.Cached;
+                if (properties.ProcessId == Environment.ProcessId || properties.IsOffscreen) continue;
+                var bounds = properties.BoundingRectangle;
+                if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0 ||
+                    !double.IsFinite(bounds.Left) || !double.IsFinite(bounds.Top)) continue;
+                var rect = new Rect
+                {
+                    Left = (int)Math.Floor(bounds.Left), Top = (int)Math.Floor(bounds.Top),
+                    Right = (int)Math.Ceiling(bounds.Right), Bottom = (int)Math.Ceiling(bounds.Bottom)
+                };
+                string id = properties.AutomationId;
+                string kind = properties.ClassName;
+                if (id == "TaskbarFrame" || kind == "Taskbar.TaskbarFrameAutomationPeer") frame = rect;
+                else if (kind.StartsWith("SystemTray.", StringComparison.OrdinalIgnoreCase) ||
+                    id.StartsWith("SystemTray", StringComparison.OrdinalIgnoreCase) ||
+                    id is "TrayNotifyWnd" or "NotificationArea" or "ShowHiddenIconsButton" ||
+                    kind == "TrayNotifyWnd") tray.Add(rect);
+                else if (id is "Start" or "StartButton" or "SearchButton" or "SearchBox" or "SearchEntryPoint" ||
+                    kind.Contains("StartButton", StringComparison.OrdinalIgnoreCase) ||
+                    kind.StartsWith("Taskbar.Search", StringComparison.OrdinalIgnoreCase)) leading.Add(rect);
+                else if (properties.ControlType == ControlType.Button || properties.ControlType == ControlType.ListItem ||
+                    properties.ControlType == ControlType.TabItem || properties.ControlType == ControlType.RadioButton ||
+                    kind.Contains("TaskListButton", StringComparison.OrdinalIgnoreCase) || id == "WidgetsButton") occupied.Add(rect);
+            }
+
+            return new Anchors(elements.Count > 0, frame, leading.ToArray(), tray.ToArray(), occupied.ToArray());
         }
         catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException or ElementNotAvailableException)
         {
@@ -303,24 +368,8 @@ sealed class TaskbarWidget : IDisposable
         }
     }
 
-    private static Rect? ReadBounds(AutomationElement root, string id)
-    {
-        try
-        {
-            var element = root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
-            if (element is null || element.Current.IsOffscreen) return null;
-            var bounds = element.Current.BoundingRectangle;
-            return bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0
-                ? null : new Rect { Left = (int)bounds.Left, Top = (int)bounds.Top, Right = (int)bounds.Right, Bottom = (int)bounds.Bottom };
-        }
-        catch (Exception e) when (e is COMException or InvalidOperationException or ElementNotAvailableException)
-        {
-            return null;
-        }
-    }
-
-    private static Placement? CalculatePlacement(IntPtr bar, Rect bounds, Point origin, Rect? frame, Rect? tray,
-        Rect? widgets, uint dpi, Edge edge, double fraction = 0)
+    private static Placement? CalculatePlacement(IntPtr bar, Rect bounds, Point origin, Rect? frame, Rect[] leading,
+        Rect[] tray, Rect[] occupied, uint dpi, Edge edge, double fraction = 0)
     {
         bool vertical = bounds.Bottom - bounds.Top > bounds.Right - bounds.Left;
         if (frame is { } f && f.Left >= bounds.Left && f.Right <= bounds.Right &&
@@ -337,36 +386,42 @@ sealed class TaskbarWidget : IDisposable
 
         double scale = (dpi == 0 ? 96 : dpi) / 96.0;
         int gap = Math.Clamp((int)Math.Round(5 * scale), 2, span / 4);
-        int inset = (int)Math.Round(20 * scale);
         int extent = Math.Min(span - 2 * gap, (int)Math.Round((vertical ? 156 : 205) * scale));
         int thickness = Math.Min(cross - 4, (int)Math.Round((cross / scale < 40 ? 30 : 42) * scale));
-        int midpoint = start + span / 2;
-        int? widgetStart = widgets is { } w ? AxisStart(w, vertical) : null;
-        int? widgetEnd = widgets is { } lead ? AxisEnd(lead, vertical) : null;
-        int? trayStart = tray is { } t ? AxisStart(t, vertical) : null;
-        int minimum = start + gap;
-        int maximum = end - extent - gap;
-        int offset = edge switch
+        bool IsOnBar(Rect rect) => AxisEnd(rect, vertical) > start && AxisStart(rect, vertical) < end &&
+            (vertical ? rect.Right > near && rect.Left < far : rect.Bottom > near && rect.Top < far) &&
+            AxisEnd(rect, vertical) - AxisStart(rect, vertical) < span;
+
+        int minimum = leading.Where(IsOnBar).Select(rect => AxisEnd(rect, vertical)).DefaultIfEmpty(start).Max() + gap;
+        int maximum = tray.Where(IsOnBar).Select(rect => AxisStart(rect, vertical)).DefaultIfEmpty(end).Min() - gap - extent;
+        if (maximum < minimum) return null;
+
+        int axisOrigin = vertical ? origin.Y : origin.X;
+        var ranges = new List<TaskbarRange>();
+        int freeStart = minimum;
+        foreach (var rect in occupied.Where(IsOnBar).OrderBy(rect => AxisStart(rect, vertical)))
         {
-            Edge.Start => widgetStart >= start && widgetEnd is int widgetEdge && widgetEdge > start && widgetEdge <= midpoint
-                ? widgetEdge + gap : start + inset,
+            int freeEnd = Math.Min(maximum, AxisStart(rect, vertical) - gap - extent);
+            if (freeEnd >= freeStart) ranges.Add(new TaskbarRange(freeStart - axisOrigin, freeEnd - axisOrigin));
+            freeStart = Math.Max(freeStart, AxisEnd(rect, vertical) + gap);
+            if (freeStart > maximum) break;
+        }
+        if (freeStart <= maximum) ranges.Add(new TaskbarRange(freeStart - axisOrigin, maximum - axisOrigin));
+        if (ranges.Count == 0) return null;
+
+        int desired = edge switch
+        {
+            Edge.Start => minimum,
             Edge.Center => start + (span - extent) / 2,
             Edge.Manual => minimum + (int)Math.Round((maximum - minimum) * fraction),
-            _ => EndAnchor() - extent,
+            _ => maximum,
         };
-
-        int EndAnchor()
-        {
-            int anchor = trayStart is int trayEdge && trayEdge >= midpoint && trayEdge <= end ? trayEdge - gap : end - inset;
-            if (widgetStart is int widgetEdge && widgetEdge >= midpoint && widgetEdge <= end) anchor = Math.Min(anchor, widgetEdge - gap);
-            return anchor;
-        }
-
-        offset = Math.Clamp(offset, minimum, maximum);
+        var available = ranges.ToArray();
+        int offset = TaskbarRange.Snap(desired - axisOrigin, available);
         int center = near + (cross - thickness) / 2;
         return vertical
-            ? new Placement(bar, center - origin.X, offset - origin.Y, thickness, extent, true, minimum - origin.Y, maximum - origin.Y)
-            : new Placement(bar, offset - origin.X, center - origin.Y, extent, thickness, false, minimum - origin.X, maximum - origin.X);
+            ? new Placement(bar, center - origin.X, offset, thickness, extent, true, minimum - axisOrigin, maximum - axisOrigin, available)
+            : new Placement(bar, offset, center - origin.Y, extent, thickness, false, minimum - axisOrigin, maximum - axisOrigin, available);
     }
 
     private static int AxisStart(Rect rect, bool vertical) => vertical ? rect.Top : rect.Left;
@@ -375,17 +430,23 @@ sealed class TaskbarWidget : IDisposable
     public static void VerifyPlacement()
     {
         var bounds = new Rect { Left = 0, Top = 1000, Right = 1920, Bottom = 1048 };
+        var search = new Rect { Left = 640, Top = 1000, Right = 780, Bottom = 1048 };
+        var start = new Rect { Left = 600, Top = 1000, Right = 640, Bottom = 1048 };
         var tray = new Rect { Left = 1690, Top = 1000, Right = 1919, Bottom = 1048 };
-        var startWidget = new Rect { Left = 0, Top = 1000, Right = 43, Bottom = 1048 };
+        var pinned = new Rect { Left = 790, Top = 1000, Right = 830, Bottom = 1048 };
+        var pinnedRight = new Rect { Left = 1110, Top = 1000, Right = 1150, Bottom = 1048 };
+        var busy = new Rect { Left = 790, Top = 1000, Right = 1680, Bottom = 1048 };
         var origin = new Point(0, 1000);
         var parent = new IntPtr(1);
-        if (CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.End)?.X != 1480 ||
-            CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.End)?.X != 1695 ||
-            CalculatePlacement(parent, bounds, origin, null, null, startWidget, 96, Edge.Start)?.X != 48 ||
-            CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.Center)?.X != 857 ||
-            CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.Manual, 0)?.X != 5 ||
-            CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.Manual, 1)?.X != 1710)
-            throw new InvalidOperationException("Unexpected taskbar placement");
+        Placement? Place(Edge edge, double fraction = 0) => CalculatePlacement(parent, bounds, origin, null,
+            [start, search], [tray], [pinned, pinnedRight], 96, edge, fraction);
+        if (Place(Edge.End)?.X != 1480 || Place(Edge.Start)?.X != 835 ||
+            Place(Edge.Manual, 0)?.X != 835 || Place(Edge.Manual, 1)?.X != 1480 ||
+            Place(Edge.Center) is not { } center || center.X != 857 ||
+            TaskbarRange.Snap(1000, center.Ranges) != 900 ||
+            TaskbarRange.Snap(1105, center.Ranges) != 1155 ||
+            CalculatePlacement(parent, bounds, origin, null, [start, search], [tray], [busy], 96, Edge.End) is not null)
+            throw new InvalidOperationException("Taskbar placement must stay between Start/Search and the tray and avoid pinned icons");
 
         using var host = new Forms.Form();
         host.Show();
@@ -401,7 +462,7 @@ sealed class TaskbarWidget : IDisposable
     {
         var bars = FindTaskbars();
         if (bars.Count == 0) return false;
-        using var widget = new TaskbarWidget(_ => { }, _ => { }) { legacyBounds = true };
+        using var widget = new TaskbarWidget(_ => { }, _ => { });
         widget.ReadTaskbarTheme();
         var placement = widget.FindPlacement(bars[0]).GetAwaiter().GetResult()
             ?? throw new InvalidOperationException("Could not calculate placement on the Explorer taskbar");
@@ -423,6 +484,7 @@ sealed class TaskbarWidget : IDisposable
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string name, string? caption);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string name, string? caption);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr window, ref Point point);

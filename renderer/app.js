@@ -1536,7 +1536,7 @@ els.fileInput.addEventListener('change', () => {
 function addFilesToPlaylist(files) {
   const wasEmpty = playlist.length === 0;
   const added = files.map((file) => {
-    const item = { file, path: file.path || null, name: file.name.replace(/\.[^/.]+$/, '') };
+    const item = { file, path: window.waveframe.pathForFile(file) || null, name: file.name.replace(/\.[^/.]+$/, '') };
     playlist.push(item);
     return item;
   });
@@ -1545,10 +1545,10 @@ function addFilesToPlaylist(files) {
   added.forEach((item) => enrichTrackMetadata(item));
 }
 
-async function enrichTrackMetadata(item) {
+async function enrichTrackMetadata(item, redraw = true) {
   if (!item.path) return;
   const meta = await window.waveframe.readMetadata(item.path);
-  if (!meta) return;
+  if (!meta || !playlist.includes(item)) return;
   if (meta.title) {
     item.title = meta.title;
     item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
@@ -1556,13 +1556,15 @@ async function enrichTrackMetadata(item) {
   item.artist = meta.artist || null;
   item.album = meta.album || null;
   item.picture = meta.picture || null;
-  renderPlaylist();
+  if (redraw) renderPlaylist();
   if (playlist[currentTrackIndex] === item) updateTrackNameUi();
+  return true;
 }
 
 const PLAYLIST_KEY = 'waveframe.playlist';
 function pathToFileUrl(p) {
-  return 'file:///' + p.replace(/\\/g, '/').replace(/^\/+/, '');
+  const encoded = encodeURI(p.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  return encoded.startsWith('//') ? 'file:' + encoded : 'file:///' + encoded.replace(/^\/+/, '');
 }
 
 // "Open with Waveframe" from Explorer (file association) or double-clicking
@@ -1585,11 +1587,26 @@ function restorePlaylist() {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(PLAYLIST_KEY)) || []; } catch { saved = []; }
   if (saved.length === 0) return;
-  saved.forEach((entry) => {
-    if (entry.path) playlist.push({ path: entry.path, url: pathToFileUrl(entry.path), name: entry.name });
-    else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
-  });
+  const localTracks = [];
+  for (const entry of saved) {
+    if (entry.path) {
+      const item = { path: entry.path, url: pathToFileUrl(entry.path), name: entry.name };
+      localTracks.push(item);
+      playlist.push(item);
+    } else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
+  }
   renderPlaylist();
+  refreshRestoredTrackMetadata(localTracks);
+}
+async function refreshRestoredTrackMetadata(tracks) {
+  let pending = 0;
+  for (const track of tracks) {
+    if (!playlist.includes(track) || !await enrichTrackMetadata(track, false)) continue;
+    if (++pending < 25) continue;
+    renderPlaylist();
+    pending = 0;
+  }
+  if (pending) renderPlaylist();
 }
 document.body.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drag-over'); });
 document.body.addEventListener('dragleave', () => document.body.classList.remove('drag-over'));

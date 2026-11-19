@@ -193,7 +193,7 @@ function attachFlyout(owner, getTheme) {
       return;
     }
     if (message.type === 'taskbar-status' && typeof message.status === 'string' &&
-        /^(?:CHECKING|NO-TASKBAR|NO-BOUNDS|NOT-VISIBLE|ATTACH-FAILED|(?:WIN32|ATTACHED|PARTIAL)-[0-9]{1,10})?$/.test(message.status)) {
+        /^(?:CHECKING|NO-TASKBAR|NO-BOUNDS|NO-SPACE|NOT-VISIBLE|ATTACH-FAILED|(?:WIN32|ATTACHED|PARTIAL)-[0-9]{1,10})?$/.test(message.status)) {
       if (widgetVisible() || !desktopSettings.widget)
         sendToOwner('flyout:taskbar-status', message.status);
       return;

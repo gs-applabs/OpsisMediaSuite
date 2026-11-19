@@ -54,6 +54,7 @@ sealed class TaskbarSurface : IDisposable
     private Brush? accentBrush;
     private Color? systemAccent;
     private int x, y, width, height, min, max, dragOrigin, cursorOrigin;
+    private TaskbarRange[] ranges = [];
     private bool light, compact, hasArtist, coverBackground;
     private ImageSource? currentCover;
 
@@ -169,7 +170,7 @@ sealed class TaskbarSurface : IDisposable
         if (GetCursorPos(out var point))
         {
             int axis = Vertical ? point.Y : point.X;
-            int primary = Math.Clamp(dragOrigin + axis - cursorOrigin, min, max);
+            int primary = Snap(dragOrigin + axis - cursorOrigin);
             int nextX = Vertical ? x : primary;
             int nextY = Vertical ? primary : y;
             if ((nextX != x || nextY != y) && SetWindowPos(source.Handle, IntPtr.Zero, nextX, nextY, width, height, ShowAtTop))
@@ -181,16 +182,19 @@ sealed class TaskbarSurface : IDisposable
         if (final != dragOrigin && max > min) positionChanged?.Invoke((double)(final - min) / (max - min));
     }
 
-    public void Place(int x, int y, int width, int height, int min = 0, int max = 0)
+    private int Snap(int desired) => ranges.Length == 0 ? Math.Clamp(desired, min, max) : TaskbarRange.Snap(desired, ranges);
+
+    public void Place(int x, int y, int width, int height, int min = 0, int max = 0, TaskbarRange[]? ranges = null)
     {
         if (!IsAlive || GetAncestor(source.Handle, 1) != parent || (GetWindowLong(source.Handle, WindowStyle) & Child) == 0)
             throw new InvalidOperationException("The taskbar widget lost its native parent");
         this.min = min;
         this.max = max;
+        this.ranges = ranges ?? [];
         if (dragTimer.IsEnabled)
         {
-            if (Vertical) y = Math.Clamp(this.y, min, max);
-            else x = Math.Clamp(this.x, min, max);
+            if (Vertical) y = Snap(this.y);
+            else x = Snap(this.x);
         }
         (this.x, this.y, this.width, this.height) = (x, y, width, height);
         // Explorer's composition window can cover the entire taskbar. Raise and show the widget as an Explorer child.
