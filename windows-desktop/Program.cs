@@ -19,6 +19,7 @@ static class Program
         Forms.Application.EnableVisualStyles();
         if (args is ["--test-taskbar-placement"])
         {
+            TaskbarSpectrum.Verify();
             TaskbarWidget.VerifyPlacement();
             Console.WriteLine("Taskbar placement, Windows theme palettes and artwork styling verified");
             return;
@@ -45,7 +46,8 @@ static class Program
     {
         var services = new MediaServices();
         using var widget = new TaskbarWidget(action => Send(new { type = "widget", action }),
-            status => Send(new { type = "taskbar-status", status }));
+            status => Send(new { type = "taskbar-status", status }),
+            position => Send(new { type = "taskbar-position", position }));
         using var keys = new KeyboardObserver((key, enabled) => Send(new { type = "key", key, enabled }));
         Send(new { type = "ready" });
         // Console.In uses a synchronized reader. Keep its potentially blocking read off the window message loop.
@@ -62,7 +64,9 @@ static class Program
                         keys.Configure(Bool(input, "locks"), Bool(input, "mediaKeys"));
                         widget.Configure(Bool(input, "widget"), Bool(input, "light"),
                             String(input, "openLabel"), String(input, "prevLabel"), String(input, "playLabel"), String(input, "nextLabel"),
-                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"), Bool(input, "widgetCoverBackground"), String(input, "lang", 2));
+                            String(input, "widgetPosition"), Bool(input, "widgetLegacyBounds"), Bool(input, "widgetCoverBackground"), String(input, "lang", 2),
+                            input.TryGetProperty("widgetOffset", out var offset) ? Number(offset) : 0,
+                            String(input, "dragLabel"));
                         break;
                     case "widget":
                         widget.Update(String(input, "title"), String(input, "artist"), String(input, "artwork", 12000),

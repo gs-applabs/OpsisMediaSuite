@@ -23,6 +23,7 @@ function fixture(t, desktopAvailable = false) {
     }
     isDestroyed() { return Boolean(this.destroyed); }
     isVisible() { return Boolean(this.visible); }
+    isMinimized() { return Boolean(this.minimized); }
     isFocused() { return Boolean(this.focused); }
     setPosition(x, y) { this.position = [x, y]; }
     show() { this.showInactive(); this.focus(); }
@@ -149,4 +150,27 @@ test('taskbar placement settings are passed to the Windows helper with backward-
   assert.equal(nativeCommands.findLast((command) => command.type === 'configure').widgetLegacyBounds, true);
   assert.equal(set({ widgetPosition: 'unknown', widgetLegacyBounds: 'true' }).widgetPosition, 'end');
   assert.equal(nativeCommands.findLast((command) => command.type === 'configure').widgetLegacyBounds, false);
+});
+
+
+test('the taskbar follows minimization and remembers a valid dragged position', (t) => {
+  const { owner, send, nativeCommands, nativeMessage } = fixture(t, true);
+  const config = () => nativeCommands.findLast((command) => command.type === 'configure');
+  send(owner, 'flyout:settings', { automatic: false, widget: true, widgetMinimizedOnly: true });
+  assert.equal(config().widget, false);
+  assert.deepEqual(owner.messages.at(-2), ['flyout:taskbar-status', 'WAITING-MINIMIZE']);
+
+  owner.minimized = true;
+  owner.emit('minimize');
+  assert.equal(config().widget, true);
+  nativeMessage({ type: 'taskbar-position', position: 1.01 });
+  assert.deepEqual(owner.messages.at(-1), ['flyout:visible', true]);
+  nativeMessage({ type: 'taskbar-position', position: 0.25 });
+  assert.deepEqual(owner.messages.at(-1), ['flyout:taskbar-position', 0.25]);
+
+  owner.minimized = false;
+  owner.emit('restore');
+  assert.equal(config().widget, false);
+  assert.equal(config().widgetPosition, 'manual');
+  assert.equal(config().widgetOffset, 0.25);
 });

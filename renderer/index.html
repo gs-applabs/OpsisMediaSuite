@@ -433,8 +433,8 @@
           </div>
           <label class="field-label" data-i18n="settings.accentColor">Προσαρμοσμένο χρώμα έμφασης</label>
           <div class="accent-color-row">
-            <input type="color" id="accentColorPicker" value="#7c6cf0" />
-            <button class="small-btn" id="btnAccentReset" data-i18n="settings.accentReset">Επαναφορά θέματος</button>
+            <input type="color" id="accentColorPicker" value="#7c6cf0" data-i18n-title="settings.accentColor" />
+            <button class="small-btn" id="btnAccentReset" data-i18n="settings.accentReset">Προεπιλογή των Windows</button>
           </div>
         </div>
         <div class="panel">
@@ -501,7 +501,12 @@
               <option value="start" data-i18n="desktop.widgetStart"></option>
               <option value="center" data-i18n="desktop.widgetCenter"></option>
               <option value="end" data-i18n="desktop.widgetEnd"></option>
+              <option value="manual" data-i18n="desktop.widgetManual"></option>
             </select>
+          </div>
+          <div class="switch-row" id="rowTaskbarWidgetMinimized" hidden>
+            <div class="switch-title" id="taskbarWidgetMinimizedLabel" data-i18n="desktop.widgetMinimized"></div>
+            <button class="switch" id="swTaskbarWidgetMinimized" aria-labelledby="taskbarWidgetMinimizedLabel"></button>
           </div>
           <div class="switch-row" id="rowTaskbarWidgetLegacy" hidden>
             <div><div class="switch-title" id="taskbarLegacyLabel" data-i18n="desktop.widgetLegacy"></div><div class="switch-sub" id="taskbarLegacyHint" data-i18n="desktop.widgetLegacyHint"></div></div>

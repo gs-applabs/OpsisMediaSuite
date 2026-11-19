@@ -6,6 +6,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
+using Windows.UI.ViewManagement;
+using Color = System.Windows.Media.Color;
 using Forms = System.Windows.Forms;
 
 sealed class TaskbarWidget : IDisposable
@@ -13,6 +15,14 @@ sealed class TaskbarWidget : IDisposable
     private readonly Action<string> command;
     private readonly Forms.Timer timer;
     private readonly Action<string> status;
+    private readonly Action<double>? positionChanged;
+    private readonly Forms.Timer meterTimer;
+    private readonly TaskbarSpectrum taskbarSpectrum = new();
+    private UISettings? uiSettings;
+    private Color? accent;
+    private string drag = "";
+    private double offset;
+    private readonly double[] smoothed = new double[8];
     private readonly Dictionary<IntPtr, TaskbarSurface> surfaces = new();
     private readonly Dictionary<IntPtr, Task<Anchors>> queries = new();
     private bool enabled, locating;
@@ -24,31 +34,36 @@ sealed class TaskbarWidget : IDisposable
     private double[] spectrum = [];
     private Edge position = Edge.End;
     private bool legacyBounds;
-    private enum Edge { Start, Center, End }
+    private enum Edge { Start, Center, End, Manual }
 
-    public TaskbarWidget(Action<string> command, Action<string> status)
+    public TaskbarWidget(Action<string> command, Action<string> status, Action<double>? positionChanged = null)
     {
         this.command = command;
         this.status = status;
+        this.positionChanged = positionChanged;
+        meterTimer = new Forms.Timer { Interval = 40 };
+        meterTimer.Tick += (_, _) => PaintSpectrum();
         timer = new Forms.Timer { Interval = 1500 };
         timer.Tick += async (_, _) => await Relocate();
     }
 
     public void Configure(bool show, bool lightTheme, string openLabel, string prevLabel, string playLabel, string nextLabel,
-        string placement, bool legacy, bool useCoverBackground, string language)
+        string placement, bool legacy, bool useCoverBackground, string language, double manualOffset, string dragLabel)
     {
         locale = language.Length == 2 && language.All(char.IsAsciiLetterLower) ? language : "el";
         fallbackLight = lightTheme;
         coverBackground = useCoverBackground;
         ReadTaskbarTheme();
         open = openLabel;
+        drag = dragLabel;
         previous = prevLabel;
         playback = playLabel;
         next = nextLabel;
-        var edge = placement switch { "start" => Edge.Start, "center" => Edge.Center, _ => Edge.End };
-        bool changed = show != enabled || edge != position || legacy != legacyBounds;
+        var edge = placement switch { "start" => Edge.Start, "center" => Edge.Center, "manual" => Edge.Manual, _ => Edge.End };
+        bool changed = show != enabled || edge != position || legacy != legacyBounds || (edge == Edge.Manual && offset != manualOffset);
         enabled = show;
         position = edge;
+        offset = manualOffset;
         legacyBounds = legacy;
         if (changed)
         {
@@ -57,11 +72,15 @@ sealed class TaskbarWidget : IDisposable
             {
                 Report("CHECKING");
                 timer.Start();
+                meterTimer.Start();
                 _ = Relocate();
             }
             else
             {
                 timer.Stop();
+                meterTimer.Stop();
+                taskbarSpectrum.SetActive(false);
+                Array.Clear(smoothed);
                 foreach (var bar in surfaces.Keys.ToArray()) CloseSurface(bar);
                 Report("");
             }
@@ -91,8 +110,31 @@ sealed class TaskbarWidget : IDisposable
         foreach (var surface in surfaces.Values)
         {
             surface.SetLanguage(locale);
-            surface.UpdateView(title, artist, cover, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, coverBackground, spectrum);
+            surface.UpdateView(title, artist, cover, open, previous, playback, next, playing, canPlay, canPrev, canNext, light, coverBackground, smoothed);
+            surface.SetSystemAccent(accent);
+            surface.SetDragLabel(drag);
         }
+    }
+
+    private void PaintSpectrum()
+    {
+        bool active = enabled && playing && surfaces.Values.Any(surface => surface.IsExposed);
+        taskbarSpectrum.SetActive(active);
+        ReadOnlySpan<double> levels = active ? taskbarSpectrum.Levels(spectrum) : [];
+        for (int i = 0; i < smoothed.Length; i++)
+        {
+            double target = i < levels.Length ? levels[i] : 0;
+            smoothed[i] += (target - smoothed[i]) * (target > smoothed[i] ? 0.72 : 0.32);
+        }
+        foreach (var surface in surfaces.Values) surface.SetSpectrum(smoothed);
+    }
+
+    private void SavePosition(double value)
+    {
+        position = Edge.Manual;
+        offset = value;
+        generation++;
+        positionChanged?.Invoke(value);
     }
 
     private void ReadTaskbarTheme()
@@ -105,6 +147,16 @@ sealed class TaskbarWidget : IDisposable
         catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             light = fallbackLight;
+        }
+        try
+        {
+            uiSettings ??= new UISettings();
+            var color = uiSettings.GetColorValue(UIColorType.Accent);
+            accent = Color.FromRgb(color.R, color.G, color.B);
+        }
+        catch (Exception e) when (e is COMException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            accent = null;
         }
     }
 
@@ -179,10 +231,10 @@ sealed class TaskbarWidget : IDisposable
                     }
                     if (surface is null)
                     {
-                        surface = new TaskbarSurface(bar, p.Vertical, p.Width, p.Height, command);
+                        surface = new TaskbarSurface(bar, p.Vertical, p.Width, p.Height, command, SavePosition);
                         surfaces.Add(bar, surface);
                     }
-                    surface.Place(p.X, p.Y, p.Width, p.Height);
+                    surface.Place(p.X, p.Y, p.Width, p.Height, p.Min, p.Max);
                     if (surface.IsExposed) attached++;
                     else failure = "NOT-VISIBLE";
                 }
@@ -207,7 +259,7 @@ sealed class TaskbarWidget : IDisposable
         finally { locating = false; }
     }
 
-    private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical);
+    private readonly record struct Placement(IntPtr Parent, int X, int Y, int Width, int Height, bool Vertical, int Min, int Max);
     private readonly record struct Anchors(Rect? Frame, Rect? Tray, Rect? Widgets);
 
     private async Task<Placement?> FindPlacement(IntPtr bar)
@@ -235,7 +287,7 @@ sealed class TaskbarWidget : IDisposable
         if (!ClientToScreen(bar, ref origin)) return null;
         if (GetClientRect(bar, out var client) && client.Right > 0 && client.Bottom > 0)
             bounds = new Rect { Left = origin.X, Top = origin.Y, Right = origin.X + client.Right, Bottom = origin.Y + client.Bottom };
-        return CalculatePlacement(bar, bounds, origin, anchors.Frame, tray, anchors.Widgets, GetDpiForWindow(bar), position);
+        return CalculatePlacement(bar, bounds, origin, anchors.Frame, tray, anchors.Widgets, GetDpiForWindow(bar), position, offset);
     }
 
     private static Anchors ReadAnchors(IntPtr taskbar)
@@ -268,7 +320,7 @@ sealed class TaskbarWidget : IDisposable
     }
 
     private static Placement? CalculatePlacement(IntPtr bar, Rect bounds, Point origin, Rect? frame, Rect? tray,
-        Rect? widgets, uint dpi, Edge edge)
+        Rect? widgets, uint dpi, Edge edge, double fraction = 0)
     {
         bool vertical = bounds.Bottom - bounds.Top > bounds.Right - bounds.Left;
         if (frame is { } f && f.Left >= bounds.Left && f.Right <= bounds.Right &&
@@ -292,11 +344,14 @@ sealed class TaskbarWidget : IDisposable
         int? widgetStart = widgets is { } w ? AxisStart(w, vertical) : null;
         int? widgetEnd = widgets is { } lead ? AxisEnd(lead, vertical) : null;
         int? trayStart = tray is { } t ? AxisStart(t, vertical) : null;
+        int minimum = start + gap;
+        int maximum = end - extent - gap;
         int offset = edge switch
         {
             Edge.Start => widgetStart >= start && widgetEnd is int widgetEdge && widgetEdge > start && widgetEdge <= midpoint
                 ? widgetEdge + gap : start + inset,
             Edge.Center => start + (span - extent) / 2,
+            Edge.Manual => minimum + (int)Math.Round((maximum - minimum) * fraction),
             _ => EndAnchor() - extent,
         };
 
@@ -307,11 +362,11 @@ sealed class TaskbarWidget : IDisposable
             return anchor;
         }
 
-        offset = Math.Clamp(offset, start + gap, end - extent - gap);
+        offset = Math.Clamp(offset, minimum, maximum);
         int center = near + (cross - thickness) / 2;
         return vertical
-            ? new Placement(bar, center - origin.X, offset - origin.Y, thickness, extent, true)
-            : new Placement(bar, offset - origin.X, center - origin.Y, extent, thickness, false);
+            ? new Placement(bar, center - origin.X, offset - origin.Y, thickness, extent, true, minimum - origin.Y, maximum - origin.Y)
+            : new Placement(bar, offset - origin.X, center - origin.Y, extent, thickness, false, minimum - origin.X, maximum - origin.X);
     }
 
     private static int AxisStart(Rect rect, bool vertical) => vertical ? rect.Top : rect.Left;
@@ -327,7 +382,9 @@ sealed class TaskbarWidget : IDisposable
         if (CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.End)?.X != 1480 ||
             CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.End)?.X != 1695 ||
             CalculatePlacement(parent, bounds, origin, null, null, startWidget, 96, Edge.Start)?.X != 48 ||
-            CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.Center)?.X != 857)
+            CalculatePlacement(parent, bounds, origin, null, null, null, 96, Edge.Center)?.X != 857 ||
+            CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.Manual, 0)?.X != 5 ||
+            CalculatePlacement(parent, bounds, origin, null, tray, null, 96, Edge.Manual, 1)?.X != 1710)
             throw new InvalidOperationException("Unexpected taskbar placement");
 
         using var host = new Forms.Form();
@@ -345,10 +402,11 @@ sealed class TaskbarWidget : IDisposable
         var bars = FindTaskbars();
         if (bars.Count == 0) return false;
         using var widget = new TaskbarWidget(_ => { }, _ => { }) { legacyBounds = true };
+        widget.ReadTaskbarTheme();
         var placement = widget.FindPlacement(bars[0]).GetAwaiter().GetResult()
             ?? throw new InvalidOperationException("Could not calculate placement on the Explorer taskbar");
         using var surface = new TaskbarSurface(placement.Parent, placement.Vertical, placement.Width, placement.Height, _ => { });
-        surface.VerifyRenderedPixels(placement.X, placement.Y, placement.Width, placement.Height);
+        surface.VerifyRenderedPixels(placement.X, placement.Y, placement.Width, placement.Height, widget.light);
         return true;
     }
 
@@ -357,6 +415,8 @@ sealed class TaskbarWidget : IDisposable
         enabled = false;
         generation++;
         timer.Dispose();
+        meterTimer.Dispose();
+        taskbarSpectrum.Dispose();
         foreach (var bar in surfaces.Keys.ToArray()) CloseSurface(bar);
     }
 

@@ -1286,7 +1286,10 @@ const taskbarWidgetToggle = document.getElementById('swTaskbarWidget');
 const taskbarWidgetPosition = document.getElementById('taskbarWidgetPosition');
 const taskbarWidgetLegacy = document.getElementById('swTaskbarWidgetLegacy');
 const taskbarWidgetCover = document.getElementById('swTaskbarWidgetCover');
+const taskbarWidgetMinimized = document.getElementById('swTaskbarWidgetMinimized');
 const taskbarPositionKey = 'waveframe.taskbarWidgetPosition';
+const taskbarOffsetKey = 'waveframe.taskbarWidgetOffset';
+let windowsAccent = '';
 let taskbarStatus = '';
 const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
 const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
@@ -1297,20 +1300,22 @@ function syncFlyoutSettings() {
   flyoutButton.title = t('flyout.title');
   flyoutButton.setAttribute('aria-label', flyoutButton.title);
   const widget = taskbarWidgetToggle.classList.contains('active');
-  taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = taskbarWidgetCover.disabled = !widget;
+  taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = taskbarWidgetCover.disabled = taskbarWidgetMinimized.disabled = !widget;
   renderTaskbarStatus(widget);
   window.waveframe.setFlyoutSettings({
     automatic: flyoutToggle.classList.contains('active'),
     lang: document.documentElement.lang,
-    accent: localStorage.getItem('waveframe.accentColor') || '',
+    accent: localStorage.getItem('waveframe.accentColor') || windowsAccent,
     locks: lockFlyoutToggle.classList.contains('active'),
     widget,
     widgetPosition: taskbarWidgetPosition.value,
+    widgetMinimizedOnly: taskbarWidgetMinimized.classList.contains('active'),
+    widgetOffset: localStorage.getItem(taskbarOffsetKey) === null ? null : Number(localStorage.getItem(taskbarOffsetKey)),
     widgetLegacyBounds: taskbarWidgetLegacy.classList.contains('active'),
     widgetCoverBackground: taskbarWidgetCover.classList.contains('active'),
     light: isLightSkin(document.documentElement.dataset.theme),
     openLabel: t('flyout.title'), prevLabel: t('vp.prev'),
-    playLabel: t('vp.groupPlayback'), nextLabel: t('vp.next'),
+    playLabel: t('vp.groupPlayback'), nextLabel: t('vp.next'), dragLabel: t('desktop.widgetDrag'),
   });
 }
 function openFlyoutForMediaKey() {
@@ -1359,7 +1364,8 @@ wireSwitch(flyoutToggle, (enabled) => {
 }, localStorage.getItem(flyoutSettingsKey) === '1');
 for (const [toggle, key] of [[lockFlyoutToggle, 'waveframe.lockFlyout'], [taskbarWidgetToggle, 'waveframe.taskbarWidget'],
   [taskbarWidgetLegacy, 'waveframe.taskbarWidgetLegacyBounds'],
-  [taskbarWidgetCover, 'waveframe.taskbarWidgetCoverBackground']]) {
+  [taskbarWidgetCover, 'waveframe.taskbarWidgetCoverBackground'],
+  [taskbarWidgetMinimized, 'waveframe.taskbarWidgetMinimizedOnly']]) {
   wireSwitch(toggle, (enabled) => {
     localStorage.setItem(key, enabled ? '1' : '0');
     syncFlyoutSettings();
@@ -1371,6 +1377,19 @@ taskbarWidgetPosition.addEventListener('change', () => {
   localStorage.setItem(taskbarPositionKey, taskbarWidgetPosition.value);
   syncFlyoutSettings();
 });
+window.waveframe.onTaskbarPosition((position) => {
+  localStorage.setItem(taskbarPositionKey, 'manual');
+  localStorage.setItem(taskbarOffsetKey, String(position));
+  taskbarWidgetPosition.value = 'manual';
+});
+window.waveframe.onWindowsAccent((hex) => {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+  windowsAccent = hex;
+  if (!localStorage.getItem('waveframe.accentColor')) {
+    applyAccentVariables(hex);
+    syncFlyoutSettings();
+  }
+});
 function renderTaskbarStatus(show = taskbarWidgetToggle.classList.contains('active')) {
   document.getElementById('taskbarStatusCode').textContent = taskbarStatusText(taskbarStatus, currentLang);
   document.getElementById('taskbarWidgetStatus').hidden = !show || !taskbarStatus;
@@ -1381,7 +1400,7 @@ window.waveframe.onTaskbarStatus((status) => {
 });
 window.waveframe.onDesktopAvailability((available) => {
   document.getElementById('rowLockFlyout').hidden = !available;
-  for (const id of ['rowTaskbarWidget', 'rowTaskbarWidgetPosition', 'rowTaskbarWidgetLegacy', 'rowTaskbarWidgetCover'])
+  for (const id of ['rowTaskbarWidget', 'rowTaskbarWidgetPosition', 'rowTaskbarWidgetMinimized', 'rowTaskbarWidgetLegacy', 'rowTaskbarWidgetCover'])
     document.getElementById(id).hidden = !available;
 });
 document.addEventListener('waveframe:language-changed', () => {
@@ -1870,11 +1889,15 @@ function hslToHex(h, s, l) {
   const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
-function applyAccentColor(hex) {
+function applyAccentVariables(hex) {
+  document.getElementById('accentColorPicker').value = hex;
   const [h, s, l] = hexToHsl(hex);
   document.documentElement.style.setProperty('--accent', hex);
   document.documentElement.style.setProperty('--accent-2', hslToHex(h, s, Math.max(0, l - 10)));
   document.documentElement.style.setProperty('--accent-3', hslToHex(h, s, Math.min(100, l + 12)));
+}
+function applyAccentColor(hex) {
+  applyAccentVariables(hex);
   localStorage.setItem('waveframe.accentColor', hex);
   syncFlyoutSettings();
 }
@@ -1883,7 +1906,8 @@ function resetAccentColor() {
   document.documentElement.style.removeProperty('--accent-2');
   document.documentElement.style.removeProperty('--accent-3');
   localStorage.removeItem('waveframe.accentColor');
-  document.getElementById('accentColorPicker').value = '#7c6cf0';
+  if (windowsAccent) applyAccentVariables(windowsAccent);
+  else document.getElementById('accentColorPicker').value = '#7c6cf0';
   syncFlyoutSettings();
 }
 document.getElementById('accentColorPicker').addEventListener('input', (e) => applyAccentColor(e.target.value));
@@ -2550,11 +2574,13 @@ const VIS_DRAW = {
 };
 
 const meterBars = els.miniMeter ? Array.from(els.miniMeter.children) : [];
+const miniFrequencyData = new Uint8Array(48);
 function updateMiniMeter() {
   if (!meterBars.length) return;
+  engine.analyser.getByteFrequencyData(miniFrequencyData);
   let sum = 0;
-  for (let i = 0; i < 48; i++) sum += freqData[i];
-  const level = sum / (48 * 255);
+  for (const bin of miniFrequencyData) sum += bin;
+  const level = sum / (miniFrequencyData.length * 255);
   meterBars.forEach((bar, i) => {
     const threshold = (i + 1) / meterBars.length;
     bar.classList.toggle('lit', level >= threshold * 0.85);
@@ -2743,6 +2769,9 @@ window.__selfTest = async function () {
     check('Greek UI and tooltips use accented Greek text', document.documentElement.lang === 'el' &&
       document.querySelector('[data-i18n="settings.layoutClassic"]').textContent === 'Κλασική' &&
       document.getElementById('miniBarVis').getAttribute('aria-label') === 'Οπτικοποίηση' &&
+      document.getElementById('btnAccentReset').textContent === 'Προεπιλογή των Windows' &&
+      document.getElementById('accentColorPicker').title === 'Προσαρμοσμένο χρώμα έμφασης' &&
+      t('desktop.widgetMinimized') === 'Μόνο όταν το Opsis είναι ελαχιστοποιημένο' &&
       taskbarStatusText('ATTACHED-1', currentLang) === 'Συνδέθηκε με τη γραμμή εργασιών (ATTACHED-1)');
     setLanguage(savedLang);
   } catch (e) { check('self-test threw', false, e && e.stack || e); }

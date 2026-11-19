@@ -65,16 +65,33 @@ const taskbarStatusLabels = {
 for (const [lang, label] of Object.entries(taskbarStatusLabels)) I18N[lang]['desktop.widgetStatus'] = label;
 
 
-const taskbarCoverLabels = {
-  el: 'Θολωμένο φόντο από το εξώφυλλο', en: 'Blurred album cover background', fr: 'Fond flou de la pochette',
-  de: 'Unscharfes Albumcover als Hintergrund', es: 'Fondo con portada difuminada', it: 'Sfondo sfocato della copertina',
-  pt: 'Fundo desfocado da capa', ru: 'Размытая обложка на фоне', tr: 'Bulanık albüm kapağı arka planı',
-  pl: 'Rozmyta okładka w tle', nl: 'Vervaagde albumhoes als achtergrond', sv: 'Suddigt albumomslag som bakgrund',
-  da: 'Sløret albumcover som baggrund', no: 'Uskarpt albumomslag som bakgrunn', fi: 'Sumennettu albumikansi taustalla',
-  cs: 'Rozmazaný obal alba na pozadí', sk: 'Rozmazaný obal albumu na pozadí', hu: 'Elmosott albumborító-háttér',
-  ro: 'Fundal estompat din coperta albumului', uk: 'Розмита обкладинка на тлі',
+const widgetKeys = ['desktop.widgetCoverBackground', 'desktop.widgetMinimized', 'desktop.widgetManual',
+  'desktop.widgetDrag', 'settings.accentReset'];
+const widgetTranslations = {
+  el: ["Θόλωση εξωφύλλου στο χειριστήριο", "Μόνο όταν το Opsis είναι ελαχιστοποιημένο", "Χειροκίνητη θέση", "Σύρετε για να μετακινήσετε το χειριστήριο στη γραμμή εργασιών", "Προεπιλογή των Windows"],
+  en: ["Blur album cover in the widget", "Only when Opsis is minimized", "Manual position", "Drag to move the widget along the taskbar", "Windows default"],
+  fr: ["Flouter la pochette dans le widget", "Uniquement lorsque Opsis est réduit", "Position manuelle", "Faites glisser le widget le long de la barre des tâches", "Valeur par défaut de Windows"],
+  de: ["Albumcover im Widget weichzeichnen", "Nur wenn Opsis minimiert ist", "Manuelle Position", "Widget entlang der Taskleiste ziehen", "Windows-Standard"],
+  es: ["Difuminar la portada en el widget", "Solo cuando Opsis está minimizado", "Posición manual", "Arrastra el widget por la barra de tareas", "Valor predeterminado de Windows"],
+  it: ["Sfoca la copertina nel widget", "Solo quando Opsis è ridotto a icona", "Posizione manuale", "Trascina il widget lungo la barra delle applicazioni", "Impostazione predefinita di Windows"],
+  pt: ["Desfocar a capa no widget", "Apenas quando o Opsis estiver minimizado", "Posição manual", "Arraste o widget ao longo da barra de tarefas", "Predefinição do Windows"],
+  ru: ["Размыть обложку в виджете", "Только когда Opsis свёрнуто", "Ручное расположение", "Перетащите виджет вдоль панели задач", "По умолчанию в Windows"],
+  tr: ["Pencere öğesindeki albüm kapağını bulanıklaştır", "Yalnızca Opsis simge durumundayken", "Elle konumlandırma", "Pencere öğesini görev çubuğu boyunca sürükleyin", "Windows varsayılanı"],
+  pl: ["Rozmyj okładkę w widżecie", "Tylko gdy Opsis jest zminimalizowany", "Pozycja ręczna", "Przeciągnij widżet wzdłuż paska zadań", "Domyślne ustawienie systemu Windows"],
+  nl: ["Albumhoes in de widget vervagen", "Alleen als Opsis is geminimaliseerd", "Handmatige positie", "Sleep de widget langs de taakbalk", "Windows-standaard"],
+  sv: ["Gör albumomslaget i widgeten suddigt", "Bara när Opsis är minimerat", "Manuell placering", "Dra widgeten längs aktivitetsfältet", "Windows standard"],
+  da: ["Slør albumcoveret i widgetten", "Kun når Opsis er minimeret", "Manuel placering", "Træk widgetten langs proceslinjen", "Windows-standard"],
+  no: ["Gjør albumomslaget i widgeten uskarpt", "Bare når Opsis er minimert", "Manuell plassering", "Dra widgeten langs oppgavelinjen", "Windows-standard"],
+  fi: ["Sumenna albumikansi pienoissovelluksessa", "Vain kun Opsis on pienennetty", "Manuaalinen sijainti", "Vedä pienoissovellusta tehtäväpalkissa", "Windowsin oletus"],
+  cs: ["Rozmazat obal alba ve widgetu", "Pouze při minimalizaci Opsis", "Ruční poloha", "Přetáhněte widget po hlavním panelu", "Výchozí nastavení Windows"],
+  sk: ["Rozmazať obal albumu v miniaplikácii", "Iba keď je Opsis minimalizovaný", "Manuálna poloha", "Presuňte miniaplikáciu po paneli úloh", "Predvolené nastavenie Windows"],
+  hu: ["Albumborító elmosása a widgetben", "Csak az Opsis kis méretre állításakor", "Kézi pozíció", "Húzza a widgetet a tálcán", "Windows alapértelmezés"],
+  ro: ["Estompează coperta din widget", "Numai când Opsis este minimizat", "Poziție manuală", "Trage widgetul de-a lungul barei de activități", "Setarea implicită Windows"],
+  uk: ["Розмити обкладинку у віджеті", "Лише коли Opsis згорнуто", "Ручне розташування", "Перетягніть віджет уздовж панелі завдань", "Типове налаштування Windows"],
 };
-for (const [lang, label] of Object.entries(taskbarCoverLabels)) I18N[lang]['desktop.widgetCoverBackground'] = label;
+for (const [lang, labels] of Object.entries(widgetTranslations)) {
+  widgetKeys.forEach((key, index) => { I18N[lang][key] = labels[index]; });
+}
 
 const flyoutKeys = ["title","upNext","auto","autoHint"];
 const flyoutTranslations = {
@@ -123,8 +140,10 @@ function resolveDesktopLanguage(value) {
 }
 
 function taskbarStatusText(code, language) {
+  if (code === 'WAITING-MINIMIZE' && language !== 'el') return I18N[language]?.['desktop.widgetMinimized'] || I18N.en['desktop.widgetMinimized'];
   if (!code || language !== 'el') return code;
   let message = {
+    'WAITING-MINIMIZE': 'Θα εμφανιστεί μόλις ελαχιστοποιηθεί το Opsis',
     CHECKING: 'Έλεγχος σύνδεσης',
     'NO-TASKBAR': 'Δεν βρέθηκε γραμμή εργασιών',
     'NO-BOUNDS': 'Δεν ήταν δυνατός ο υπολογισμός θέσης',
