@@ -917,6 +917,7 @@ body.mini-mode #bgCanvas { display: none; }
   border: 1px solid var(--panel-border);
   border-radius: 16px;
 }
+.vp-stage:not(:fullscreen):has(+ .vp-queue:not([hidden])) { height: clamp(360px, calc(100dvh - 245px), 900px); }
 .vp-head, .vp-controls { padding: 10px 18px; background: #17181c; }
 .vp-head, .vp-heading, .vp-source-buttons, .vp-transport, .vp-control-group {
   display: flex;
