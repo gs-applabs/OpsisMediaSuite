@@ -11,6 +11,7 @@ const suiteLib = require('./suite.js');
 const converter = require('./conv-main.js');
 const media = require('./media-main.js');
 const { attachFlyout } = require('./flyout-main.js');
+const { systemFfmpegCandidates } = require('./ffmpeg-path.js');
 media.registerScheme(); // the read-only wfmedia: protocol of the video player must be declared before the app is ready
 
 // Isolated profile for tests/self-test (never touches the real settings).
@@ -39,14 +40,8 @@ const FORMATS = {
 
 function testFfmpeg(ffmpegPath) {
   return new Promise((resolve) => {
-    if (!ffmpegPath || !fs.existsSync(ffmpegPath)) return resolve(false);
-    execFile(ffmpegPath, ['-version'], { timeout: 5000 }, (error) => resolve(!error));
-  });
-}
-
-function testSystemFfmpeg() {
-  return new Promise((resolve) => {
-    execFile('ffmpeg', ['-version'], { timeout: 5000 }, (error) => resolve(!error));
+    if (!path.isAbsolute(ffmpegPath) || !fs.statSync(ffmpegPath, { throwIfNoEntry: false })?.isFile()) return resolve(false);
+    execFile(ffmpegPath, ['-version'], { windowsHide: true, timeout: 5000 }, (error) => resolve(!error));
   });
 }
 
@@ -57,8 +52,10 @@ function testSystemFfmpeg() {
 // ffmpeg binary itself; if none is found, the Settings > dependencies panel
 // offers to download the LGPL build on demand.
 async function resolveFfmpegPath() {
-  if (await testSystemFfmpeg()) return 'ffmpeg';
-  if (await testFfmpeg(FALLBACK_FFMPEG())) return FALLBACK_FFMPEG();
+  for (const candidate of [...systemFfmpegCandidates(process.env.PATH), FALLBACK_FFMPEG()]) {
+    const executable = await fs.promises.realpath(candidate).catch(() => null);
+    if (executable && await testFfmpeg(executable).catch(() => false)) return executable;
+  }
   return null;
 }
 

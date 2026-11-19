@@ -35,3 +35,56 @@ jobs:
         run: npm test
       - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
         run: npm run selftest
+      - name: Package the Windows application
+        if: github.event_name == 'push'
+        run: npx --no-install electron-builder --win --x64 --dir
+      - name: Build the installer with Inno Setup 7
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $compiler = Join-Path $env:RUNNER_TEMP 'inno-setup-7'
+          $download = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.1-x64.exe'
+          $url = 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe'
+          Invoke-WebRequest $url -OutFile $download
+          $signature = Get-AuthenticodeSignature $download
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)CN=Pyrsys B\.V\.(?:,|$)') {
+            throw "Unexpected Inno Setup publisher or signature status: $($signature.Status)"
+          }
+          $install = Start-Process $download -ArgumentList '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$compiler`"" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Inno Setup installation exited with $($install.ExitCode)" }
+          $version = node -p "require('./package.json').version"
+          & (Join-Path $compiler 'ISCC.exe') "/DMyAppVersion=$version" 'installer/OpsisMediaSuite.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
+      - name: Scan and smoke-test the installer
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $setup = Get-Item "installer/output/OpsisMediaSuite-Setup-$version.exe" -ErrorAction Stop
+          Update-MpSignature -ErrorAction Stop
+          $defender = Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'
+          foreach ($target in @($setup.FullName, (Resolve-Path 'release/win-unpacked').Path)) {
+            $scan = & $defender -Scan -ScanType 3 -File $target -DisableRemediation | Out-String
+            $scan
+            if ($LASTEXITCODE -ne 0 -or $scan -notmatch 'found no threats') { throw "Defender did not report a clean scan for $target" }
+          }
+          $install = Start-Process $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Opsis installer exited with $($install.ExitCode)" }
+          $app = Join-Path $env:ProgramFiles 'Opsis Media Suite\Opsis Media Suite.exe'
+          $env:WAVEFRAME_USER_DATA = Join-Path $env:RUNNER_TEMP 'opsis-installed-test'
+          New-Item -ItemType Directory -Path $env:WAVEFRAME_USER_DATA | Out-Null
+          $env:WAVEFRAME_SELFTEST = '1'
+          $process = Start-Process $app -NoNewWindow -PassThru
+          if (-not $process.WaitForExit(240000)) { Stop-Process -Id $process.Id -Force; throw 'Installed app test timed out' }
+          if ($process.ExitCode -ne 0) { throw "Installed app test exited with $($process.ExitCode)" }
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($setup.Name)" | Set-Content -Encoding ascii "$($setup.FullName).sha256"
+          "Installer SHA-256: $hash"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: OpsisMediaSuite-InnoSetup-x64
+          path: |
+            installer/output/OpsisMediaSuite-Setup-*.exe
+            installer/output/OpsisMediaSuite-Setup-*.exe.sha256
+          if-no-files-found: error

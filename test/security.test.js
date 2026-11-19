@@ -4,9 +4,74 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const { systemFfmpegCandidates } = require('../ffmpeg-path.js');
 
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+
+test('FFmpeg discovery uses only explicit absolute PATH directories in order', () => {
+  assert.deepEqual(systemFfmpegCandidates(';;.\\bin;C:bin;"C:\\Program Files\\FFmpeg\\bin";D:\\tools', 'win32'), [
+    'C:\\Program Files\\FFmpeg\\bin\\ffmpeg.exe', 'D:\\tools\\ffmpeg.exe',
+  ]);
+  assert.deepEqual(systemFfmpegCandidates(':.:./bin:/usr/bin', 'linux'), ['/usr/bin/ffmpeg']);
+});
+
+function converterFixture(resolveFfmpegPath = () => null) {
+  const handlers = new Map();
+  const listeners = new Map();
+  const webContents = { mainFrame: {} };
+  const source = path.resolve('source.wav');
+  const calls = { stats: 0, jobs: 0 };
+  const module = { exports: {} };
+  vm.runInNewContext(read('conv-main.js'), {
+    module, Uint8Array, ArrayBuffer,
+    require(name) {
+      switch (name) {
+        case 'electron':
+          return { ipcMain: { handle: (...args) => handlers.set(...args), on: (...args) => listeners.set(...args) } };
+        case 'fs':
+          return { statSync() { calls.stats++; return { isFile: () => true }; } };
+        case './conv-engine.js':
+          return { AUDIO_EXTS: [], VIDEO_EXTS: [], convertDirect() {
+            calls.jobs++;
+            return { promise: Promise.resolve({ output: 'output.wav' }) };
+          } };
+        default:
+          return require(name.startsWith('./') ? path.resolve(root, name) : name);
+      }
+    },
+  });
+  module.exports.init({ getMainWin: () => ({ webContents, isDestroyed: () => false }), resolveFfmpegPath });
+  return { handlers, listeners, source, calls, event: { sender: webContents, senderFrame: webContents.mainFrame } };
+}
+
+test('converter rejects an unauthorized encode before accessing the filesystem', async () => {
+  const { handlers, source, calls, event } = converterFixture();
+  const result = await handlers.get('conv:encode')({ ...event, senderFrame: {} }, {
+    id: 'unchecked', path: source, wav: new Uint8Array(1),
+  });
+  assert.equal(result.code, 'bad-request');
+  assert.equal(calls.stats, 0);
+});
+
+test('converter cancels only submitted jobs, including jobs still being prepared', async () => {
+  let ready;
+  const preparing = new Promise((resolve) => { ready = resolve; });
+  const { handlers, listeners, source, calls, event } = converterFixture(() => preparing);
+  const encode = handlers.get('conv:direct');
+  const cancel = listeners.get('conv:cancel');
+  const request = { id: 'work', path: source, options: { format: 'wav' }, outMode: 'source' };
+  cancel(event, 'work');
+  const first = encode(event, request);
+  ready('/absolute/ffmpeg');
+  assert.equal((await first).ok, true);
+  const second = encode(event, request);
+  cancel(event, 'work');
+  assert.equal((await second).code, 'cancelled');
+  assert.equal(calls.jobs, 1);
+  assert.equal((await encode(event, request)).ok, true);
+});
 
 test('every BrowserWindow keeps contextIsolation on, nodeIntegration off and the sandbox on', () => {
   for (const f of ['main.js', 'suite-main.js', 'flyout-main.js']) {

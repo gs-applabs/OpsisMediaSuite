@@ -13,9 +13,8 @@ const V = require('./renderer/vidlib.js');
 const MAX_READ = 600 * 1024 * 1024; // the renderer decodes the whole file in memory
 
 function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents; };
-  const jobs = new Map(); // id -> { cancel }
-  const cancelledEarly = new Set(); // cancel requests that arrived while the job was still being prepared
+  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
+  const jobs = new Map();
   const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
   const okFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
   const okId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
@@ -70,38 +69,53 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.handle('conv:default-dir', (e) => (trusted(e) ? defaultOutDir() : null));
 
-  async function track(id, make) {
+  async function track(id, run) {
+    if (jobs.has(id)) return { ok: false, code: 'busy' };
+    const state = { cancelled: false, job: null };
+    jobs.set(id, state);
     try {
-      const job = await make();
-      jobs.set(id, job);
-      if (cancelledEarly.delete(id)) job.cancel();
-      const r = await job.promise;
-      return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
-    } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); }
+      return await run(state);
+    } catch (err) { return errorOf(err); } finally { jobs.delete(id); }
+  }
+
+  async function runJob(state, make) {
+    if (state.cancelled) return { ok: false, code: 'cancelled' };
+    const job = await make();
+    state.job = job;
+    if (state.cancelled) job.cancel();
+    const r = await job.promise;
+    return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
   }
 
   ipcMain.handle('conv:direct', async (e, req) => {
     if (!trusted(e) || !req || !okId(req.id) || !okFile(req.path)) return { ok: false, code: 'bad-request' };
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    const ff = await resolveFfmpegPath();
-    if (!ff) return { ok: false, code: 'no-ffmpeg' };
-    return track(req.id, () => E.convertDirect({ ffmpegPath: ff, input: req.path, options: v.options, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir: resolveOutDir(req, true) }));
+    return track(req.id, async (state) => {
+      const ff = await resolveFfmpegPath();
+      if (!ff && !state.cancelled) return { ok: false, code: 'no-ffmpeg' };
+      return runJob(state, () => E.convertDirect({ ffmpegPath: ff, input: req.path, options: v.options, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir: resolveOutDir(req, true) }));
+    });
   });
 
   ipcMain.handle('conv:encode', async (e, req) => {
-    const hasSource = !!req && okFile(req.path);
-    const hasName = !!req && typeof req.name === 'string' && req.name.length > 0 && req.name.length < 200;
-    if (!trusted(e) || !req || !okId(req.id) || !(hasSource || hasName) || !(req.wav instanceof Uint8Array || req.wav instanceof ArrayBuffer)) return { ok: false, code: 'bad-request' };
+    if (!trusted(e) || !req || !okId(req.id) || !(req.wav instanceof Uint8Array || req.wav instanceof ArrayBuffer)) return { ok: false, code: 'bad-request' };
+    const hasSource = okFile(req.path);
+    const hasName = typeof req.name === 'string' && req.name.length > 0 && req.name.length < 200;
+    if (!(hasSource || hasName)) return { ok: false, code: 'bad-request' };
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    const ff = v.options.format === 'wav' ? null : await resolveFfmpegPath();
-    if (v.options.format !== 'wav' && !ff) return { ok: false, code: 'no-ffmpeg' };
-    const wavBytes = req.wav instanceof ArrayBuffer ? new Uint8Array(req.wav) : req.wav;
-    const outDir = resolveOutDir(req, hasSource);
-    // tracks that come from the playlist have no file on disk: name them after the track inside the output folder
-    const input = hasSource ? req.path : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
-    return track(req.id, () => E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir }));
+    return track(req.id, async (state) => {
+      const ff = v.options.format === 'wav' ? null : await resolveFfmpegPath();
+      if (v.options.format !== 'wav' && !ff && !state.cancelled) return { ok: false, code: 'no-ffmpeg' };
+      return runJob(state, () => {
+        const wavBytes = req.wav instanceof ArrayBuffer ? new Uint8Array(req.wav) : req.wav;
+        const outDir = resolveOutDir(req, hasSource);
+        // Tracks from the playlist have no file on disk: name them in the output folder.
+        const input = hasSource ? req.path : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
+        return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
+      });
+    });
   });
 
   /* ---------- video (Opsis Media Suite, 2.1.0): same trust rules as the audio channels ---------- */
@@ -148,16 +162,21 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     const v = V.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
     if (v.options.subtitleFile && !okFile(v.options.subtitleFile)) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
-    const ff = await resolveFfmpegPath();
-    if (!ff) return { ok: false, code: 'no-ffmpeg' };
-    const d = await EV.detectEncoders(ff);
-    const outDir = resolveOutDir(req, true, defaultVideoOutDir);
-    return track(req.id, () => EV.encodeVideo({ ffmpegPath: ff, input: req.path, options: v.options, available: d.encoders, outDir, onProgress: (p) => sendProgress({ id: req.id, pct: Math.max(0, Math.min(1, p)) }) }));
+    return track(req.id, async (state) => {
+      const ff = await resolveFfmpegPath();
+      if (state.cancelled) return { ok: false, code: 'cancelled' };
+      if (!ff) return { ok: false, code: 'no-ffmpeg' };
+      const d = await EV.detectEncoders(ff);
+      return runJob(state, () => EV.encodeVideo({ ffmpegPath: ff, input: req.path, options: v.options, available: d.encoders, outDir: resolveOutDir(req, true, defaultVideoOutDir), onProgress: (p) => sendProgress({ id: req.id, pct: Math.max(0, Math.min(1, p)) }) }));
+    });
   });
 
   ipcMain.on('conv:cancel', (e, id) => {
     if (!trusted(e) || !okId(id)) return;
-    if (jobs.has(id)) jobs.get(id).cancel(); else cancelledEarly.add(id);
+    const state = jobs.get(id);
+    if (!state || state.cancelled) return;
+    state.cancelled = true;
+    state.job?.cancel();
   });
   ipcMain.on('conv:reveal', (e, p) => { if (trusted(e) && okFile(p)) shell.showItemInFolder(p); });
 
