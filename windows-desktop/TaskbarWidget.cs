@@ -297,7 +297,7 @@ sealed class TaskbarWidget : IDisposable
             ?? throw new InvalidOperationException("Could not calculate placement on the Explorer taskbar");
         using var surface = new TaskbarSurface(placement.Parent, placement.Vertical, placement.Width, placement.Height, _ => { });
         surface.Place(placement.X, placement.Y, placement.Width, placement.Height);
-        surface.VerifyVisibleChild();
+        surface.VerifyRenderedPixels();
         return true;
     }
 

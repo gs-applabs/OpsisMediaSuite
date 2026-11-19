@@ -1,4 +1,4 @@
-name: Opsis native taskbar Windows x64 test download
+name: Opsis taskbar rendering Windows x64 test download
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ef7a7dfca5e6142e5f5d66207ad769aea9d77aa5
+          ref: c2d81a8903875882558509a64acdce905a15de71
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -50,7 +50,7 @@ jobs:
           "$hash  Opsis Media Suite.exe" | Set-Content -Encoding ascii "$exe.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: OpsisMediaSuite-2.4.0-Native-taskbar-x64
+          name: OpsisMediaSuite-2.4.0-Taskbar-rendering-x64
           path: release/win-unpacked/
           if-no-files-found: error
           compression-level: 3
