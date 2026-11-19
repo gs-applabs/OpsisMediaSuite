@@ -1,6 +1,6 @@
 {
   "name": "waveframe",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Opsis Media Suite - audio enhancer, converter, video player and photo editor",
   "main": "main.js",
   "author": "gs-applabs",
@@ -8,18 +8,23 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win",
+    "dist": "npm run build:windows-desktop && electron-builder --win",
+    "prebuild:windows-desktop": "node -e \"require('node:fs').rmSync('windows-desktop/out', { recursive: true, force: true })\"",
+    "build:windows-desktop": "dotnet publish windows-desktop/Opsis.WindowsDesktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -o windows-desktop/out",
     "smoke-test": "node smoke-test.js",
-    "test": "node --test --test-concurrency=1 test/video.test.js test/video.real.test.js test/audiolib.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/photosave.test.js",
+    "test": "node --test --test-concurrency=1 test/video.test.js test/video.real.test.js test/audiolib.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/photosave.test.js test/flyout.test.js",
     "selftest": "node selftest.js"
   },
   "devDependencies": {
-    "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
     "music-metadata": "^11.16.1"
+  },
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "11.0.1"
   },
   "build": {
     "appId": "com.example.waveframe",
@@ -30,18 +35,29 @@
     },
     "files": [
       "main.js",
+      "audio-tags.js",
       "preload.js",
+      "flyout-main.js",
+      "flyout-preload.js",
+      "windows-desktop.js",
       "splash-preload.js",
       "suite.js",
       "suite-main.js",
       "conv-engine.js",
       "conv-main.js",
       "conv-video.js",
+      "ffmpeg-path.js",
       "media-main.js",
       "suite-apps.json",
       "icon.ico",
       "renderer/**/*",
       "m3u.js"
+    ],
+    "extraResources": [
+      {
+        "from": "windows-desktop/out",
+        "to": "windows-desktop"
+      }
     ],
     "asarUnpack": [
       "node_modules/music-metadata/**/*",

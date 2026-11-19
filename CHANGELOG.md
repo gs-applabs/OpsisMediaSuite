@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.2 — Security fixes
+- FFmpeg is launched by absolute path. The converter authenticates senders before accessing files and only records cancellation for submitted jobs.
+- The security workflow scans the .NET 11 project, and the Windows build uses a patched matcher dependency.
+- The Inno Setup 7 installer uses the existing app ID for upgrades and removes automatic execution of legacy uninstall commands.
+
 ## 2.4.1 — Safer playlists and photo save
 - **M3U hardening**: Windows paths are read correctly, a limit per track, no UNC network paths, control characters removed.
 - **Photo save** writes only the bytes of the view you see.

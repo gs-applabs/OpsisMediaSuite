@@ -35,43 +35,43 @@
     return [shelf, high];
   }
 
-  function biquad(input, c) {
-    const out = new Float64Array(input.length);
+  function biquad(c) {
     let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
     const [b0, b1, b2] = c.b, [, a1, a2] = c.a;
-    for (let i = 0; i < input.length; i++) {
-      const x0 = input[i];
+    return (x0) => {
       const y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-      out[i] = y0; x2 = x1; x1 = x0; y2 = y1; y1 = y0;
-    }
-    return out;
+      x2 = x1; x1 = x0; y2 = y1; y1 = y0;
+      return y0;
+    };
   }
 
-  /**
-   * Integrated loudness in LUFS. channels: array of Float32Array/Float64Array (one per channel).
-   * Returns -Infinity for silence / material shorter than one block.
-   */
-  function integratedLufs(channels, sampleRate) {
-    if (!channels.length || !channels[0].length) return -Infinity;
-    const [shelf, high] = kWeighting(sampleRate);
-    const n = channels[0].length;
+  // Keep the current 400 ms block only. Filter state spans all overlapping blocks.
+  function* loudnessBlocks(channels, sampleRate) {
+    const count = channels[0]?.length || 0;
     const block = Math.round(0.4 * sampleRate), step = Math.round(0.1 * sampleRate);
-    if (n < block) return -Infinity;
-    // Prefix sums of the squared, K-weighted samples: mean square of any block in O(1).
-    const prefix = channels.map((ch) => {
-      const f = biquad(biquad(ch, shelf), high);
-      const p = new Float64Array(n + 1);
-      for (let i = 0; i < n; i++) p[i + 1] = p[i] + f[i] * f[i];
-      return p;
-    });
-    // BS.1770 channel weights: 1.0 for L/R/C, 1.41 for the surround channels (indices 3 and 4 of a 5.x layout).
-    const weight = (c) => (channels.length >= 5 && (c === 3 || c === 4) ? 1.41 : 1);
-    const blocks = [];
-    for (let start = 0; start + block <= n; start += step) {
-      let sum = 0;
-      for (let c = 0; c < prefix.length; c++) sum += weight(c) * (prefix[c][start + block] - prefix[c][start]) / block;
-      blocks.push(sum);
+    if (count < block) return;
+    const coeffs = kWeighting(sampleRate);
+    const filters = channels.map(() => coeffs.map(biquad));
+    const weights = channels.map((_, c) => channels.length >= 5 && (c === 3 || c === 4) ? 1.41 : 1);
+    const energy = new Float64Array(block);
+    let sum = 0, cursor = 0, blockEnd = block;
+    for (let i = 0; i < count; i++) {
+      let sampleEnergy = 0;
+      for (let c = 0; c < channels.length; c++) {
+        const output = filters[c][1](filters[c][0](channels[c][i]));
+        sampleEnergy += weights[c] * output * output;
+      }
+      sum += sampleEnergy - energy[cursor];
+      energy[cursor] = sampleEnergy;
+      if (++cursor === block) cursor = 0;
+      if (i + 1 === blockEnd) {
+        yield sum / block;
+        blockEnd += step;
+      }
     }
+  }
+
+  function gatedLoudness(blocks) {
     const lufs = (z) => -0.691 + 10 * Math.log10(z);
     const abs = blocks.filter((z) => z > 0 && lufs(z) > -70);
     if (!abs.length) return -Infinity;
@@ -79,6 +79,25 @@
     const kept = abs.filter((z) => lufs(z) > relGate);
     if (!kept.length) return -Infinity;
     return lufs(kept.reduce((a, b) => a + b, 0) / kept.length);
+  }
+
+  /** Integrated loudness in LUFS. Silence and data shorter than one block return -Infinity. */
+  function integratedLufs(channels, sampleRate) {
+    return gatedLoudness([...loudnessBlocks(channels, sampleRate)]);
+  }
+
+  async function integratedLufsAsync(channels, sampleRate, signal) {
+    const blocks = [];
+    let nextYield = performance.now() + 6;
+    for (const energy of loudnessBlocks(channels, sampleRate)) {
+      signal?.throwIfAborted();
+      blocks.push(energy);
+      if (performance.now() < nextYield) continue;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      nextYield = performance.now() + 6;
+    }
+    signal?.throwIfAborted();
+    return gatedLoudness(blocks);
   }
 
   /** Linear gain that moves a track at `lufs` to `targetLufs`, limited to ±clampDb (default ±12 dB). */
@@ -130,5 +149,5 @@
     return remainingMs / fadeMs;
   }
 
-  return { EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { EQ_FREQS, kWeighting, integratedLufs, integratedLufsAsync, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

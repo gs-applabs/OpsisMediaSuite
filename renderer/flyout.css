@@ -1,0 +1,97 @@
+body.media-flyout {
+  background: var(--panel-solid);
+}
+
+.flyout-card {
+  display: grid;
+  grid-template-rows: 24px auto minmax(0, 1fr);
+  gap: 7px;
+  height: 100%;
+  padding: 12px 15px;
+  border: 1px solid var(--panel-border);
+}
+
+.flyout-header, .flyout-track, .flyout-progress, .flyout-controls, .flyout-volume, .flyout-up-next {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+}
+
+.flyout-card [hidden] { display: none; }
+.flyout-player { grid-row: 3; display: grid; grid-template-rows: 52px 21px 36px 26px 28px; gap: 7px; }
+.flyout-header-actions { display: flex; gap: 4px; }
+#source {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  min-height: 26px;
+  padding-inline: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.flyout-header { justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+.flyout-ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.flyout-details { flex: 1; min-width: 0; }
+#title { font-size: 16px; font-weight: 650; }
+#artist { color: var(--text-dim); font-size: 12px; }
+.flyout-cover {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 50px;
+  height: 50px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-solid));
+  color: var(--text);
+  font-size: 25px;
+  border-radius: 8px;
+}
+.flyout-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+.media-flyout button {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 27px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 5px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.media-flyout button:hover { background: color-mix(in srgb, var(--text) 12%, transparent); }
+.media-flyout button:disabled { opacity: 0.42; cursor: default; background: transparent; }
+.media-flyout button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 28%, var(--panel-solid)); }
+.media-flyout button svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.flyout-controls { justify-content: center; gap: 14px; font-size: 16px; }
+#playpause { height: 34px; min-width: 48px; border: 1px solid var(--panel-border); background: color-mix(in srgb, var(--accent) 23%, var(--panel-solid)); }
+#playpause:hover:enabled { background: color-mix(in srgb, var(--accent) 38%, var(--panel-solid)); }
+#dismiss { font-size: 20px; }
+.flyout-progress, .flyout-volume { font-size: 11px; font-variant-numeric: tabular-nums; }
+.flyout-progress span { min-width: 34px; text-align: center; }
+.flyout-volume output { min-width: 34px; text-align: right; }
+.media-flyout input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.flyout-up-next { border-top: 1px solid var(--panel-border); font-size: 12px; }
+.flyout-up-next[hidden] { display: none; }
+.flyout-up-next span { flex-shrink: 0; color: var(--text-dim); }
+.flyout-spectrum { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
+.flyout-spectrum i { width: 3px; height: 100%; background: var(--accent); border-radius: 3px; transform: scaleY(0.12); transform-origin: bottom; transition: transform 130ms ease; }
+
+
+.flyout-mixer { grid-row: 2 / span 2; min-height: 0; overflow: auto; padding: 1px 3px; }
+.flyout-mixer h1 { font-size: 14px; margin: 4px 0 8px; }
+.flyout-mixer p { color: var(--text-dim); }
+.mixer-row { padding-block: 8px; border-bottom: 1px solid var(--panel-border); }
+.mixer-row output { font-variant-numeric: tabular-nums; }
+.mixer-row-label { margin-bottom: 3px; font-size: 12px; }
+.flyout-notice { position: absolute; bottom: 8px; inset-inline: 14px; margin: 0; padding: 7px; border-radius: 6px; background: var(--panel-solid); border: 1px solid var(--panel-border); }
+.lock-toast { display: grid; place-content: center; color: var(--text); background: var(--panel-solid); border: 1px solid var(--panel-border); }
+.lock-toast main { display: flex; align-items: center; gap: 9px; }
+.lock-toast strong { color: var(--text); }
+.lock-toast span { color: var(--text-dim); }

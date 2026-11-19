@@ -101,10 +101,14 @@ jobs:
           Expand-Archive gl.zip gl -Force
           ./gl/gitleaks.exe detect --source . --no-banner --redact -v --exit-code 1
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
       - name: Known-vulnerable NuGet packages
         shell: pwsh
         run: |
-          $sln = Get-ChildItem -Recurse -Include *.sln,*.slnx -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $sln) { 'no .NET solution'; exit 0 }
-          dotnet list $sln.FullName package --vulnerable --include-transitive 2>&1 | Tee-Object vuln.txt
-          if (Select-String -Path vuln.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet) { throw 'a package with a High/Critical vulnerability is referenced' }
+          $project = 'windows-desktop/Opsis.WindowsDesktop.csproj'
+          dotnet restore $project -r win-x64 -p:NuGetAudit=true -p:NuGetAuditMode=all '-p:WarningsAsErrors=NU1900%3BNU1903%3BNU1904%3BNU1905'
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet restore or audit failed' }
+          dotnet package list --project $project --vulnerable --include-transitive --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet vulnerability listing failed' }

@@ -70,6 +70,8 @@ class AudioEngine {
     ];
     this.activeSlot = 0;
     this.crossfadeSeconds = 0;
+    this.trackGeneration = 0;
+    this.micGeneration = 0;
 
     this.micStream = null;
     this.micSource = null;
@@ -274,15 +276,18 @@ class AudioEngine {
   }
 
   stopAlternateSources() {
+    this.micGeneration++;
     this.micGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     if (this.testOsc) {
       try { this.testOsc.stop(); } catch { /* already stopped */ }
+      this.testOsc.disconnect();
       this.testOsc = null;
     }
     if (this.micStream) {
       this.micStream.getTracks().forEach((tr) => tr.stop());
       this.micStream = null;
+      this.micSource?.disconnect();
       this.micSource = null;
     }
   }
@@ -290,10 +295,17 @@ class AudioEngine {
   async startMic() {
     this.stopAlternateSources();
     this.pauseActive();
-    this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const request = this.micGeneration;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (request !== this.micGeneration) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
+    this.micStream = stream;
     this.micSource = this.ctx.createMediaStreamSource(this.micStream);
     this.micSource.connect(this.micGain);
     this.micGain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.05);
+    return true;
   }
 
   playTestTone() {
@@ -313,13 +325,18 @@ class AudioEngine {
     this.resume();
     this.stopAlternateSources();
     const slot = this.slots[this.activeSlot];
+    slot.gain.gain.cancelScheduledValues(this.ctx.currentTime);
     slot.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
     slot.el.playbackRate = this.state.tempo;
     slot.el.preservesPitch = this.state.preservePitch;
     return slot.el.play().catch((e) => { if (e && e.name !== 'AbortError') throw e; });
   }
 
-  pauseActive() { this.slots.forEach((s) => s.el.pause()); }
+  pauseActive() {
+    this.trackGeneration++;
+    this.activeEl.pause();
+    this.releaseSlot(this.slots[1 - this.activeSlot]);
+  }
 
   togglePlay() {
     if (this.activeEl.paused) return this.play();
@@ -365,44 +382,63 @@ class AudioEngine {
     this.slots.forEach((s) => { s.el.preservesPitch = on; });
   }
 
-  switchTrack(loader, onReady) {
-    const nextSlotIndex = this.crossfadeSeconds > 0 ? 1 - this.activeSlot : this.activeSlot;
-    const prevSlotIndex = this.activeSlot;
-    const nextSlot = this.slots[nextSlotIndex];
+  releaseSlot(slot) {
+    clearTimeout(slot.releaseTimer);
+    slot.releaseTimer = undefined;
+    if (!slot.el.hasAttribute('src') && !slot.objectUrl) return;
+    slot.el.pause();
+    slot.el.removeAttribute('src');
+    slot.el.load();
+    if (slot.objectUrl) URL.revokeObjectURL(slot.objectUrl);
+    slot.objectUrl = null;
+    slot.item = null;
+    slot.name = null;
+  }
 
-    if (nextSlotIndex === prevSlotIndex) {
-      loader(nextSlotIndex);
-      nextSlot.gain.gain.value = 1;
-      this.resume();
-      nextSlot.el.playbackRate = this.state.tempo;
-      nextSlot.el.preservesPitch = this.state.preservePitch;
-      nextSlot.el.play().catch(() => {});
-      if (onReady) onReady(nextSlot);
-      return;
-    }
+  loadTrack(slot, item) {
+    this.releaseSlot(slot);
+    slot.objectUrl = item.file ? URL.createObjectURL(item.file) : null;
+    slot.el.src = slot.objectUrl || item.url;
+    slot.name = item.name;
+    slot.item = item;
+  }
 
-    loader(nextSlotIndex);
-    nextSlot.gain.gain.value = 0;
+  switchTrack(item, onReady) {
+    const generation = ++this.trackGeneration;
+    this.stopAlternateSources();
+    const previous = this.slots[this.activeSlot];
+    const duration = this.crossfadeSeconds;
+    const fade = duration > 0 && !previous.el.paused;
+    if (fade) this.activeSlot = 1 - this.activeSlot;
+    const next = this.slots[this.activeSlot];
+
+    this.loadTrack(next, item);
+    if (!fade) this.releaseSlot(this.slots[1 - this.activeSlot]);
     this.resume();
-    nextSlot.el.playbackRate = this.state.tempo;
-    nextSlot.el.preservesPitch = this.state.preservePitch;
+    next.el.playbackRate = this.state.tempo;
+    next.el.preservesPitch = this.state.preservePitch;
 
-    const doCrossfade = () => {
-      const now = this.ctx.currentTime;
-      const dur = this.crossfadeSeconds;
-      const prevSlot = this.slots[prevSlotIndex];
-      nextSlot.gain.gain.cancelScheduledValues(now);
-      nextSlot.gain.gain.setValueAtTime(0, now);
-      nextSlot.gain.gain.linearRampToValueAtTime(1, now + dur);
-      prevSlot.gain.gain.cancelScheduledValues(now);
-      prevSlot.gain.gain.setValueAtTime(prevSlot.gain.gain.value, now);
-      prevSlot.gain.gain.linearRampToValueAtTime(0, now + dur);
-      setTimeout(() => prevSlot.el.pause(), dur * 1000 + 50);
-      this.activeSlot = nextSlotIndex;
-    };
-
-    nextSlot.el.play().then(doCrossfade).catch(doCrossfade);
-    if (onReady) onReady(nextSlot);
+    const now = this.ctx.currentTime;
+    next.gain.gain.cancelScheduledValues(now);
+    next.gain.gain.setValueAtTime(fade ? 0 : 1, now);
+    if (fade) {
+      clearTimeout(previous.releaseTimer);
+      previous.releaseTimer = undefined;
+    }
+    next.el.play().then(() => {
+      if (!fade || generation !== this.trackGeneration) return;
+      const start = this.ctx.currentTime;
+      previous.gain.gain.cancelScheduledValues(start);
+      previous.gain.gain.setValueAtTime(previous.gain.gain.value, start);
+      next.gain.gain.linearRampToValueAtTime(1, start + duration);
+      previous.gain.gain.linearRampToValueAtTime(0, start + duration);
+      previous.releaseTimer = setTimeout(() => this.releaseSlot(previous), duration * 1000 + 50);
+    }).catch(() => {
+      if (!fade || generation !== this.trackGeneration) return;
+      this.releaseSlot(previous);
+      next.gain.gain.setValueAtTime(1, this.ctx.currentTime);
+    });
+    onReady();
   }
 
   setEqBand(index, db) {
@@ -694,7 +730,9 @@ let currentTrackIndex = -1;
 let selectedForExport = new Set();
 let exportSelectionInitialized = false;
 let shuffleOn = false;
-let repeatOn = false;
+let repeatMode = 'off';
+let queuedShuffleTrack = null;
+let announcedTrack = null;
 let selectedFormat = 'wav';
 let selectedQuality = 'medium';
 let activePresetKey = 'flat';
@@ -769,7 +807,9 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === `tab-${btn.dataset.tab}`));
     if (btn.dataset.tab === 'player') resizeCanvas();
     if (btn.dataset.tab === 'converter') loadConverter();
+    if (btn.dataset.tab === 'settings') refreshDepsStatus();
     if (btn.dataset.tab === 'video') loadVideoPlayer();
+    else window.WaveframeVideoPlayer?.hidePanels();
     if (btn.dataset.tab === 'photo') loadPhoto();
   });
 });
@@ -1075,6 +1115,7 @@ function updateTrackNameUi() {
   syncOsNowPlaying();
   syncMiniBar();
   syncMediaSession();
+  publishFlyout();
 }
 function syncMediaSession() {
   // Standard Web MediaSession API — Chromium wires this straight through to
@@ -1111,6 +1152,7 @@ setInterval(() => {
     els.seek.value = String((el.currentTime / el.duration) * 1000);
     els.timeLabel.textContent = `${fmtTime(el.currentTime)} / ${fmtTime(el.duration)}`;
   }
+  publishFlyout();
 }, 250);
 els.seek.addEventListener('input', () => engine.seekTo(parseFloat(els.seek.value) / 1000));
 
@@ -1128,26 +1170,49 @@ function syncPlayButton() {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = engine.activeEl.paused ? 'paused' : 'playing';
   }
+  publishFlyout();
 }
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => engine.togglePlay().then(syncPlayButton));
-  navigator.mediaSession.setActionHandler('pause', () => engine.togglePlay().then(syncPlayButton));
-  navigator.mediaSession.setActionHandler('previoustrack', () => goPrev());
-  navigator.mediaSession.setActionHandler('nexttrack', () => goNext());
+  navigator.mediaSession.setActionHandler('play', () => {
+    if (engine.activeEl.paused && playlist.length) els.btnPlay.click();
+    openFlyoutForMediaKey();
+  });
+  navigator.mediaSession.setActionHandler('pause', () => {
+    engine.pauseActive();
+    syncPlayButton();
+    openFlyoutForMediaKey();
+  });
+  navigator.mediaSession.setActionHandler('previoustrack', () => { goPrev(); openFlyoutForMediaKey(); });
+  navigator.mediaSession.setActionHandler('nexttrack', () => { goNext(); openFlyoutForMediaKey(); });
+  navigator.mediaSession.setActionHandler('seekto', ({ seekTime }) => {
+    const duration = engine.activeEl.duration;
+    if (Number.isFinite(seekTime) && Number.isFinite(duration) && duration > 0) {
+      engine.seekTo(Math.max(0, Math.min(1, seekTime / duration)));
+    }
+  });
 }
 engine.slots.forEach((s) => {
   s.el.addEventListener('play', syncPlayButton);
   s.el.addEventListener('pause', syncPlayButton);
-  s.el.addEventListener('ended', () => { if (engine.activeSlot === engine.slots.indexOf(s)) onTrackEnded(); });
+  s.el.addEventListener('loadedmetadata', () => {
+    if (s.el === engine.activeEl && s.item === playlist[currentTrackIndex]) {
+      queueLoudnessAnalysis(s.item, s.el.duration);
+    }
+  });
+  s.el.addEventListener('timeupdate', () => { if (s.el === engine.activeEl) maybeAnnounceNext(s); });
+  s.el.addEventListener('ended', () => {
+    if (s.el !== engine.activeEl || s.item !== playlist[currentTrackIndex]) return;
+    onTrackEnded();
+    syncPlayButton();
+  });
   s.el.addEventListener('error', () => {
-    if (!s.el.src || engine.activeSlot !== engine.slots.indexOf(s)) return;
+    if (!s.el.src || engine.activeSlot !== engine.slots.indexOf(s) || s.item !== playlist[currentTrackIndex]) return;
     showAlertDialog(t('player.loadErrorTitle'), t('player.loadErrorMsg'));
   });
 });
 function onTrackEnded() {
   if (sleepWantsStopAtEnd()) return;
-  if (repeatOn && playlist.length === 1) { playTrackAt(currentTrackIndex); return; }
-  goNext();
+  playTrackAt(nextTrackIndex({ natural: true }));
 }
 // Real loudness (ITU-R BS.1770-4 integrated LUFS with gating, see audiolib.js) instead of a plain RMS estimate:
 // quiet classical and loud masters now land on the same perceived level. Result: { gain (linear), lufs }.
@@ -1158,37 +1223,99 @@ function measureLoudness(buffer) {
   const gainDb = WaveframeAudio.lufsToGainDb(lufs, -18, 12);
   return { gain: WaveframeAudio.dbToLinear(gainDb), lufs, gainDb };
 }
-function computeLoudnessGain(buffer) { return measureLoudness(buffer).gain; }
-async function analyzeLoudness(item) {
-  if (typeof item.normGain === 'number') return item.normGain;
-  try {
-    const arrayBuf = item.file ? await item.file.arrayBuffer() : await (await fetch(item.url)).arrayBuffer();
-    // OfflineAudioContext: no audio device / audio thread, and (unlike AudioContext) it never counts against Chromium's
-    // limit of live contexts, so loudness analysis of many tracks cannot silently start failing.
-    const analysisCtx = new OfflineAudioContext(1, 1, 44100);
-    const buffer = await analysisCtx.decodeAudioData(arrayBuf);
-    const m = measureLoudness(buffer);
-    item.normGain = m.gain; item.lufs = m.lufs; item.normGainDb = m.gainDb;
-  } catch {
-    item.normGain = 1;
+const loudnessMaxBytes = 24 * 1024 * 1024;
+const loudnessMaxDuration = 15 * 60;
+let loudnessRequest;
+let loudnessBusy = false;
+
+async function readLoudnessInput(item, signal) {
+  if (item.file) return item.file.size <= loudnessMaxBytes ? item.file.arrayBuffer() : null;
+  if (!item.url?.startsWith('file:')) return null;
+  const response = await fetch(item.url, { signal });
+  const size = Number(response.headers.get('content-length'));
+  if (!response.ok || size > loudnessMaxBytes || !response.body) {
+    await response.body?.cancel();
+    return null;
   }
-  return item.normGain;
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.length;
+      if (bytes > loudnessMaxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const data = new Uint8Array(bytes);
+  let offset = 0;
+  for (const part of chunks) {
+    data.set(part, offset);
+    offset += part.length;
+  }
+  return data.buffer;
+}
+
+function queueLoudnessAnalysis(item, duration) {
+  loudnessRequest?.controller.abort();
+  loudnessRequest = null;
+  if (!item || !engine.state.normalizationEnabled) return;
+  if (typeof item.normGain === 'number') {
+    engine.setNormalizationGain(item.normGain);
+    showLoudnessInfo(item);
+    return;
+  }
+  if (!Number.isFinite(duration) || duration <= 0 || duration > loudnessMaxDuration) return;
+  loudnessRequest = { item, controller: new AbortController() };
+  if (!loudnessBusy) drainLoudnessAnalysis();
+}
+
+async function drainLoudnessAnalysis() {
+  loudnessBusy = true;
+  try {
+    while (loudnessRequest) {
+      const request = loudnessRequest;
+      const { item, controller: { signal } } = request;
+      try {
+        const data = await readLoudnessInput(item, signal);
+        if (!data || signal.aborted) continue;
+        const decoder = new OfflineAudioContext(1, 1, 44100);
+        const buffer = await decoder.decodeAudioData(data);
+        signal.throwIfAborted();
+        const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+        const lufs = await WaveframeAudio.integratedLufsAsync(channels, buffer.sampleRate, signal);
+        const gainDb = WaveframeAudio.lufsToGainDb(lufs, -18, 12);
+        item.normGain = WaveframeAudio.dbToLinear(gainDb);
+        item.lufs = lufs;
+        item.normGainDb = gainDb;
+        if (playlist[currentTrackIndex] === item) {
+          engine.setNormalizationGain(item.normGain);
+          showLoudnessInfo(item);
+        }
+      } catch {
+        // The current track can still play if a decoder rejects or the user skips.
+      } finally {
+        if (loudnessRequest === request) loudnessRequest = null;
+      }
+    }
+  } finally { loudnessBusy = false; }
 }
 
 function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
   currentTrackIndex = index;
   const item = playlist[index];
+  queuedShuffleTrack = null;
+  announcedTrack = null;
   engine.setNormalizationGain(1);
   showLoudnessInfo(null);
-  analyzeLoudness(item).then((gain) => {
-    if (playlist[currentTrackIndex] === item) { engine.setNormalizationGain(gain); showLoudnessInfo(item); }
-  });
-  engine.switchTrack((slotIndex) => {
-    const slot = engine.slots[slotIndex];
-    slot.el.src = item.file ? URL.createObjectURL(item.file) : item.url;
-    slot.name = item.name;
-  }, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
+  queueLoudnessAnalysis(item);
+  engine.switchTrack(item, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
 }
 function showLoudnessInfo(item) {
   const el = document.getElementById('loudnessInfo');
@@ -1197,29 +1324,211 @@ function showLoudnessInfo(item) {
   const sign = item.normGainDb > 0 ? '+' : '';
   el.textContent = t('enhance.loudnessInfo').replace('{lufs}', item.lufs.toFixed(1)).replace('{gain}', sign + item.normGainDb.toFixed(1));
 }
-function goNext() {
-  if (playlist.length === 0) return;
-  let next;
-  if (shuffleOn) next = Math.floor(Math.random() * playlist.length);
-  else { next = currentTrackIndex + 1; if (next >= playlist.length) next = repeatOn ? 0 : -1; }
-  if (next === -1) return;
-  playTrackAt(next);
+function nextTrackIndex({ natural = false } = {}) {
+  if (playlist.length === 0) return -1;
+  if (natural && repeatMode === 'one' && currentTrackIndex >= 0) return currentTrackIndex;
+  if (shuffleOn && playlist.length > 1) {
+    // Keep the displayed next track until it is played or removed from the playlist.
+    const queuedIndex = playlist.indexOf(queuedShuffleTrack);
+    if (queuedIndex >= 0 && queuedIndex !== currentTrackIndex) return queuedIndex;
+    const choices = playlist.length - (currentTrackIndex >= 0 ? 1 : 0);
+    const choice = Math.floor(Math.random() * choices);
+    const index = currentTrackIndex >= 0 && choice >= currentTrackIndex ? choice + 1 : choice;
+    queuedShuffleTrack = playlist[index];
+    return index;
+  }
+  if (currentTrackIndex + 1 < playlist.length) return currentTrackIndex + 1;
+  return repeatMode === 'all' ? 0 : -1;
 }
+function goNext() { playTrackAt(nextTrackIndex()); }
 function goPrev() {
   if (playlist.length === 0) return;
   playTrackAt(currentTrackIndex <= 0 ? playlist.length - 1 : currentTrackIndex - 1);
 }
 els.btnNext.addEventListener('click', goNext);
 els.btnPrev.addEventListener('click', goPrev);
-els.btnShuffle.addEventListener('click', () => { shuffleOn = !shuffleOn; els.btnShuffle.classList.toggle('active', shuffleOn); });
-els.btnRepeat.addEventListener('click', () => { repeatOn = !repeatOn; els.btnRepeat.classList.toggle('active', repeatOn); });
+els.btnShuffle.addEventListener('click', () => {
+  shuffleOn = !shuffleOn;
+  queuedShuffleTrack = null;
+  els.btnShuffle.classList.toggle('active', shuffleOn);
+  els.btnShuffle.setAttribute('aria-pressed', String(shuffleOn));
+  publishFlyout();
+});
+const repeatLabels = { off: 'vp.repeatOff', all: 'vp.repeatList', one: 'vp.repeatFile' };
+function syncRepeatButton() {
+  els.btnRepeat.classList.toggle('active', repeatMode !== 'off');
+  els.btnRepeat.textContent = repeatMode === 'one' ? '↻¹' : '↻';
+  els.btnRepeat.title = `${t('vp.repeat')} · ${t(repeatLabels[repeatMode])}`;
+  els.btnRepeat.setAttribute('aria-label', els.btnRepeat.title);
+  els.btnRepeat.setAttribute('aria-pressed', String(repeatMode !== 'off'));
+}
+els.btnRepeat.addEventListener('click', () => {
+  repeatMode = { off: 'all', all: 'one', one: 'off' }[repeatMode];
+  syncRepeatButton();
+  publishFlyout();
+});
 els.btnMute.addEventListener('click', () => {
   const m = !engine.state.muted;
   engine.setMuted(m);
   els.btnMute.classList.toggle('active', m);
   els.btnMute.textContent = m ? '🔇' : '🔊';
+  publishFlyout();
 });
-els.volume.addEventListener('input', () => engine.setVolume(parseInt(els.volume.value, 10) / 100));
+els.volume.addEventListener('input', () => {
+  engine.setVolume(parseInt(els.volume.value, 10) / 100);
+  publishFlyout();
+});
+
+/* ---- Desktop playback flyout ---- */
+const flyoutSettingsKey = 'waveframe.automaticFlyout';
+const flyoutToggle = document.getElementById('swMediaFlyout');
+const flyoutButton = document.getElementById('btnMediaFlyout');
+const lockFlyoutToggle = document.getElementById('swLockFlyout');
+const taskbarWidgetToggle = document.getElementById('swTaskbarWidget');
+const taskbarWidgetPosition = document.getElementById('taskbarWidgetPosition');
+const taskbarWidgetLegacy = document.getElementById('swTaskbarWidgetLegacy');
+const taskbarWidgetCover = document.getElementById('swTaskbarWidgetCover');
+const taskbarWidgetMinimized = document.getElementById('swTaskbarWidgetMinimized');
+const taskbarPositionKey = 'waveframe.taskbarWidgetPosition';
+const taskbarOffsetKey = 'waveframe.taskbarWidgetOffset';
+let windowsAccent = '';
+let taskbarStatus = '';
+const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
+const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
+let flyoutVisible = false;
+let flyoutArtwork;
+
+function syncFlyoutSettings() {
+  flyoutButton.title = t('flyout.title');
+  flyoutButton.setAttribute('aria-label', flyoutButton.title);
+  const widget = taskbarWidgetToggle.classList.contains('active');
+  taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = taskbarWidgetCover.disabled = taskbarWidgetMinimized.disabled = !widget;
+  renderTaskbarStatus(widget);
+  window.waveframe.setFlyoutSettings({
+    automatic: flyoutToggle.classList.contains('active'),
+    lang: document.documentElement.lang,
+    accent: localStorage.getItem('waveframe.accentColor') || windowsAccent,
+    locks: lockFlyoutToggle.classList.contains('active'),
+    widget,
+    widgetPosition: taskbarWidgetPosition.value,
+    widgetMinimizedOnly: taskbarWidgetMinimized.classList.contains('active'),
+    widgetOffset: localStorage.getItem(taskbarOffsetKey) === null ? null : Number(localStorage.getItem(taskbarOffsetKey)),
+    widgetLegacyBounds: taskbarWidgetLegacy.classList.contains('active'),
+    widgetCoverBackground: taskbarWidgetCover.classList.contains('active'),
+    light: isLightSkin(document.documentElement.dataset.theme),
+    openLabel: t('flyout.title'), prevLabel: t('vp.prev'),
+    playLabel: t('vp.groupPlayback'), nextLabel: t('vp.next'), dragLabel: t('desktop.widgetDrag'),
+  });
+}
+function openFlyoutForMediaKey() {
+  if (playlist.length) window.waveframe.openFlyout('media');
+}
+function upcomingTrack() {
+  if (SLEEP_STEPS[sleepStep] === 'end') return null;
+  return playlist[nextTrackIndex({ natural: true })];
+}
+function maybeAnnounceNext(slot) {
+  if (!flyoutToggle.classList.contains('active')) return;
+  const item = playlist[currentTrackIndex];
+  const remaining = slot.el.duration - slot.el.currentTime;
+  if (item && item === slot.item && item !== announcedTrack && !slot.el.paused &&
+      remaining > 0 && remaining <= 7 && upcomingTrack()) {
+    announcedTrack = item;
+    window.waveframe.openFlyout('up-next');
+  }
+}
+function publishFlyout() {
+  if (!flyoutVisible) return;
+  const item = playlist[currentTrackIndex];
+  const slot = engine.slots[engine.activeSlot];
+  const hasMedia = !!item && slot.item === item;
+  const playing = hasMedia && !slot.el.paused && !slot.el.ended;
+  const upcoming = item && upcomingTrack();
+  if (playing && !engine.state.muted) engine.analyser.getByteFrequencyData(flyoutFrequencyData);
+  else flyoutFrequencyData.fill(0);
+  if (flyoutArtwork !== (item?.picture || '')) {
+    flyoutArtwork = item?.picture || '';
+    window.waveframe.updateFlyoutArtwork(flyoutArtwork);
+  }
+  window.waveframe.updateFlyout({
+    title: item?.title || item?.name, artist: item?.artist, upcoming: upcoming?.title || upcoming?.name,
+    playing, canPlay: playlist.length > 0, canNext: nextTrackIndex() >= 0, repeat: repeatMode, shuffle: shuffleOn,
+    position: hasMedia ? slot.el.currentTime : 0,
+    duration: hasMedia ? slot.el.duration : 0,
+    volume: engine.state.volume * 100, muted: engine.state.muted,
+    spectrum: flyoutBins.map((bin) => flyoutFrequencyData[bin] / 255),
+  });
+}
+flyoutButton.addEventListener('click', () => window.waveframe.openFlyout('manual'));
+wireSwitch(flyoutToggle, (enabled) => {
+  localStorage.setItem(flyoutSettingsKey, enabled ? '1' : '0');
+  syncFlyoutSettings();
+}, localStorage.getItem(flyoutSettingsKey) === '1');
+for (const [toggle, key] of [[lockFlyoutToggle, 'waveframe.lockFlyout'], [taskbarWidgetToggle, 'waveframe.taskbarWidget'],
+  [taskbarWidgetLegacy, 'waveframe.taskbarWidgetLegacyBounds'],
+  [taskbarWidgetCover, 'waveframe.taskbarWidgetCoverBackground'],
+  [taskbarWidgetMinimized, 'waveframe.taskbarWidgetMinimizedOnly']]) {
+  wireSwitch(toggle, (enabled) => {
+    localStorage.setItem(key, enabled ? '1' : '0');
+    syncFlyoutSettings();
+  }, localStorage.getItem(key) === '1');
+}
+taskbarWidgetPosition.value = localStorage.getItem(taskbarPositionKey) || 'end';
+if (!taskbarWidgetPosition.value) taskbarWidgetPosition.value = 'end';
+taskbarWidgetPosition.addEventListener('change', () => {
+  localStorage.setItem(taskbarPositionKey, taskbarWidgetPosition.value);
+  syncFlyoutSettings();
+});
+window.waveframe.onTaskbarPosition((position) => {
+  localStorage.setItem(taskbarPositionKey, 'manual');
+  localStorage.setItem(taskbarOffsetKey, String(position));
+  taskbarWidgetPosition.value = 'manual';
+});
+window.waveframe.onWindowsAccent((hex) => {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+  windowsAccent = hex;
+  if (!localStorage.getItem('waveframe.accentColor')) {
+    applyAccentVariables(hex);
+    syncFlyoutSettings();
+  }
+});
+function renderTaskbarStatus(show = taskbarWidgetToggle.classList.contains('active')) {
+  document.getElementById('taskbarStatusCode').textContent = taskbarStatusText(taskbarStatus, currentLang);
+  document.getElementById('taskbarWidgetStatus').hidden = !show || !taskbarStatus;
+}
+window.waveframe.onTaskbarStatus((status) => {
+  taskbarStatus = status;
+  renderTaskbarStatus();
+});
+window.waveframe.onDesktopAvailability((available) => {
+  document.getElementById('rowLockFlyout').hidden = !available;
+  for (const id of ['rowTaskbarWidget', 'rowTaskbarWidgetPosition', 'rowTaskbarWidgetMinimized', 'rowTaskbarWidgetLegacy', 'rowTaskbarWidgetCover'])
+    document.getElementById(id).hidden = !available;
+});
+document.addEventListener('waveframe:language-changed', () => {
+  syncFlyoutSettings();
+  syncRepeatButton();
+});
+window.waveframe.onFlyoutVisibility((visible) => {
+  flyoutVisible = visible;
+  flyoutArtwork = undefined;
+  publishFlyout();
+});
+const flyoutButtons = {
+  playpause: els.btnPlay, prev: els.btnPrev, next: els.btnNext,
+  repeat: els.btnRepeat, shuffle: els.btnShuffle, mute: els.btnMute,
+};
+window.waveframe.onFlyoutCommand(({ action, value }) => {
+  if (action === 'volume') {
+    els.volume.value = String(Math.round(value * 100));
+    els.volume.dispatchEvent(new Event('input'));
+  } else if (action === 'seek') {
+    if (engine.slots[engine.activeSlot].item === playlist[currentTrackIndex] &&
+        Number.isFinite(engine.activeEl.duration)) engine.seekTo(value);
+  } else {
+    flyoutButtons[action]?.click();
+  }
+});
 
 /* ---- sleep timer: Off -> 15 -> 30 -> 45 -> 60 -> 90 min -> end of track -> Off. Fades the volume out over the last 10 s ---- */
 const SLEEP_STEPS = [0, 15, 30, 45, 60, 90, 'end'];
@@ -1329,7 +1638,7 @@ els.fileInput.addEventListener('change', () => {
 function addFilesToPlaylist(files) {
   const wasEmpty = playlist.length === 0;
   const added = files.map((file) => {
-    const item = { file, path: file.path || null, name: file.name.replace(/\.[^/.]+$/, '') };
+    const item = { file, path: window.waveframe.pathForFile(file) || null, name: file.name.replace(/\.[^/.]+$/, '') };
     playlist.push(item);
     return item;
   });
@@ -1338,21 +1647,26 @@ function addFilesToPlaylist(files) {
   added.forEach((item) => enrichTrackMetadata(item));
 }
 
-async function enrichTrackMetadata(item) {
+async function enrichTrackMetadata(item, redraw = true) {
   if (!item.path) return;
   const meta = await window.waveframe.readMetadata(item.path);
-  if (!meta) return;
-  if (meta.title) item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
+  if (!meta || !playlist.includes(item)) return;
+  if (meta.title) {
+    item.title = meta.title;
+    item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
+  }
   item.artist = meta.artist || null;
   item.album = meta.album || null;
   item.picture = meta.picture || null;
-  renderPlaylist();
+  if (redraw) renderPlaylist();
   if (playlist[currentTrackIndex] === item) updateTrackNameUi();
+  return true;
 }
 
 const PLAYLIST_KEY = 'waveframe.playlist';
 function pathToFileUrl(p) {
-  return 'file:///' + p.replace(/\\/g, '/').replace(/^\/+/, '');
+  const encoded = encodeURI(p.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  return encoded.startsWith('//') ? 'file:' + encoded : 'file:///' + encoded.replace(/^\/+/, '');
 }
 
 // "Open with Waveframe" from Explorer (file association) or double-clicking
@@ -1375,11 +1689,26 @@ function restorePlaylist() {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(PLAYLIST_KEY)) || []; } catch { saved = []; }
   if (saved.length === 0) return;
-  saved.forEach((entry) => {
-    if (entry.path) playlist.push({ path: entry.path, url: pathToFileUrl(entry.path), name: entry.name });
-    else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
-  });
+  const localTracks = [];
+  for (const entry of saved) {
+    if (entry.path) {
+      const item = { path: entry.path, url: pathToFileUrl(entry.path), name: entry.name };
+      localTracks.push(item);
+      playlist.push(item);
+    } else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
+  }
   renderPlaylist();
+  refreshRestoredTrackMetadata(localTracks);
+}
+async function refreshRestoredTrackMetadata(tracks) {
+  let pending = 0;
+  for (const track of tracks) {
+    if (!playlist.includes(track) || !await enrichTrackMetadata(track, false)) continue;
+    if (++pending < 25) continue;
+    renderPlaylist();
+    pending = 0;
+  }
+  if (pending) renderPlaylist();
 }
 document.body.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drag-over'); });
 document.body.addEventListener('dragleave', () => document.body.classList.remove('drag-over'));
@@ -1398,7 +1727,7 @@ els.btnUrl.addEventListener('click', async () => {
   if (wasEmpty) playTrackAt(playlist.length - 1);
 });
 els.btnMic.addEventListener('click', async () => {
-  try { await engine.startMic(); els.trackName.textContent = t('player.micLabel'); }
+  try { if (await engine.startMic()) els.trackName.textContent = t('player.micLabel'); }
   catch (err) { await showAlertDialog(t('player.micErrorTitle'), err.message); }
 });
 els.btnTestTone.addEventListener('click', () => {
@@ -1425,7 +1754,13 @@ function renderPlaylist() {
     rm.addEventListener('click', (e) => {
       e.stopPropagation();
       playlist.splice(idx, 1);
-      if (idx === currentTrackIndex) { engine.pauseActive(); currentTrackIndex = -1; updateTrackNameUi(); }
+      if (idx === currentTrackIndex) {
+        engine.pauseActive();
+        engine.releaseSlot(engine.slots[engine.activeSlot]);
+        queueLoudnessAnalysis(null);
+        currentTrackIndex = -1;
+        updateTrackNameUi();
+      }
       else if (idx < currentTrackIndex) currentTrackIndex--;
       renderPlaylist();
     });
@@ -1433,6 +1768,7 @@ function renderPlaylist() {
     els.playlist.appendChild(li);
   });
   savePlaylist();
+  publishFlyout();
 }
 
 els.crossfade.addEventListener('input', () => { engine.crossfadeSeconds = parseFloat(els.crossfade.value); });
@@ -1492,6 +1828,7 @@ wireSwitch(document.getElementById('swNormalize'), (on) => {
   engine.setNormalizationEnabled(on);
   const item = playlist[currentTrackIndex];
   engine.setNormalizationGain(item && typeof item.normGain === 'number' ? item.normGain : 1);
+  queueLoudnessAnalysis(item, engine.activeEl.duration);
 }, engine.state.normalizationEnabled);
 wireSwitch(els.swPreservePitch, (on) => engine.setPreservePitch(on), engine.state.preservePitch);
 els.tempo.addEventListener('input', () => {
@@ -1617,12 +1954,14 @@ function isLightSkin(theme) {
 
 function applySkin(theme) {
   document.documentElement.dataset.theme = theme;
+  Backgrounds.invalidate();
   localStorage.setItem('waveframe.skin', theme);
   [...els.skinGrid.children].forEach((b) => b.classList.toggle('active', b.dataset.theme === theme));
   const light = isLightSkin(theme);
   btnThemeToggle.textContent = light ? '🌙' : '☀️';
   if (!light) localStorage.setItem('waveframe.lastDarkSkin', theme);
   window.waveframe?.sendThemeChange?.(theme);
+  syncFlyoutSettings();
 }
 
 els.skinGrid.addEventListener('click', (e) => {
@@ -1677,19 +2016,28 @@ function hslToHex(h, s, l) {
   const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
-function applyAccentColor(hex) {
+function applyAccentVariables(hex) {
+  document.getElementById('accentColorPicker').value = hex;
   const [h, s, l] = hexToHsl(hex);
   document.documentElement.style.setProperty('--accent', hex);
   document.documentElement.style.setProperty('--accent-2', hslToHex(h, s, Math.max(0, l - 10)));
   document.documentElement.style.setProperty('--accent-3', hslToHex(h, s, Math.min(100, l + 12)));
+  Backgrounds.invalidate();
+}
+function applyAccentColor(hex) {
+  applyAccentVariables(hex);
   localStorage.setItem('waveframe.accentColor', hex);
+  syncFlyoutSettings();
 }
 function resetAccentColor() {
   document.documentElement.style.removeProperty('--accent');
   document.documentElement.style.removeProperty('--accent-2');
   document.documentElement.style.removeProperty('--accent-3');
   localStorage.removeItem('waveframe.accentColor');
-  document.getElementById('accentColorPicker').value = '#7c6cf0';
+  if (windowsAccent) applyAccentVariables(windowsAccent);
+  else document.getElementById('accentColorPicker').value = '#7c6cf0';
+  Backgrounds.invalidate();
+  syncFlyoutSettings();
 }
 document.getElementById('accentColorPicker').addEventListener('input', (e) => applyAccentColor(e.target.value));
 document.getElementById('btnAccentReset').addEventListener('click', resetAccentColor);
@@ -1806,7 +2154,7 @@ hueSlider.addEventListener('input', () => {
 // not at all while the window is hidden/minimized.
 let lastHueTick = 0;
 function tickAutoHue(now) {
-  if (hueMode === 'auto' && !document.hidden && now - lastHueTick >= 66) {
+  if (hueMode === 'auto' && Backgrounds.animating && now - lastHueTick >= 66) {
     autoHue = (autoHue + 0.06 * ((now - lastHueTick) / 16.7)) % 360;
     lastHueTick = now;
     bgCanvasEl.style.filter = `hue-rotate(${autoHue}deg)`;
@@ -1816,8 +2164,7 @@ function tickAutoHue(now) {
 requestAnimationFrame(tickAutoHue);
 
 function restorePreferences() {
-  const lang = localStorage.getItem('waveframe.lang') || 'el';
-  setLanguage(lang);
+  setLanguage(resolveDesktopLanguage(localStorage.getItem('waveframe.lang')));
   syncLangActiveCard();
 
   applySkin(localStorage.getItem('waveframe.skin') || 'midnight');
@@ -2356,23 +2703,25 @@ const VIS_DRAW = {
 };
 
 const meterBars = els.miniMeter ? Array.from(els.miniMeter.children) : [];
+const miniFrequencyData = new Uint8Array(48);
 function updateMiniMeter() {
   if (!meterBars.length) return;
+  engine.analyser.getByteFrequencyData(miniFrequencyData);
   let sum = 0;
-  for (let i = 0; i < 48; i++) sum += freqData[i];
-  const level = sum / (48 * 255);
+  for (const bin of miniFrequencyData) sum += bin;
+  const level = sum / (miniFrequencyData.length * 255);
   meterBars.forEach((bar, i) => {
     const threshold = (i + 1) / meterBars.length;
     bar.classList.toggle('lit', level >= threshold * 0.85);
   });
 }
 const tabPlayerEl = document.getElementById('tab-player');
-function renderLoop() {
-  if (!document.hidden) {
-    // Skip the (potentially expensive, especially the particle-based) canvas
-    // drawing when the Player tab isn't even visible — real CPU/battery win,
-    // since a hidden `.tab-pane { display: none }` doesn't stop rAF on its own.
-    if (tabPlayerEl.classList.contains('active') || document.body.classList.contains('mini-mode')) {
+let lastVisualizerFrame = 0;
+function renderLoop(now) {
+  if (!document.hidden && now - lastVisualizerFrame >= 1000 / 30) {
+    lastVisualizerFrame = now;
+    const playerVisible = tabPlayerEl.classList.contains('active');
+    if (playerVisible || document.body.classList.contains('mini-mode')) {
       if (visMode !== prevVisMode) { particles = []; prevVisMode = visMode; }
       if (visMode !== 'none') {
         engine.analyser.getByteFrequencyData(freqData);
@@ -2380,12 +2729,12 @@ function renderLoop() {
         const draw = VIS_DRAW[visMode] || drawBars;
         draw();
       }
+      if (playerVisible) updateMiniMeter();
     }
-    updateMiniMeter();
   }
   requestAnimationFrame(renderLoop);
 }
-renderLoop();
+requestAnimationFrame(renderLoop);
 
 /* ------------------------------------------------------------------ */
 /* Dependencies (FFmpeg)                                              */
@@ -2395,12 +2744,64 @@ const depFfmpegStatus = document.getElementById('depFfmpegStatus');
 const btnInstallDeps = document.getElementById('btnInstallDeps');
 const depsProgress = document.getElementById('depsProgress');
 
-async function refreshDepsStatus() {
-  const status = await window.waveframe.checkDeps();
+const playbackFormats = [
+  ['MP4 · H.264 / AAC', 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'],
+  ['MP4 · H.265 / HEVC', 'video/mp4; codecs="hvc1.1.6.L93.B0"'],
+  ['WebM · VP8 / Vorbis', 'video/webm; codecs="vp8, vorbis"'],
+  ['WebM · VP9 / Opus', 'video/webm; codecs="vp9, opus"'],
+  ['MP4 · AV1', 'video/mp4; codecs="av01.0.05M.08"'],
+];
+const encoderNames = [['h264', 'H.264 / AVC'], ['h265', 'H.265 / HEVC'], ['vp9', 'VP9'], ['av1', 'AV1']];
+let dependencySnapshot;
+
+function renderCodecRows(id, rows) {
+  const list = document.getElementById(id);
+  list.replaceChildren(...rows.map(([name, support]) => {
+    const row = document.createElement('li');
+    const label = document.createElement('span');
+    const status = document.createElement('span');
+    label.textContent = name;
+    status.textContent = support;
+    row.append(label, status);
+    return row;
+  }));
+}
+
+function renderDependencies() {
+  const playback = document.getElementById('vpVideo');
+  renderCodecRows('depPlaybackCodecs', playbackFormats.map(([name, format]) => {
+    const supported = playback.canPlayType(format);
+    return [name, t(supported === 'probably' ? 'deps.supported' : supported === 'maybe' ? 'deps.maybe' : 'deps.unavailable')];
+  }));
+  if (!dependencySnapshot) return;
+  const { status, encoders } = dependencySnapshot;
   const ok = status.ffmpeg.ok;
   depFfmpegStatus.textContent = ok ? t('settings.depsOk') : t('settings.depsMissing');
   depFfmpegStatus.className = 'dep-status ' + (ok ? 'ok' : 'missing');
   btnInstallDeps.style.display = ok ? 'none' : 'inline-block';
+  document.getElementById('depKLiteStatus').textContent = status.kLite ||
+    t(status.kLite === null ? 'deps.notChecked' : 'deps.notDetected');
+  renderCodecRows('depVideoEncoders', encoderNames.map(([key, name]) => {
+    const found = encoders.summary?.[key];
+    const available = [...(found?.hardware || []), ...(found?.software || [])];
+    return [name, available.join(', ') || t('deps.unavailable')];
+  }));
+}
+
+let dependencyCheck;
+let dependencyCheckedAt = 0;
+function refreshDepsStatus(force = false) {
+  if (dependencyCheck) return dependencyCheck;
+  if (!force && dependencySnapshot && Date.now() - dependencyCheckedAt < 30_000) return Promise.resolve();
+  dependencyCheck = Promise.all([
+    window.waveframe.checkDeps().catch(() => ({ ffmpeg: { ok: false }, kLite: null })),
+    window.waveframe.vidEncoders().catch(() => ({ ffmpeg: false })),
+  ]).then(([status, encoders]) => {
+    dependencySnapshot = { status, encoders };
+    dependencyCheckedAt = Date.now();
+    renderDependencies();
+  }).finally(() => { dependencyCheck = null; });
+  return dependencyCheck;
 }
 
 window.waveframe.onDepsProgress(({ phase, pct }) => {
@@ -2414,7 +2815,7 @@ btnInstallDeps.addEventListener('click', async () => {
   depsProgress.textContent = t('settings.depsDownloading') + '0%';
   try {
     const result = await window.waveframe.installDeps();
-    if (result.ok) await refreshDepsStatus();
+    if (result.ok) await refreshDepsStatus(true);
     else depsProgress.textContent = result.cancelled ? '' : t('settings.depsError') + result.error;
   } catch (err) {
     depsProgress.textContent = t('settings.depsError') + err.message;
@@ -2423,7 +2824,7 @@ btnInstallDeps.addEventListener('click', async () => {
   }
 });
 
-document.addEventListener('waveframe:language-changed', () => refreshDepsStatus());
+document.addEventListener('waveframe:language-changed', renderDependencies);
 
 /* ------------------------------------------------------------------ */
 /* Boot                                                                */
@@ -2434,13 +2835,14 @@ renderUserPresets();
 restorePreferences();
 restorePlaylist();
 updateTrackNameUi();
-refreshDepsStatus();
+renderDependencies();
 
-window.waveframe.onMediaKey((action) => {
-  if (action === 'playpause') { if (currentTrackIndex === -1 && playlist.length > 0) playTrackAt(0); else engine.togglePlay().then(syncPlayButton); }
+window.waveframe.onMediaKey((action, fromKeyboard) => {
+  if (action === 'playpause' && playlist.length) els.btnPlay.click();
   else if (action === 'next') goNext();
   else if (action === 'prev') goPrev();
   else if (action === 'stop') { engine.pauseActive(); syncPlayButton(); }
+  if (fromKeyboard) openFlyoutForMediaKey();
 });
 
 /* ---- Taskbar thumbnail toolbar icons (drawn on a canvas, no image assets needed) ---- */
@@ -2452,7 +2854,7 @@ function drawThumbIcon(draw) {
   draw(ctx);
   return c.toDataURL('image/png');
 }
-window.waveframe?.setThumbbarIcons?.({
+const thumbbarIcons = {
   prev: drawThumbIcon((ctx) => {
     ctx.fillRect(8, 8, 3, 16);
     ctx.beginPath(); ctx.moveTo(24, 8); ctx.lineTo(24, 24); ctx.lineTo(13, 16); ctx.closePath(); ctx.fill();
@@ -2468,7 +2870,20 @@ window.waveframe?.setThumbbarIcons?.({
     ctx.fillRect(9, 7, 5, 18);
     ctx.fillRect(18, 7, 5, 18);
   }),
-});
+  flyout: drawThumbIcon((ctx) => {
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(4, 7, 24, 18);
+    ctx.fillRect(9, 13, 4, 5);
+    ctx.fillRect(15, 11, 8, 2);
+    ctx.fillRect(15, 17, 8, 2);
+  }),
+};
+function syncThumbbarIcons() {
+  window.waveframe?.setThumbbarIcons?.({ ...thumbbarIcons, flyoutLabel: t('flyout.title') });
+}
+syncThumbbarIcons();
+document.addEventListener('waveframe:language-changed', syncThumbbarIcons);
 
 // First-run guidance is the welcome splash (main process, once per major.minor version); the old in-page tutorial is no longer auto-opened.
 
@@ -2488,6 +2903,29 @@ window.__selfTest = async function () {
     for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = Math.pow(10, -23 / 20) * Math.sin(2 * Math.PI * 997 * i / fs); }
     const m = measureLoudness(buf);
     check('measureLoudness on an AudioBuffer', Math.abs(m.lufs + 23) < 0.15 && Math.abs(m.gainDb - 5) < 0.15, `${m.lufs.toFixed(2)} LUFS, gain ${m.gainDb.toFixed(2)} dB`);
+    const originalSlot = engine.slots[0];
+    const probe = { file: new File(['test'], 'probe.wav', { type: 'audio/wav' }), name: 'probe' };
+    const liveUrls = new Set();
+    const makeUrl = URL.createObjectURL;
+    const revokeUrl = URL.revokeObjectURL;
+    let bounded = true;
+    try {
+      URL.createObjectURL = (...args) => {
+        const url = makeUrl(...args);
+        liveUrls.add(url);
+        return url;
+      };
+      URL.revokeObjectURL = (url) => { liveUrls.delete(url); revokeUrl(url); };
+      for (let i = 0; i < 80; i++) {
+        engine.loadTrack(originalSlot, probe);
+        bounded &&= liveUrls.size === 1;
+      }
+    } finally {
+      engine.releaseSlot(originalSlot);
+      URL.createObjectURL = makeUrl;
+      URL.revokeObjectURL = revokeUrl;
+    }
+    check('changing tracks repeatedly releases every temporary audio URL', bounded && liveUrls.size === 0 && !originalSlot.el.hasAttribute('src'));
     // sleep timer cycle
     setSleepStep(1); check('sleep timer arms (15 min)', SLEEP_STEPS[sleepStep] === 15 && !!sleepTick && document.getElementById('btnSleep').classList.contains('active'));
     setSleepStep(0); check('sleep timer disarms and restores volume', !sleepTick && engine.sleepFactor === 1);
@@ -2514,8 +2952,32 @@ window.__selfTest = async function () {
     playlist = [{ name: '<b id="xss-probe">bold</b>', picture: '" onerror="1' }]; currentTrackIndex = -1;
     renderPlaylist();
     check('playlist names are rendered as text (no markup injection)', !document.getElementById('xss-probe') && els.playlist.textContent.includes('<b id="xss-probe">'));
+    playlist = [{ name: 'First' }, { name: 'Second' }, { name: 'Third' }];
+    currentTrackIndex = 0;
+    shuffleOn = true;
+    const next = upcomingTrack();
+    check('Up Next follows the stable shuffle choice', next !== playlist[0] && next === playlist[nextTrackIndex()]);
+    playlist.splice(playlist.indexOf(next), 1);
+    check('Up Next drops a removed shuffle choice', upcomingTrack() === playlist[1]);
+    repeatMode = 'one';
+    check('repeat-one previews the current track and allows manual advance', upcomingTrack() === playlist[0] && nextTrackIndex() === 1);
+    repeatMode = 'off';
+    shuffleOn = false;
+    queuedShuffleTrack = null;
     playlist = savedList; currentTrackIndex = savedIdx; renderPlaylist();
     check('i18n has the new keys', t('player.sleep') !== 'player.sleep' && t('enhance.exportApo') !== 'enhance.exportApo');
+    const savedLang = currentLang;
+    setLanguage('en');
+    check('English tooltips retain their English labels', document.getElementById('miniBarVis').title === 'Visualization');
+    setLanguage(resolveDesktopLanguage('el-GR'));
+    check('Greek UI and tooltips use accented Greek text', document.documentElement.lang === 'el' &&
+      document.querySelector('[data-i18n="settings.layoutClassic"]').textContent === 'Κλασική' &&
+      document.getElementById('miniBarVis').getAttribute('aria-label') === 'Οπτικοποίηση' &&
+      document.getElementById('btnAccentReset').textContent === 'Προεπιλογή των Windows' &&
+      document.getElementById('accentColorPicker').title === 'Προσαρμοσμένο χρώμα έμφασης' &&
+      t('desktop.widgetMinimized') === 'Μόνο όταν το Opsis είναι ελαχιστοποιημένο' &&
+      taskbarStatusText('ATTACHED-1', currentLang) === 'Συνδέθηκε με τη γραμμή εργασιών (ATTACHED-1)');
+    setLanguage(savedLang);
   } catch (e) { check('self-test threw', false, e && e.stack || e); }
   return out;
 };

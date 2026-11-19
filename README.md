@@ -41,13 +41,14 @@
 | 🎨 Εμφάνιση | 20 θέματα (skins), 10 κινούμενα φόντα, 20 visualizers, 2 διατάξεις παραθύρου (Modern/Classic), custom accent color, mini/compact always-on-top mode |
 | 🌐 Γλώσσες | Πλήρης διεπαφή σε 20 γλώσσες (Ελληνικά, Αγγλικά, Γαλλικά, Γερμανικά, Ισπανικά, Ιταλικά, Πορτογαλικά, Ρωσικά, Τουρκικά, Πολωνικά, Ολλανδικά, Σουηδικά, Δανικά, Νορβηγικά, Φινλανδικά, Τσεχικά, Σλοβακικά, Ουγγρικά, Ρουμανικά, Ουκρανικά) |
 | 🖥 Windows integration | SMTC (έλεγχος από lock screen/ακουστικά Bluetooth), taskbar thumbbar & jump list, συσχέτιση αρχείων ήχου, auto-launch on login, toast ειδοποιήσεις αλλαγής κομματιού |
+| 🎵 Χειριστήριο ήχου | Ανοίγει από τη γραμμή τίτλου ή τη μικρογραφία στη γραμμή εργασιών των Windows. Δείχνει το τρέχον και το επόμενο κομμάτι, με ζωντανό φάσμα, επιλογή θέσης, ένταση, τυχαία σειρά και επανάληψη. Στον ίδιο πίνακα υπάρχουν οι συνεδρίες πολυμέσων άλλων εφαρμογών και ο μίκτης των Windows. Στις **Ρυθμίσεις → Σύστημα** ενεργοποιείς την αυτόματη εμφάνιση, τις ενδείξεις πλήκτρων κλειδώματος και το χειριστήριο στις γραμμές εργασιών του Explorer. Το χειριστήριο ακολουθεί το θέμα και το ύψος της γραμμής εργασιών, με ευδιάκριτο πλαίσιο και προαιρετικό θολωμένο φόντο από το εξώφυλλο. |
 | ♿ Προσβασιμότητα | Πλήρης πλοήγηση με πληκτρολόγιο, ορατά focus rings, σεβασμός `prefers-reduced-motion` |
 | 🛡 Αξιοπιστία | Crash overlay με αρχείο καταγραφής αντί για σιωπηλή κατάρρευση, backup/restore ρυθμίσεων σε JSON (για συγχρονισμό μέσω OneDrive/Drive/Dropbox) |
 | 👋 Οδηγός & οικογένεια εφαρμογών | Οδηγός καλωσορίσματος 6 σελίδων σε κάθε νέα έκδοση (major.minor) που «μαζεύεται» στο λογότυπο, παρουσίαση «Η οικογένεια Opsis» με κατάσταση εγκατάστασης και λήψη εγκαταστάτη μόνο με επιβεβαίωση και έλεγχο SHA-256, ειδοποίηση για νέα έκδοση (μία φορά ανά έκδοση, με διακόπτη) |
 
 ### Εγκατάσταση
 
-Κατέβασε το τελευταίο `OpsisMediaSuite-Setup-*.exe` (Inno Setup, εγκατάσταση χωρίς δικαιώματα διαχειριστή) από τα [Releases](../../releases) και εκτέλεσέ το — ο οδηγός εγκατάστασης υποστηρίζει επιλογή γλώσσας/φακέλου εγκατάστασης και δημιουργεί συντομεύσεις επιφάνειας εργασίας/μενού Έναρξης. Υπάρχει επίσης μια φορητή (portable) έκδοση `OpsisMediaSuite-*.exe` που δεν απαιτεί εγκατάσταση.
+Κατέβασε το τελευταίο `OpsisMediaSuite-Setup-*.exe` από τα [Releases](../../releases). Ο οδηγός Inno Setup ζητά δικαιώματα διαχειριστή, εγκαθιστά την εφαρμογή στο Program Files και δημιουργεί συντομεύσεις. Για παλιές εγκαταστάσεις με το όνομα Waveframe, η απεγκατάσταση γίνεται από τις Εγκατεστημένες εφαρμογές των Windows. Διατίθεται επίσης φορητή έκδοση.
 
 Η εφαρμογή χρειάζεται ένα FFmpeg (LGPL build) για την εξαγωγή αρχείων· αν δεν υπάρχει ήδη στο σύστημα, το κατεβάζει μόνη της από τις Ρυθμίσεις → Dependencies με ένα κλικ.
 
@@ -59,10 +60,11 @@
 
 ```
 npm install
+npm run build:windows-desktop  # δημιουργία αυτοτελούς φακέλου του βοηθού με το .NET 11 SDK
 npm start          # εκκίνηση σε dev mode
 npm run smoke-test # αυτοματοποιημένος έλεγχος εκκίνησης χωρίς σφάλματα
-npm run dist        # παράγει portable + win-unpacked (Windows x64) στο release/
-# Inno Setup installer (απαιτεί Inno Setup 7): ISCC.exe /DMyAppVersion=2.2.0 installerOpsisMediaSuite.iss
+npx electron-builder --win --x64 --dir  # δημιουργία του release/win-unpacked
+ISCC.exe installer\OpsisMediaSuite.iss  # Inno Setup 7, έξοδος στο installer/output/
 ```
 
 ### Δομή αποθετηρίου
@@ -89,13 +91,14 @@ Opsis Media Suite is a free, real-time audio enhancer and media player for Windo
 | 🎨 Appearance | 20 skins, 10 animated backgrounds, 20 visualizers, 2 window layouts (Modern/Classic), custom accent color, mini/compact always-on-top mode |
 | 🌐 Languages | Full interface in 20 languages (Greek, English, French, German, Spanish, Italian, Portuguese, Russian, Turkish, Polish, Dutch, Swedish, Danish, Norwegian, Finnish, Czech, Slovak, Hungarian, Romanian, Ukrainian) |
 | 🖥 Windows integration | SMTC (lock screen / Bluetooth headset controls), taskbar thumbbar & jump list, audio file associations, auto-launch on login, track-change toast notifications |
+| 🎵 Audio flyout | Open from the title bar or the Windows taskbar thumbnail. Shows the current track, live spectrum and what plays next, with seek, volume, shuffle and repeat controls. Also controls other apps’ Windows media sessions and opens the system and per-app volume mixer. Use **Settings → System** for automatic display, lock key indicators and the widget on Explorer taskbars. The widget follows the Windows taskbar theme and size, with a visible panel and an optional blurred album-art background. |
 | ♿ Accessibility | Full keyboard navigation, visible focus rings, respects `prefers-reduced-motion` |
 | 🛡 Reliability | Crash overlay with a log file instead of a silent failure, JSON backup/restore of all settings (for syncing via OneDrive/Drive/Dropbox) |
 | 👋 Guide & app family | 6-page welcome guide on every new major.minor version that shrinks into the header logo, “The Opsis family” showcase with install state and an installer download only after a confirmation and SHA-256 check, new-version notification (once per version, can be switched off) |
 
 ### Installation
 
-Download the latest `OpsisMediaSuite-Setup-*.exe` (Inno Setup, per-user, no admin rights) from [Releases](../../releases) and run it — the installer wizard supports choosing a language/install folder and creates desktop/Start Menu shortcuts. A portable `OpsisMediaSuite-*.exe` build that needs no installation is also provided.
+Download the latest `OpsisMediaSuite-Setup-*.exe` from [Releases](../../releases). The Inno Setup wizard asks for administrator rights, installs the app in Program Files and creates shortcuts. Remove legacy Waveframe installations through Windows Installed apps. A portable build is also available.
 
 The app needs an FFmpeg (LGPL build) for exporting; if one isn't already on your system, it can download it itself from Settings → Dependencies with one click.
 
@@ -107,9 +110,11 @@ Every release file has a matching `.sha256` file. In PowerShell: `(Get-FileHash 
 
 ```
 npm install
+npm run build:windows-desktop  # build the self-contained Windows helper folder with the .NET 11 SDK
 npm start          # launch in dev mode
 npm run smoke-test # automated startup/crash check
-npm run dist        # produces a portable build + NSIS installer (Windows x64) in release/
+npx electron-builder --win --x64 --dir  # create release/win-unpacked
+ISCC.exe installer\OpsisMediaSuite.iss  # Inno Setup 7, outputs to installer/output/
 ```
 
 ### Repository layout

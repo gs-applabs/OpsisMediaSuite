@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen, Menu, Tray } = require('electron');
 const path = require('path');
+const { readTrackText } = require('./audio-tags');
 const fs = require('fs');
 const os = require('os');
 const https = require('https');
@@ -9,6 +10,8 @@ const suite = require('./suite-main.js');
 const suiteLib = require('./suite.js');
 const converter = require('./conv-main.js');
 const media = require('./media-main.js');
+const { attachFlyout } = require('./flyout-main.js');
+const { systemFfmpegCandidates } = require('./ffmpeg-path.js');
 media.registerScheme(); // the read-only wfmedia: protocol of the video player must be declared before the app is ready
 
 // Isolated profile for tests/self-test (never touches the real settings).
@@ -37,14 +40,8 @@ const FORMATS = {
 
 function testFfmpeg(ffmpegPath) {
   return new Promise((resolve) => {
-    if (!ffmpegPath || !fs.existsSync(ffmpegPath)) return resolve(false);
-    execFile(ffmpegPath, ['-version'], { timeout: 5000 }, (error) => resolve(!error));
-  });
-}
-
-function testSystemFfmpeg() {
-  return new Promise((resolve) => {
-    execFile('ffmpeg', ['-version'], { timeout: 5000 }, (error) => resolve(!error));
+    if (!path.isAbsolute(ffmpegPath) || !fs.statSync(ffmpegPath, { throwIfNoEntry: false })?.isFile()) return resolve(false);
+    execFile(ffmpegPath, ['-version'], { windowsHide: true, timeout: 5000 }, (error) => resolve(!error));
   });
 }
 
@@ -55,9 +52,27 @@ function testSystemFfmpeg() {
 // ffmpeg binary itself; if none is found, the Settings > dependencies panel
 // offers to download the LGPL build on demand.
 async function resolveFfmpegPath() {
-  if (await testSystemFfmpeg()) return 'ffmpeg';
-  if (await testFfmpeg(FALLBACK_FFMPEG())) return FALLBACK_FFMPEG();
+  for (const candidate of [...systemFfmpegCandidates(process.env.PATH), FALLBACK_FFMPEG()]) {
+    const executable = await fs.promises.realpath(candidate).catch(() => null);
+    if (executable && await testFfmpeg(executable).catch(() => false)) return executable;
+  }
   return null;
+}
+
+// The Windows uninstall entry identifies the installed edition without loading any DirectShow filters.
+async function detectKLite() {
+  if (process.platform !== 'win32') return null;
+  const key = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\KLiteCodecPack_is1';
+  const reg = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
+  const readings = await Promise.all(['HKLM', 'HKCU'].flatMap((hive) => ['64', '32'].map((view) =>
+    new Promise((resolve) => {
+      execFile(reg, ['query', hive + '\\' + key, '/v', 'DisplayName', '/reg:' + view],
+        { windowsHide: true, timeout: 2000, maxBuffer: 4096 }, (error, stdout) => {
+          const name = !error && /^\s*DisplayName\s+REG_SZ\s+(K-Lite [^\r\n]+)$/im.exec(stdout)?.[1];
+          resolve(name ? name.trim().slice(0, 140) : '');
+        });
+    }))));
+  return readings.find(Boolean) || '';
 }
 
 // Source, size and SHA-256 of the LGPL ffmpeg build, straight from the GitHub release (asset digest, or the release's checksums.sha256).
@@ -201,9 +216,53 @@ function updateJumpList() {
 }
 
 let mainWin = null;
+let restoreMainWindow = null;
+
+const trayLabels = {
+  el: ['Εμφάνιση του Opsis', 'Έξοδος'], en: ['Show Opsis', 'Quit'],
+  fr: ['Afficher Opsis', 'Quitter'], de: ['Opsis anzeigen', 'Beenden'],
+  es: ['Mostrar Opsis', 'Salir'], it: ['Mostra Opsis', 'Esci'], pt: ['Mostrar Opsis', 'Sair'],
+  ru: ['Показать Opsis', 'Выход'], tr: ['Opsis’i göster', 'Çıkış'], pl: ['Pokaż Opsis', 'Zakończ'],
+  nl: ['Opsis tonen', 'Afsluiten'], sv: ['Visa Opsis', 'Avsluta'], da: ['Vis Opsis', 'Afslut'],
+  no: ['Vis Opsis', 'Avslutt'], fi: ['Näytä Opsis', 'Lopeta'], cs: ['Zobrazit Opsis', 'Ukončit'],
+  sk: ['Zobraziť Opsis', 'Ukončiť'], hu: ['Opsis megjelenítése', 'Kilépés'],
+  ro: ['Afișează Opsis', 'Ieșire'], uk: ['Показати Opsis', 'Вийти'],
+};
 let suiteApi = null;
 let converterApi = null;
 let mediaApi = null;
+
+async function auditAppResources(win) {
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const run = (code) => win.webContents.executeJavaScript(code);
+  const metrics = () => app.getAppMetrics().reduce((total, process) => ({
+    privateMiB: total.privateMiB + (process.memory.privateBytes ?? process.memory.workingSetSize) / 1024,
+    cpuPercent: total.cpuPercent + process.cpu.percentCPUUsage,
+    processes: total.processes + 1,
+  }), { privateMiB: 0, cpuPercent: 0, processes: 0 });
+  await run("showTab('settings'); showTab('video'); showTab('player'); 1");
+  await delay(750);
+  const windows = BrowserWindow.getAllWindows().length;
+  const initial = metrics();
+  const samples = [];
+  for (let round = 0; round < 8; round++) {
+    for (const tab of ['player', 'enhance', 'converter', 'video', 'photo', 'settings']) {
+      await run(`showTab(${JSON.stringify(tab)}); 1`);
+    }
+    await delay(250);
+    samples.push(metrics());
+  }
+  await run("showTab('player'); 1");
+  await delay(750);
+  const final = metrics();
+  const peakCpu = Math.max(...samples.map((sample) => sample.cpuPercent));
+  const peakMemory = Math.max(...samples.map((sample) => sample.privateMiB));
+  return {
+    name: '48 tab changes leave the same number of application windows',
+    ok: BrowserWindow.getAllWindows().length === windows,
+    extra: `processes ${initial.processes}→${final.processes}, memory ${initial.privateMiB.toFixed(1)}→${final.privateMiB.toFixed(1)} MiB, sampled peak ${peakMemory.toFixed(1)} MiB / ${peakCpu.toFixed(1)}% CPU`,
+  };
+}
 
 function createWindow() {
   const savedState = loadWindowState();
@@ -230,11 +289,57 @@ function createWindow() {
   });
 
   mainWin = win;
+  let tray = null;
+  let minimizedToTray = false;
+  const destroyTray = () => {
+    if (tray && !tray.isDestroyed()) tray.destroy();
+    tray = null;
+  };
+  const leaveTray = () => {
+    if (!minimizedToTray) return;
+    minimizedToTray = false;
+    win.setSkipTaskbar(false);
+    destroyTray();
+  };
+  restoreMainWindow = () => {
+    if (win.isDestroyed()) return;
+    leaveTray();
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  };
+  if (process.platform === 'win32') {
+    win.on('minimize', () => {
+      if (minimizedToTray) return;
+      try {
+        const [show, quit] = trayLabels[helpLang] || trayLabels.en;
+        tray = new Tray(path.join(__dirname, 'icon.ico'));
+        tray.setToolTip('Opsis Media Suite');
+        tray.on('click', restoreMainWindow);
+        tray.setContextMenu(Menu.buildFromTemplate([
+          { label: show, click: restoreMainWindow },
+          { type: 'separator' },
+          { label: quit, click: () => app.quit() },
+        ]));
+      } catch {
+        destroyTray();
+        return;
+      }
+      minimizedToTray = true;
+      win.setSkipTaskbar(true);
+      win.hide();
+    });
+    win.on('show', leaveTray);
+  }
+  const flyout = attachFlyout(win, () => currentTheme, () => !win.isDestroyed() && (minimizedToTray || win.isMinimized()));
   // Hardening + stability: the app only ever shows its own local pages.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
+  win.webContents.on('will-navigate', (event) => event.preventDefault());
   // Only the microphone input (getUserMedia) is a legitimate permission here; everything else is denied.
-  win.webContents.session.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
+  win.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const audioOnly = details.mediaTypes?.length === 1 && details.mediaTypes[0] === 'audio';
+    callback(contents === win.webContents && permission === 'media' && details.isMainFrame && audioOnly);
+  });
   // A crashed/killed renderer (GPU driver reset, out of memory on low-RAM PCs) used to leave a blank window until restart.
   win.webContents.on('render-process-gone', (_e, details) => {
     if (details.reason === 'clean-exit' || win.isDestroyed()) return;
@@ -251,6 +356,15 @@ function createWindow() {
           results.push(...await suiteApi.selfTest());
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
+          results.push(...await flyout.selfTest());
+          results.push(await auditAppResources(win));
+          if (process.platform === 'win32') {
+            win.minimize();
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            results.push({ name: 'minimizing hides Opsis in the Windows notification area', ok: minimizedToTray && !win.isVisible() && !!tray && !tray.isDestroyed() });
+            restoreMainWindow();
+            results.push({ name: 'restoring from the tray shows the same window', ok: win.isVisible() && !minimizedToTray && !tray });
+          }
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
           code = results.every((r) => r.ok) ? 0 : 1;
         } catch (e) { console.log('FAIL self-test could not run: ' + e); }
@@ -258,7 +372,13 @@ function createWindow() {
       }, 1500);
     });
   }
-  win.on('closed', () => { if (mainWin === win) mainWin = null; });
+  win.on('closed', () => {
+    destroyTray();
+    if (mainWin === win) {
+      mainWin = null;
+      restoreMainWindow = null;
+    }
+  });
   updateJumpList();
 
   let isMiniMode = false;
@@ -274,13 +394,15 @@ function createWindow() {
 
   const bindMediaKey = (accelerator, action) => {
     globalShortcut.register(accelerator, () => {
-      if (!win.isDestroyed()) win.webContents.send('media-key', action);
+      if (!win.isDestroyed()) win.webContents.send('media-key', action, true);
     });
   };
-  bindMediaKey('MediaPlayPause', 'playpause');
-  bindMediaKey('MediaNextTrack', 'next');
-  bindMediaKey('MediaPreviousTrack', 'prev');
-  bindMediaKey('MediaStop', 'stop');
+  if (!flyout.usesSystemMedia) {
+    bindMediaKey('MediaPlayPause', 'playpause');
+    bindMediaKey('MediaNextTrack', 'next');
+    bindMediaKey('MediaPreviousTrack', 'prev');
+    bindMediaKey('MediaStop', 'stop');
+  }
   win.on('closed', () => globalShortcut.unregisterAll());
 
   let thumbbarIcons = null;
@@ -295,6 +417,7 @@ function createWindow() {
         click: () => win.webContents.send('media-key', 'playpause'),
       },
       { icon: thumbbarIcons.next, tooltip: 'Επόμενο', click: () => win.webContents.send('media-key', 'next') },
+      { icon: thumbbarIcons.flyout, tooltip: thumbbarIcons.flyoutLabel, click: () => flyout.show('manual') },
     ]);
   }
 
@@ -305,12 +428,14 @@ function createWindow() {
   const PNG_DATA_URL = /^data:image\/png;base64,[A-Za-z0-9+/=]{1,200000}$/;
 
   ipcMain.on('thumbbar:icons', (event, icons) => {
-    if (!fromMain(event) || !icons || !['prev', 'play', 'pause', 'next'].every((k) => typeof icons[k] === 'string' && PNG_DATA_URL.test(icons[k]))) return;
+    if (!fromMain(event) || !icons || !['prev', 'play', 'pause', 'next', 'flyout'].every((k) => typeof icons[k] === 'string' && PNG_DATA_URL.test(icons[k]))) return;
     thumbbarIcons = {
       prev: nativeImage.createFromDataURL(icons.prev),
       play: nativeImage.createFromDataURL(icons.play),
       pause: nativeImage.createFromDataURL(icons.pause),
       next: nativeImage.createFromDataURL(icons.next),
+      flyout: nativeImage.createFromDataURL(icons.flyout),
+      flyoutLabel: typeof icons.flyoutLabel === 'string' ? icons.flyoutLabel.slice(0, 120) : 'Opsis Media Suite',
     };
     updateThumbbar();
   });
@@ -353,6 +478,7 @@ function createWindow() {
   ipcMain.on('theme:changed', (event, theme) => {
     if (!fromMain(event) || typeof theme !== 'string' || !/^[a-z0-9-]{1,30}$/.test(theme)) return;
     currentTheme = theme;
+    flyout.syncAppearance();
     if (helpWindow && !helpWindow.isDestroyed()) {
       helpWindow.webContents.send('theme:sync', theme);
     }
@@ -391,9 +517,9 @@ function createWindow() {
   ipcMain.on('help:open', (e) => { if (fromMain(e)) createHelpWindow(win); });
 
   ipcMain.handle('deps:check', async (e) => {
-    if (!fromMain(e)) return { ffmpeg: { ok: false, path: null } };
-    const ffmpegPath = await resolveFfmpegPath();
-    return { ffmpeg: { ok: !!ffmpegPath, path: ffmpegPath } };
+    if (!fromMain(e)) return { ffmpeg: { ok: false, path: null }, kLite: null };
+    const [ffmpegPath, kLite] = await Promise.all([resolveFfmpegPath(), detectKLite()]);
+    return { ffmpeg: { ok: !!ffmpegPath, path: ffmpegPath }, kLite };
   });
 
   ipcMain.handle('deps:install', async (e) => {
@@ -421,9 +547,7 @@ function createWindow() {
         picture = `data:${pic.format};base64,${Buffer.from(pic.data).toString('base64')}`;
       }
       return {
-        title: common.title || null,
-        artist: common.artist || null,
-        album: common.album || null,
+        ...readTrackText(meta),
         picture,
       };
     } catch {
@@ -486,14 +610,14 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (event, argv) => {
     if (mainWin) {
-      if (mainWin.isMinimized()) mainWin.restore();
-      mainWin.focus();
+      restoreMainWindow?.();
       forwardJumpListAction(argv);
       forwardOpenFile(argv);
     }
   });
 
   app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.example.waveframe');
     reapplyAutostartAfterRename();
     suiteApi = suite.init({
       onLang: (l) => { helpLang = l; },
@@ -516,6 +640,7 @@ if (!gotSingleInstanceLock) {
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      else if (mainWin && !mainWin.isVisible()) restoreMainWindow?.();
     });
   });
 

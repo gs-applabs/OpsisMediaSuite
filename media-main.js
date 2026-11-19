@@ -2,17 +2,18 @@
 // IPC glue for the video player (file picker, subtitle discovery, a read-only "wfmedia" protocol with range support), the photo editor (open / save)
 // and M3U playlist import. Only the main window may call these channels; payloads are validated here.
 
-const { ipcMain, dialog, protocol, net, app } = require('electron');
+const { ipcMain, dialog, protocol, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { pathToFileURL } = require('url');
+const { randomUUID } = require('node:crypto');
+const { Readable } = require('node:stream');
 const M3U = require('./m3u.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
 const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub'];
 const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
-const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS, ...SUB_EXTS]);
+const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS]);
 const MAX_SUB_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 200 * 1024 * 1024;
 const MAX_SAVE_BYTES = 256 * 1024 * 1024;
@@ -23,7 +24,26 @@ const isFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p)
 
 // Must run before the app is ready.
 function registerScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, bypassCSP: false } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false } }]);
+}
+
+const MEDIA_TYPES = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mkv: 'video/x-matroska',
+  webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', flac: 'audio/flac',
+  aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+};
+
+function byteRange(header, size) {
+  if (!header) return { start: 0, end: size - 1 };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header);
+  if (!match || size <= 0 || (!match[1] && !match[2])) return null;
+  const a = match[1] ? Number(match[1]) : null;
+  const b = match[2] ? Number(match[2]) : null;
+  if ((a !== null && !Number.isSafeInteger(a)) || (b !== null && !Number.isSafeInteger(b))) return null;
+  if (a === null) return b > 0 ? { start: Math.max(0, size - b), end: size - 1 } : null;
+  const end = b === null ? size - 1 : Math.min(b, size - 1);
+  return a <= end ? { start: a, end } : null;
 }
 
 // Subtitle bytes -> text: UTF-8 (with or without BOM), otherwise Windows-1253 (Greek) which is what old .srt files from Greek sites use.
@@ -56,17 +76,54 @@ function init({ getMainWin, resolveFfmpegPath }) {
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
-  protocol.handle('wfmedia', (req) => {
+  const streamFiles = new Map();
+  ipcMain.handle('vp:stream-url', (e, file) => {
+    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || typeof file !== 'string' ||
+        /^[\\/]{2}/.test(file) || !SERVE_EXTS.has(extOf(file)) || !isFile(file)) return null;
+    const key = randomUUID();
+    streamFiles.set(key, file);
+    if (streamFiles.size > 24) streamFiles.delete(streamFiles.keys().next().value);
+    return 'wfmedia://f/' + key;
+  });
+
+  protocol.handle('wfmedia', async (request) => {
+    const url = new URL(request.url);
+    // Only the trusted main frame can mint these unguessable, short-lived-in-memory URLs.
+    const file = url.hostname === 'f' && streamFiles.get(url.pathname.slice(1));
+    const headers = new Headers({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    if (!file) return new Response(null, { status: 404, headers });
+    if (request.method === 'OPTIONS') {
+      headers.set('Access-Control-Allow-Headers', 'Range');
+      headers.set('Access-Control-Allow-Methods', 'GET, HEAD');
+      return new Response(null, { status: 204, headers });
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405, headers });
+
     try {
-      const u = new URL(req.url);
-      const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
-      if (!isFile(p) || !SERVE_EXTS.has(extOf(p))) return new Response('not found', { status: 404 });
-      return net.fetch(pathToFileURL(p).toString(), { headers: req.headers, bypassCustomProtocolHandlers: true }).then((r) => {
-        // the page is file:// (another origin): CORS headers are needed so the equaliser can read the video's sound
-        const h = new Headers(r.headers); h.set('Access-Control-Allow-Origin', '*');
-        return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
-      });
-    } catch (_) { return new Response('bad request', { status: 400 }); }
+      const stat = await fs.promises.stat(file);
+      if (!stat.isFile()) return new Response(null, { status: 404, headers });
+      const size = stat.size;
+      const range = request.headers.get('range');
+      const bounds = byteRange(range, size);
+      headers.set('Accept-Ranges', 'bytes');
+      if (!bounds) {
+        headers.set('Content-Range', `bytes */${size}`);
+        return new Response(null, { status: 416, headers });
+      }
+      const { start, end } = bounds;
+      headers.set('Content-Type', MEDIA_TYPES[extOf(file)] || 'application/octet-stream');
+      headers.set('Content-Length', String(end - start + 1));
+      if (range) headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+      const body = request.method === 'HEAD' || end < start
+        ? null : Readable.toWeb(fs.createReadStream(file, { start, end }));
+      return new Response(body, { status: range ? 206 : 200, headers });
+    } catch {
+      return new Response(null, { status: 404, headers });
+    }
   });
 
   /* ---------------- video player ---------------- */
@@ -137,6 +194,29 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const until = async (code, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await js(code)) return true; await new Promise((r) => setTimeout(r, 150)); } return false; };
     try {
       /* video player */
+      await js("document.querySelector('.tab-btn[data-tab=video]').click(); loadVideoPlayer().then(() => 1)");
+      check('video menus reveal the selected settings and keep the player visible', await js(`(() => {
+        const byId = id => document.getElementById(id);
+        const settings = byId('vpSettingsMenu');
+        const queue = byId('vpQueue');
+        const queueInView = !queue.hidden && queue.getBoundingClientRect().top + 40 < innerHeight;
+        byId('vpSettingsToggle').click();
+        const opened = settings.matches(':popover-open') && !byId('vpPlaybackOptions').hidden;
+        byId('vpPictureOptionsTab').click();
+        const picture = !byId('vpPictureOptions').hidden && byId('vpPlaybackOptions').hidden;
+        byId('vpCaptions').click();
+        const captions = settings.matches(':popover-open') && !byId('vpSubtitlesOptions').hidden;
+        byId('vpQueueToggle').click();
+        const collapsed = queue.hidden;
+        byId('vpQueueToggle').click();
+        const playlist = collapsed && !queue.hidden && queue.getBoundingClientRect().height > 40 &&
+          Boolean(byId('vpStage').compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+          queue.getBoundingClientRect().top >= byId('vpStage').getBoundingClientRect().bottom;
+        byId('vpSourcesToggle').click();
+        const sources = byId('vpSources').matches(':popover-open');
+        byId('vpSources').hidePopover();
+        return queueInView && opened && picture && captions && playlist && sources && byId('vpFrame').getBoundingClientRect().height > 200;
+      })()`));
       const ff = await resolveFfmpegPath();
       if (ff) {
         const clip = path.join(dir, 'clip.mp4');
@@ -150,8 +230,17 @@ function init({ getMainWin, resolveFfmpegPath }) {
           await js("document.querySelector('.tab-btn[data-tab=\"video\"]').click(); loadVideoPlayer().then(() => 1)");
           await until("!!window.WaveframeVideoPlayer", 8000);
           await js(`window.WaveframeVideoPlayer.open(${JSON.stringify(file)}); 1`);
+          const range = await js(`(async () => {
+            const url = await window.waveframe.vpStreamUrl(${JSON.stringify(file)});
+            if (!url) return { error: 'no URL issued' };
+            try {
+              const response = await fetch(url, { headers: { Range: 'bytes=0-15' } });
+              return { status: response.status, bytes: (await response.arrayBuffer()).byteLength };
+            } catch (error) { return { error: String(error) }; }
+          })()`);
+          check('local media URL returns the requested 16-byte range', range.status === 206 && range.bytes === 16, JSON.stringify(range));
           const ok = await until("(() => { const v = document.getElementById('vpVideo'); return v && v.readyState >= 2 && v.videoWidth === 320; })()", 15000);
-          const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.code, media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.querySelectorAll('track').length }); })()");
+          const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.message, h264: v.canPlayType('video/mp4; codecs=\"avc1.42E01E\"'), media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.querySelectorAll('track').length }); })()");
           check('video player plays a local clip through wfmedia: (320x180, ~2 s)', ok, info);
           const subOk = await until("document.getElementById('vpVideo').querySelectorAll('track').length === 1", 6000);
           check('video player finds and shows the subtitle next to the clip', subOk, await js("document.getElementById('vpSubTrack').options.length + ' options'"));
@@ -162,6 +251,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
           check('wfmedia: refuses files that are not media / subtitles', guard === 404 || guard === 'blocked', String(guard));
         }
       }
+      await js("document.querySelector('.tab-btn[data-tab=settings]').click(); refreshDepsStatus().then(() => 1)");
+      check('dependencies distinguish playback codecs, FFmpeg encoders and report K-Lite detection', await js(`(() => {
+        const byId = id => document.getElementById(id);
+        return byId('depPlaybackCodecs').children.length === 5 &&
+          byId('depVideoEncoders').children.length === 4 &&
+          byId('depKLiteStatus').textContent !== '…';
+      })()`));
       /* photo editor */
       const { nativeImage } = require('electron');
       const W = 64, H = 48, buf = Buffer.alloc(W * H * 4);
@@ -181,10 +277,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
       check('photo editor rotates 90 degrees (64x48 -> 48x64)', await js("document.getElementById('phCanvas').width === 48 && document.getElementById('phCanvas').height === 64"));
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     try {
-      /* layout of the three new areas in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */
+      /* layout of the main tabs in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */
     try {
       const audit = `(async () => {
-        const tabs = ['video', 'photo', 'settings'], bad = [];
+        const tabs = ['player', 'enhance', 'converter', 'video', 'photo', 'settings'], bad = [];
         const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
         for (const l of LANGUAGES.map((x) => x.code)) {
           setLanguage(l);
@@ -215,7 +311,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         return JSON.stringify(bad.slice(0, 12));
       })()`;
       const bad = JSON.parse(await js(audit));
-      check('video / photo / import areas: no overlapping or clipped controls (20 languages x 100 % / 150 %)', bad.length === 0, bad.join(' ; '));
+      check('all six main tabs: no overlapping or clipped checked controls (20 languages x 100 % / 150 %)', bad.length === 0, bad.join(' ; '));
     } catch (e) { check('media layout audit threw', false, e && e.stack || e); }
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ } }
@@ -232,4 +328,4 @@ function init({ getMainWin, resolveFfmpegPath }) {
   return { selfTest };
 }
 
-module.exports = { init, registerScheme, decodeText, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };
+module.exports = { init, registerScheme, decodeText, byteRange, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };

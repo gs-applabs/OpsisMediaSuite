@@ -15,8 +15,6 @@
   const titleOf = (p) => { const s = String(p || ''); const n = s.split(/[\\/]/).pop().replace(/\?.*$/, ''); return n.replace(/\.[A-Za-z0-9]{1,5}$/, '') || s; };
   const isUrl = (p) => /^https?:\/\//i.test(String(p || ''));
 
-  // Local files are played through the read-only wfmedia: protocol of the main process (range requests, no whole-file blob); URLs play directly.
-  function mediaUrl(p) { return isUrl(p) ? String(p) : 'wfmedia://f/' + encodeURIComponent(String(p)); }
 
   function clock(ms) {
     const s = Math.max(0, Math.floor((Number(ms) || 0) / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
@@ -137,5 +135,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });
