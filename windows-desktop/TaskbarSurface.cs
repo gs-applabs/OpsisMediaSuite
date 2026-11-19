@@ -27,6 +27,7 @@ sealed class TaskbarSurface : IDisposable
     private const uint ShowAtTop = 0x0010 | 0x0040 | 0x0400; // No activate, show, skip position-change notifications.
     private readonly IntPtr parent;
     private readonly HwndSource source;
+    private readonly Grid content = new();
     private readonly Grid layout = new() { ClipToBounds = true };
     private readonly Image backdrop = new() { Stretch = Stretch.UniformToFill, Opacity = 1, IsHitTestVisible = false, Effect = new BlurEffect { Radius = 15 } };
     private readonly TextBlock track = new() { TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = FontWeights.SemiBold };
@@ -101,7 +102,6 @@ sealed class TaskbarSurface : IDisposable
             title.Content = summary;
             title.HorizontalContentAlignment = vertical ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
 
-            var content = new Grid();
             layout.Children.Add(content);
             grip.MouseLeftButtonDown += (_, e) =>
             {
@@ -201,7 +201,15 @@ sealed class TaskbarSurface : IDisposable
         if (!SetWindowPos(source.Handle, IntPtr.Zero, x, y, width, height, ShowAtTop))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         double scale = VisualTreeHelper.GetDpi(layout).DpiScaleY;
-        compact = (Vertical ? width : height) / scale < 36;
+        bool narrow = !Vertical && width / scale < 170;
+        compact = narrow || (Vertical ? width : height) / scale < 36;
+        if (!Vertical)
+        {
+            cover.Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+            content.ColumnDefinitions[2].Width = new GridLength(narrow ? 12 : 20);
+            for (int i = 3; i < content.ColumnDefinitions.Count; i++)
+                content.ColumnDefinitions[i].Width = new GridLength(narrow ? 18 : 25);
+        }
         double coverSize = compact || Vertical ? 23 : 32;
         cover.Height = cover.Width = Math.Min((Vertical ? width : height) / scale - 2, coverSize);
         artist.Visibility = !Vertical && !compact && hasArtist ? Visibility.Visible : Visibility.Collapsed;

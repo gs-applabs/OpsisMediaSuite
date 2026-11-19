@@ -26,9 +26,7 @@ static class Program
         }
         if (args is ["--test-explorer-taskbar"])
         {
-            Console.WriteLine(TaskbarWidget.VerifyExplorer()
-                ? "Verified the themed widget and Greek caption pixels on the Explorer taskbar"
-                : "Explorer taskbar not available in this Windows session");
+            Console.WriteLine(TaskbarWidget.VerifyExplorer());
             return;
         }
         var dispatcher = Dispatcher.CurrentDispatcher;
