@@ -102,3 +102,46 @@ const flyoutTranslations = {
 for (const [lang, labels] of Object.entries(flyoutTranslations)) {
   flyoutKeys.forEach((key, index) => { I18N[lang]['flyout.' + key] = labels[index]; });
 }
+
+Object.assign(I18N.el, {
+  'settings.layoutClassic': 'Κλασική',
+  'settings.bgEq': 'Λάμψη ισοσταθμιστή',
+  'settings.bgWaves': 'Ροή κυματομορφής',
+  'settings.bgNebula': 'Νεφέλωμα βινυλίου',
+  'settings.bgStarfield': 'Έναστρος ουρανός',
+  'settings.bgAurora': 'Κορδέλες σέλαος',
+  'settings.bgVinylspin': 'Περιστρεφόμενο βινύλιο',
+  'settings.bgParticledrift': 'Κίνηση σωματιδίων',
+  'settings.bgMesh': 'Πλέγμα διαβάθμισης',
+  'settings.bgGrid': 'Παλλόμενο πλέγμα',
+  'settings.bgBokeh': 'Θολά φώτα',
+});
+
+function resolveDesktopLanguage(value) {
+  const lang = typeof value === 'string' ? value.trim().toLowerCase().split(/[-_]/)[0] : '';
+  return Object.hasOwn(I18N, lang) ? lang : 'el';
+}
+
+function taskbarStatusText(code, language) {
+  if (!code || language !== 'el') return code;
+  let message = {
+    CHECKING: 'Έλεγχος σύνδεσης',
+    'NO-TASKBAR': 'Δεν βρέθηκε γραμμή εργασιών',
+    'NO-BOUNDS': 'Δεν ήταν δυνατός ο υπολογισμός θέσης',
+    'NOT-VISIBLE': 'Το χειριστήριο συνδέθηκε αλλά δεν είναι ορατό',
+    'ATTACH-FAILED': 'Αποτυχία σύνδεσης με τον Explorer',
+    'HELPER-EXIT': 'Το βοηθητικό πρόγραμμα των Windows σταμάτησε',
+  }[code];
+  if (code.startsWith('ATTACHED-')) message = 'Συνδέθηκε με τη γραμμή εργασιών';
+  if (code.startsWith('PARTIAL-')) message = 'Συνδέθηκε σε μέρος των γραμμών εργασιών';
+  if (code.startsWith('WIN32-')) message = 'Τα Windows απέρριψαν τη σύνδεση';
+  return message ? `${message} (${code})` : code;
+}
+
+document.addEventListener?.('waveframe:language-changed', () => {
+  for (const element of document.querySelectorAll('[data-i18n-title]')) {
+    const label = t(element.dataset.i18nTitle);
+    element.title = label;
+    element.setAttribute('aria-label', label);
+  }
+});

@@ -1287,6 +1287,7 @@ const taskbarWidgetPosition = document.getElementById('taskbarWidgetPosition');
 const taskbarWidgetLegacy = document.getElementById('swTaskbarWidgetLegacy');
 const taskbarWidgetCover = document.getElementById('swTaskbarWidgetCover');
 const taskbarPositionKey = 'waveframe.taskbarWidgetPosition';
+let taskbarStatus = '';
 const flyoutFrequencyData = new Uint8Array(engine.analyser.frequencyBinCount);
 const flyoutBins = [2, 4, 8, 16, 32, 64, 128, 256];
 let flyoutVisible = false;
@@ -1297,7 +1298,7 @@ function syncFlyoutSettings() {
   flyoutButton.setAttribute('aria-label', flyoutButton.title);
   const widget = taskbarWidgetToggle.classList.contains('active');
   taskbarWidgetPosition.disabled = taskbarWidgetLegacy.disabled = taskbarWidgetCover.disabled = !widget;
-  if (!widget) document.getElementById('taskbarWidgetStatus').hidden = true;
+  renderTaskbarStatus(widget);
   window.waveframe.setFlyoutSettings({
     automatic: flyoutToggle.classList.contains('active'),
     lang: document.documentElement.lang,
@@ -1370,9 +1371,13 @@ taskbarWidgetPosition.addEventListener('change', () => {
   localStorage.setItem(taskbarPositionKey, taskbarWidgetPosition.value);
   syncFlyoutSettings();
 });
+function renderTaskbarStatus(show = taskbarWidgetToggle.classList.contains('active')) {
+  document.getElementById('taskbarStatusCode').textContent = taskbarStatusText(taskbarStatus, currentLang);
+  document.getElementById('taskbarWidgetStatus').hidden = !show || !taskbarStatus;
+}
 window.waveframe.onTaskbarStatus((status) => {
-  document.getElementById('taskbarStatusCode').textContent = status;
-  document.getElementById('taskbarWidgetStatus').hidden = !status || !taskbarWidgetToggle.classList.contains('active');
+  taskbarStatus = status;
+  renderTaskbarStatus();
 });
 window.waveframe.onDesktopAvailability((available) => {
   document.getElementById('rowLockFlyout').hidden = !available;
@@ -2006,8 +2011,7 @@ function tickAutoHue(now) {
 requestAnimationFrame(tickAutoHue);
 
 function restorePreferences() {
-  const lang = localStorage.getItem('waveframe.lang') || 'el';
-  setLanguage(lang);
+  setLanguage(resolveDesktopLanguage(localStorage.getItem('waveframe.lang')));
   syncLangActiveCard();
 
   applySkin(localStorage.getItem('waveframe.skin') || 'midnight');
@@ -2732,6 +2736,15 @@ window.__selfTest = async function () {
     queuedShuffleTrack = null;
     playlist = savedList; currentTrackIndex = savedIdx; renderPlaylist();
     check('i18n has the new keys', t('player.sleep') !== 'player.sleep' && t('enhance.exportApo') !== 'enhance.exportApo');
+    const savedLang = currentLang;
+    setLanguage('en');
+    check('English tooltips retain their English labels', document.getElementById('miniBarVis').title === 'Visualization');
+    setLanguage(resolveDesktopLanguage('el-GR'));
+    check('Greek UI and tooltips use accented Greek text', document.documentElement.lang === 'el' &&
+      document.querySelector('[data-i18n="settings.layoutClassic"]').textContent === 'Κλασική' &&
+      document.getElementById('miniBarVis').getAttribute('aria-label') === 'Οπτικοποίηση' &&
+      taskbarStatusText('ATTACHED-1', currentLang) === 'Συνδέθηκε με τη γραμμή εργασιών (ATTACHED-1)');
+    setLanguage(savedLang);
   } catch (e) { check('self-test threw', false, e && e.stack || e); }
   return out;
 };

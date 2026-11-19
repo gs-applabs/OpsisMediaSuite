@@ -5,6 +5,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
@@ -38,7 +39,8 @@ sealed class TaskbarSurface : IDisposable
     private readonly Button playback = CreateButton();
     private readonly Button next = CreateButton("⏭");
     private readonly Border[] meterBars = new Border[8];
-    private static readonly Brush Idle = BrushFrom(0, 0, 0, 1);
+    private static readonly Brush LightBase = BrushFrom(244, 244, 246);
+    private static readonly Brush DarkBase = BrushFrom(32, 32, 36);
     private static readonly Brush LightText = BrushFrom(24, 24, 26);
     private static readonly Brush LightHover = BrushFrom(255, 255, 255, 100);
     private static readonly Brush DarkHover = BrushFrom(255, 255, 255, 20);
@@ -65,6 +67,8 @@ sealed class TaskbarSurface : IDisposable
             UsesPerPixelTransparency = true,
         };
         source = new HwndSource(parameters);
+        // The cross-process, layered child needs a reliable software surface even when Explorer uses GPU composition.
+        source.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
         source.AddHook(WindowMessage);
         try
         {
@@ -123,6 +127,12 @@ sealed class TaskbarSurface : IDisposable
         }
     }
 
+    public void SetLanguage(string language)
+    {
+        if (!string.Equals(layout.Language.IetfLanguageTag, language, StringComparison.OrdinalIgnoreCase))
+            layout.Language = XmlLanguage.GetLanguage(language);
+    }
+
     public void Place(int x, int y, int width, int height)
     {
         if (!IsAlive || GetAncestor(source.Handle, 1) != parent || (GetWindowLong(source.Handle, WindowStyle) & Child) == 0)
@@ -135,6 +145,7 @@ sealed class TaskbarSurface : IDisposable
         double coverSize = compact || Vertical ? 23 : 32;
         cover.Height = cover.Width = Math.Min((Vertical ? width : height) / scale - 2, coverSize);
         artist.Visibility = !Vertical && !compact && hasArtist ? Visibility.Visible : Visibility.Collapsed;
+        layout.Clip = new RectangleGeometry(new Rect(0, 0, width / scale, height / scale), 6, 6);
     }
 
     public void VerifyVisibleChild()
@@ -143,14 +154,18 @@ sealed class TaskbarSurface : IDisposable
             throw new InvalidOperationException("The widget must be a visible top child of its taskbar");
     }
 
-    public void VerifyRenderedPixels()
+    // Runs only in the Windows smoke test. Inspect the normal themed widget rather than substituting a test paint.
+    public void VerifyRenderedPixels(int x, int y, int width, int height)
     {
+        var origin = new System.Drawing.Point(x, y);
+        if (!ClientToScreen(parent, ref origin)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        using var before = ReadScreen(origin.X, origin.Y, width, height);
+        SetLanguage("el");
+        UpdateView("Δοκιμή ήχου", "Καλλιτέχνης", null, "Άνοιγμα", "Προηγούμενο", "Αναπαραγωγή", "Επόμενο",
+            false, true, true, true, false, false, []);
+        Place(x, y, width, height);
         VerifyVisibleChild();
-        var marker = System.Drawing.Color.FromArgb(222, 37, 149);
-        layout.Background = BrushFrom(marker.R, marker.G, marker.B);
         layout.UpdateLayout();
-        if (!GetWindowRect(source.Handle, out var rect) || rect.Right - rect.Left < 8 || rect.Bottom - rect.Top < 8)
-            throw new InvalidOperationException("The widget has no visible test region");
 
         var frame = new DispatcherFrame();
         var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(120) };
@@ -158,41 +173,62 @@ sealed class TaskbarSurface : IDisposable
         int attempts = 0;
         timer.Tick += (_, _) =>
         {
-            rendered = ReadScreenPixel(rect.Left + 3, rect.Top + 3).ToArgb() == marker.ToArgb() ||
-                ReadScreenPixel(rect.Right - 4, rect.Bottom - 4).ToArgb() == marker.ToArgb();
+            using var after = ReadScreen(origin.X, origin.Y, width, height);
+            int changed = 0;
+            int caption = 0;
+            for (int row = 3; row < height - 3; row++)
+            {
+                for (int column = Math.Min(35, width / 5); column < width - 8; column++)
+                {
+                    var old = before.GetPixel(column, row);
+                    var pixel = after.GetPixel(column, row);
+                    if (Math.Abs(old.R - pixel.R) + Math.Abs(old.G - pixel.G) + Math.Abs(old.B - pixel.B) < 15) continue;
+                    changed++;
+                    if ((Vertical || column < width / 2) && pixel.R >= 225 && pixel.G >= 225 && pixel.B >= 225) caption++;
+                }
+            }
+            rendered = changed >= 40 && (caption >= 4 || SystemParameters.HighContrast);
             if (rendered || ++attempts >= 12) frame.Continue = false;
         };
         timer.Start();
         try { Dispatcher.PushFrame(frame); }
         finally { timer.Stop(); }
-        if (!rendered) throw new InvalidOperationException("The widget HWND was visible but its pixels were not on the taskbar");
+        if (!rendered) throw new InvalidOperationException("The production widget and its caption did not appear in the Explorer taskbar pixels");
     }
 
-    private static System.Drawing.Color ReadScreenPixel(int x, int y)
+    private static System.Drawing.Bitmap ReadScreen(int x, int y, int width, int height)
     {
-        using var pixel = new System.Drawing.Bitmap(1, 1);
-        using var graphics = System.Drawing.Graphics.FromImage(pixel);
-        var sourceDc = GetDC(IntPtr.Zero);
-        if (sourceDc == IntPtr.Zero) return System.Drawing.Color.Empty;
-        var destination = graphics.GetHdc();
-        bool copied;
+        var capture = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
         try
         {
-            const uint SourceCopyAndCaptureLayers = 0x00CC0020 | 0x40000000;
-            copied = BitBlt(destination, 0, 0, 1, 1, sourceDc, x, y, SourceCopyAndCaptureLayers);
+            using var graphics = System.Drawing.Graphics.FromImage(capture);
+            var destination = graphics.GetHdc();
+            var sourceDc = GetDC(IntPtr.Zero);
+            try
+            {
+                const uint SourceCopyAndCaptureLayers = 0x00CC0020 | 0x40000000;
+                if (sourceDc == IntPtr.Zero || !BitBlt(destination, 0, 0, width, height, sourceDc, x, y, SourceCopyAndCaptureLayers))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            finally
+            {
+                if (sourceDc != IntPtr.Zero) ReleaseDC(IntPtr.Zero, sourceDc);
+                graphics.ReleaseHdc(destination);
+            }
+            return capture;
         }
-        finally
+        catch
         {
-            graphics.ReleaseHdc(destination);
-            ReleaseDC(IntPtr.Zero, sourceDc);
+            capture.Dispose();
+            throw;
         }
-        return copied ? pixel.GetPixel(0, 0) : System.Drawing.Color.Empty;
     }
 
     private static Button CreateButton(string text = "") => new()
     {
         Content = text, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
         Padding = new Thickness(0), Focusable = false, FontSize = 12, MinWidth = 0,
+        FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Arial"),
     };
 
     private static Brush BrushFrom(byte red, byte green, byte blue, byte alpha = 255)
@@ -206,7 +242,7 @@ sealed class TaskbarSurface : IDisposable
     {
         bool highContrast = SystemParameters.HighContrast;
         Brush foreground = highContrast ? SystemColors.WindowTextBrush : light ? LightText : Brushes.WhiteSmoke;
-        layout.Background = highContrast ? SystemColors.WindowBrush : Idle;
+        layout.Background = highContrast ? SystemColors.WindowBrush : light ? LightBase : DarkBase;
         plate.Background = layout.IsMouseOver && !highContrast ? light ? LightHover : DarkHover : Brushes.Transparent;
         plate.BorderBrush = highContrast ? SystemColors.WindowTextBrush : layout.IsMouseOver ? light ? LightOutline : DarkOutline : Brushes.Transparent;
         backdrop.Visibility = !highContrast && coverBackground && currentCover is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -253,11 +289,11 @@ sealed class TaskbarSurface : IDisposable
             throw new InvalidOperationException("Album art should replace the placeholder without adding a backdrop");
         if (SystemParameters.HighContrast) return;
         var lightForeground = title.Foreground;
-        if (layout.Background is not SolidColorBrush idle || idle.Color.A > 1)
-            throw new InvalidOperationException("The idle widget must blend into the taskbar");
+        if (!Equals(layout.Background, LightBase))
+            throw new InvalidOperationException("The idle widget must use the visible taskbar palette");
         UpdateView("Test title", "Test artist", currentCover, "", "", "", "",
             false, true, true, true, false, true, []);
-        if (Equals(lightForeground, title.Foreground) || backdrop.Visibility != Visibility.Visible)
+        if (Equals(lightForeground, title.Foreground) || !Equals(layout.Background, DarkBase) || backdrop.Visibility != Visibility.Visible)
             throw new InvalidOperationException("Dark text contrast and optional album-art backdrop must update independently");
     }
 
@@ -270,11 +306,10 @@ sealed class TaskbarSurface : IDisposable
 
     public void Dispose() => source.Dispose();
 
-    [StructLayout(LayoutKind.Sequential)] private struct ScreenRect { public int Left, Top, Right, Bottom; }
-    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out ScreenRect rect);
-    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool ClientToScreen(IntPtr window, ref System.Drawing.Point point);
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr GetDC(IntPtr window);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
-    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr destination, int dx, int dy, int w, int h, IntPtr source, int sx, int sy, uint operation);
+    [DllImport("gdi32.dll", SetLastError = true)] private static extern bool BitBlt(IntPtr destination, int dx, int dy, int w, int h, IntPtr source, int sx, int sy, uint operation);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern IntPtr GetTopWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
