@@ -9,7 +9,8 @@
   "scripts": {
     "start": "electron .",
     "dist": "npm run build:windows-desktop && electron-builder --win",
-    "build:windows-desktop": "dotnet publish windows-desktop/Opsis.WindowsDesktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -o windows-desktop/out",
+    "prebuild:windows-desktop": "node -e \"require('node:fs').rmSync('windows-desktop/out', { recursive: true, force: true })\"",
+    "build:windows-desktop": "dotnet publish windows-desktop/Opsis.WindowsDesktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -o windows-desktop/out",
     "smoke-test": "node smoke-test.js",
     "test": "node --test --test-concurrency=1 test/video.test.js test/video.real.test.js test/audiolib.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/photosave.test.js test/flyout.test.js",
     "selftest": "node selftest.js"
