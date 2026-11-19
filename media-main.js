@@ -151,7 +151,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         byId('vpQueueToggle').click();
         const collapsed = queue.hidden;
         byId('vpQueueToggle').click();
-        const playlist = collapsed && !queue.hidden &&
+        const playlist = collapsed && !queue.hidden && queue.getBoundingClientRect().height > 40 &&
           Boolean(byId('vpStage').compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING) &&
           queue.getBoundingClientRect().top >= byId('vpStage').getBoundingClientRect().bottom;
         byId('vpSourcesToggle').click();
