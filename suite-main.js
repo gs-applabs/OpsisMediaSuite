@@ -1,4 +1,5 @@
 'use strict';
+const { loadUiPage } = require('./renderer-protocol.js');
 const { helperPath } = require('./windows-desktop.js');
 // Main-process glue for the welcome guide, the "Opsis family" showcase and the new-version balloon.
 // All network access (catalogue, releases, installer download) happens here; the windows never fetch anything themselves.
@@ -213,7 +214,7 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
     });
     win.once('ready-to-show', () => { win.show(); win.focus(); });
     const q = new URLSearchParams({ kind, theme: getTheme() });
-    win.loadFile(path.join(__dirname, 'renderer', 'splash.html'), { search: q.toString() });
+    loadUiPage(win, 'splash.html', q);
     return true;
   }
 

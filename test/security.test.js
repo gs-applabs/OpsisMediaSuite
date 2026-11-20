@@ -20,7 +20,7 @@ test('FFmpeg discovery uses only explicit absolute PATH directories in order', (
 function converterFixture(resolveFfmpegPath = () => null) {
   const handlers = new Map();
   const listeners = new Map();
-  const webContents = { mainFrame: { url: 'file:///fixture.html' } };
+  const webContents = { mainFrame: { url: 'opsis-ui://app/fixture.html' } };
   const source = path.resolve('source.wav');
   const calls = { stats: 0, jobs: 0 };
   const module = { exports: {} };
@@ -173,7 +173,7 @@ test('backup restore checks local folder paths and rolls back a failed batch', (
 
 test('one IPC trust policy rejects child frames and non-local top frames', () => {
   const { makeTrust } = require('../ipc-trust.js');
-  const frame = { url: 'file:///C:/Opsis/index.html' };
+  const frame = { url: 'opsis-ui://app/index.html' };
   const sender = { mainFrame: frame };
   const trust = makeTrust(() => ({ webContents: sender, isDestroyed: () => false }));
   assert.equal(trust({ sender, senderFrame: frame }), true);
@@ -191,4 +191,22 @@ test('every installer file association belongs to a supported media type', () =>
   }
   assert.ok(AUDIO_EXTS.includes('aac'));
   assert.ok(VIDEO_EXTS.includes('ogv'));
+});
+
+test('the packaged UI protocol serves app assets and denies outside paths', async () => {
+  const { handleUiRequests } = require('../renderer-protocol.js');
+  let handle;
+  handleUiRequests({ handle: (scheme, callback) => {
+    assert.equal(scheme, 'opsis-ui');
+    handle = callback;
+  } });
+  const request = (url, method = 'GET') => handle({ url, method });
+  const home = await request('opsis-ui://app/index.html');
+  assert.equal(home.status, 200);
+  assert.match(home.headers.get('Content-Type'), /^text\/html/);
+  assert.match(await home.text(), /Opsis Media Suite/);
+  for (const url of ['opsis-ui://other/index.html', 'opsis-ui://app/%2fpackage.json', 'opsis-ui://app/%5cmain.js', 'file:///C:/Opsis/index.html']) {
+    assert.equal((await request(url)).status, 404);
+  }
+  assert.equal((await request('opsis-ui://app/index.html', 'POST')).status, 404);
 });

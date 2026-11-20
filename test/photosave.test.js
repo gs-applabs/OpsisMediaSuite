@@ -23,7 +23,7 @@ Module._load = origLoad;
 
 test('photo save writes only the supplied ArrayBuffer view', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-photo-'));
-  const senderFrame = { url: 'file:///fixture.html' };
+  const senderFrame = { url: 'opsis-ui://app/fixture.html' };
   const sender = { mainFrame: senderFrame };
   M.init({ getMainWin: () => ({ isDestroyed: () => false, webContents: sender }), resolveFfmpegPath: () => null });
   const save = handlers['photo:save'];

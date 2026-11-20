@@ -3,6 +3,14 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const version = ipcRenderer.sendSync('app:version-sync');
 const musicPath = ipcRenderer.sendSync('paths:music-sync');
 
+const legacySettings = ipcRenderer.sendSync('app:legacy-settings-sync');
+if (Array.isArray(legacySettings)) {
+  try {
+    for (const [key, value] of legacySettings) if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
+    ipcRenderer.send('app:legacy-settings-done');
+  } catch { /* storage can be unavailable; retry on the next start */ }
+}
+
 contextBridge.exposeInMainWorld('waveframe', {
   version,
   musicPath,

@@ -46,6 +46,7 @@
       "atomic-write.js",
       "local-path.js",
       "ipc-trust.js",
+      "renderer-protocol.js",
       "audio-tags.js",
       "preload.js",
       "flyout-main.js",

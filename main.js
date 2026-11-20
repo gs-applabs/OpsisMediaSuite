@@ -1,6 +1,7 @@
+const { registerUiScheme, handleUiRequests, loadUiPage } = require('./renderer-protocol.js');
 const { atomicWrite } = require('./atomic-write.js');
 const { makeTrust } = require('./ipc-trust.js');
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen, Menu, Tray } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, globalShortcut, nativeImage, Notification, screen, Menu, Tray } = require('electron');
 const path = require('path');
 const { AUDIO_EXTS, VIDEO_EXTS } = require('./media-types.js');
 const { safeLocalPath } = require('./local-path.js');
@@ -18,6 +19,7 @@ const media = require('./media-main.js');
 const { attachFlyout } = require('./flyout-main.js');
 const { detectEncoders, invalidateEncoders } = require('./conv-video.js');
 const { systemFfmpegCandidates } = require('./ffmpeg-path.js');
+registerUiScheme(protocol);
 media.registerScheme(); // the read-only wfmedia: protocol of the video player must be declared before the app is ready
 
 app.on('web-contents-created', (_event, contents) => {
@@ -196,8 +198,7 @@ function createHelpWindow(parent) {
   });
   helpWindow.setMenuBarVisibility(false);
   helpWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  helpWindow.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
-  helpWindow.loadFile(path.join(__dirname, 'renderer', 'help.html'), { search: `theme=${encodeURIComponent(currentTheme)}&lang=${encodeURIComponent(helpLang)}` });
+  loadUiPage(helpWindow, 'help.html', { theme: currentTheme, lang: helpLang });
   helpWindow.on('closed', () => { helpWindow = null; });
 }
 
@@ -381,7 +382,7 @@ function createWindow() {
     try { win.reload(); } catch (_) { /* window is closing */ }
   });
   win.on('unresponsive', () => { /* keep the window: the audio engine may just be busy decoding a large file */ });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  loadUiPage(win, 'index.html');
   if (process.env.WAVEFRAME_SELFTEST === '1') {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
@@ -549,6 +550,11 @@ function createWindow() {
   win.on('unmaximize', () => win.webContents.send('window:maximized-state', false));
   ipcMain.on('window:close', (e) => { if (fromMain(e)) win.close(); });
   ipcMain.on('app:version-sync', (event) => { event.returnValue = fromApp(event) ? app.getVersion() : ''; });
+  ipcMain.on('app:legacy-settings-sync', (e) => { e.returnValue = fromMain(e) ? legacySettings : null; });
+  ipcMain.on('app:legacy-settings-done', (e) => {
+    if (!fromMain(e) || !legacySettings) return;
+    try { atomicWrite(legacySettingsMarker(), '1'); legacySettings = null; } catch { /* retry next time */ }
+  });
   ipcMain.on('paths:music-sync', (event) => { event.returnValue = fromApp(event) ? app.getPath('music') : ''; });
   ipcMain.on('help:open', (e) => { if (fromMain(e)) createHelpWindow(win); });
 
@@ -664,6 +670,38 @@ function forwardJumpListAction(argv) {
   }
 }
 
+// A hidden, sandboxed page on the original file origin imports only the local
+// settings from older versions, where the renderer lived on file://.
+const legacySettingsMarker = () => path.join(app.getPath('userData'), 'ui-settings-migrated');
+let legacySettings = null;
+let mainWindowInitialized = false;
+async function readLegacySettings() {
+  if (process.env.WAVEFRAME_SELFTEST === '1' || fs.existsSync(legacySettingsMarker())) return;
+  let dir;
+  let win;
+  let timer;
+  try {
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'opsis-legacy-ui-'));
+    const page = path.join(dir, 'settings.html');
+    await fs.promises.writeFile(page, `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'"><title>Opsis configuration</title>`);
+    win = new BrowserWindow({
+      show: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    legacySettings = await Promise.race([
+      win.loadFile(page).then(() => win.webContents.executeJavaScript(
+        "Object.entries(localStorage).filter(([key, value]) => /^waveframe[.][a-zA-Z0-9._-]{1,80}$/.test(key) && typeof value === 'string')"
+      )),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(null), 3000); }),
+    ]);
+  } catch { /* keep the legacy settings available for a later retry */ }
+  finally {
+    clearTimeout(timer);
+    if (win && !win.isDestroyed()) win.destroy();
+    if (dir) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -676,7 +714,9 @@ if (!gotSingleInstanceLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    handleUiRequests(protocol);
+    await readLegacySettings();
     if (process.platform === 'win32') app.setAppUserModelId('com.example.waveframe');
     reapplyAutostartAfterRename();
     const mainWindowTrust = makeTrust(() => mainWin);
@@ -700,6 +740,7 @@ if (!gotSingleInstanceLock) {
       if (safeLocalPath(dir)) void removeStaleOutput(dir);
     }
     mediaApi = media.init({ getMainWin: () => mainWin, resolveFfmpegPath });
+    mainWindowInitialized = true;
     createWindow();
     forwardJumpListAction(process.argv);
     mainWin.webContents.once('did-finish-load', () => forwardOpenFile(process.argv));
@@ -727,6 +768,6 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    if (mainWindowInitialized && process.platform !== 'darwin') app.quit();
   });
 }

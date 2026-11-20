@@ -1,3 +1,4 @@
+const { loadUiPage } = require('./renderer-protocol.js');
 const { makeTrust } = require('./ipc-trust.js');
 const { BrowserWindow, ipcMain, nativeImage, screen, systemPreferences } = require('electron');
 const path = require('node:path');
@@ -243,7 +244,7 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
       lockToast.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       lockToast.webContents.on('will-navigate', (event) => event.preventDefault());
       lockToast.on('closed', () => { lockToast = null; lockReady = false; });
-      lockToast.loadFile(path.join(__dirname, 'renderer', 'lock-toast.html')).then(() => {
+      loadUiPage(lockToast, 'lock-toast.html').then(() => {
         lockReady = true;
         if (desktopSettings.locks || process.env.WAVEFRAME_SELFTEST === '1') revealLock();
       }).catch(() => lockToast?.destroy());
@@ -347,9 +348,7 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
       syncAppearance();
       reveal();
     });
-    flyout.loadFile(path.join(__dirname, 'renderer', 'flyout.html'), {
-      query: { theme: getTheme(), lang: appearance.lang },
-    }).catch(() => flyout?.destroy());
+    loadUiPage(flyout, 'flyout.html', { theme: getTheme(), lang: appearance.lang }).catch(() => flyout?.destroy());
   }
 
   function listen(channel, windowForSender, handle) {

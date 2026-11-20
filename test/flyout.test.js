@@ -15,7 +15,7 @@ function fixture(t, desktopAvailable = false) {
     constructor() {
       super();
       this.webContents = new EventEmitter();
-      this.webContents.mainFrame = { url: 'file:///fixture.html' };
+      this.webContents.mainFrame = { url: 'opsis-ui://app/fixture.html' };
       this.webContents.setWindowOpenHandler = () => {};
       this.messages = [];
       this.webContents.send = (...args) => this.messages.push(args);
@@ -31,7 +31,7 @@ function fixture(t, desktopAvailable = false) {
     focus() { this.focused = true; this.emit('focus'); }
     hide() { this.visible = this.focused = false; this.emit('hide'); }
     destroy() { this.destroyed = true; this.emit('closed'); }
-    async loadFile() { this.webContents.emit('did-finish-load'); }
+    async loadURL() { this.webContents.emit('did-finish-load'); }
   }
   const ipcMain = new EventEmitter();
   const nativeCommands = [];
@@ -44,6 +44,7 @@ function fixture(t, desktopAvailable = false) {
   vm.runInNewContext(source, {
     module, __dirname: path.join(__dirname, '..'), setTimeout, clearTimeout, setInterval, clearInterval, process,
     require(name) {
+      if (name === './renderer-protocol.js') return require('../renderer-protocol.js');
       if (name === './ipc-trust.js') return require('../ipc-trust.js');
       if (name === 'electron') return { BrowserWindow: Window, ipcMain, screen };
       if (name === './windows-desktop') return {
