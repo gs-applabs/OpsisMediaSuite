@@ -31,11 +31,13 @@ function capture(ffmpegPath, args, timeoutMs = 15000) {
 // Asks ffmpeg what it can encode and which hardware accelerators it knows. Cached per binary.
 async function detectEncoders(ffmpegPath) {
   if (encoderCache.has(ffmpegPath)) return encoderCache.get(ffmpegPath);
+  const listing = await capture(ffmpegPath, ['-hide_banner', '-encoders']);
   const res = {
-    encoders: V.parseEncoders(await capture(ffmpegPath, ['-hide_banner', '-encoders'])),
+    encoders: V.parseEncoders(listing),
+    audioEncoders: V.parseEncoders(listing, 'A'),
     hwaccels: V.parseHwaccels(await capture(ffmpegPath, ['-hide_banner', '-hwaccels'])),
   };
-  if (res.encoders.size > 0) encoderCache.set(ffmpegPath, res);
+  if (res.encoders.size > 0 || res.audioEncoders.size > 0) encoderCache.set(ffmpegPath, res);
   return res;
 }
 

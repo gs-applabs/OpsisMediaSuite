@@ -70,8 +70,8 @@ let ffmpegLookup;
 let ffmpegCheckedAt = 0;
 
 async function hasRequiredEncoders(executable) {
-  const { encoders } = await detectEncoders(executable);
-  return requiredAudioEncoders.every((codec) => encoders.has(codec));
+  const { audioEncoders } = await detectEncoders(executable);
+  return requiredAudioEncoders.every((codec) => audioEncoders.has(codec));
 }
 
 function resolveFfmpegPath() {
@@ -80,7 +80,7 @@ function resolveFfmpegPath() {
   ffmpegLookup = (async () => {
     for (const candidate of [...(preferManagedFfmpeg ? [] : systemFfmpegCandidates(process.env.PATH)), FALLBACK_FFMPEG()]) {
       const executable = await fs.promises.realpath(candidate).catch(() => null);
-      if (executable && await hasRequiredEncoders(executable)) return executable;
+      if (safeLocalPath(executable) && await hasRequiredEncoders(executable)) return executable;
     }
     return null;
   })();

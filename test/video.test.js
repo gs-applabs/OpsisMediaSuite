@@ -188,3 +188,9 @@ test('the shared queue handles video jobs: sequential, progress, per-file errors
   const done = q2.start(); q2.cancel(); release('late');
   assert.deepEqual((await done).map((x) => x.status), ['cancelled', 'cancelled']);
 });
+
+test('FFmpeg encoder listings separate audio and video capability checks', () => {
+  const listing = ' V....D libx264   H.264\n A....D libmp3lame   MP3\n A....D flac   FLAC';
+  assert.deepEqual([...V.parseEncoders(listing)], ['libx264']);
+  assert.deepEqual([...V.parseEncoders(listing, 'A')], ['libmp3lame', 'flac']);
+});

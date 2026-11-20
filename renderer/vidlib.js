@@ -85,12 +85,12 @@
 
   /* ---------- encoder detection and choice ---------- */
 
-  // `ffmpeg -encoders` lists encoders as " V....D libx264   libx264 H.264 ..." -> Set of video encoder names
-  function parseEncoders(text) {
+  // `ffmpeg -encoders` lists encoders as " V....D libx264   libx264 H.264 ..." -> Set of encoder names for the selected media type
+  function parseEncoders(text, mediaType = 'V') {
     const set = new Set();
     for (const line of String(text).split(/\r?\n/)) {
-      const m = /^\s*V[.A-Z]{5}\s+(\S+)/.exec(line);
-      if (m) set.add(m[1]);
+      const m = /^\s*([AV])[.A-Z]{5}\s+(\S+)/.exec(line);
+      if (m?.[1] === mediaType) set.add(m[2]);
     }
     return set;
   }
