@@ -1,6 +1,8 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
@@ -10,11 +12,21 @@ static class Program
     private static readonly HashSet<string> MediaActions = ["playpause", "prev", "next", "seek", "shuffle", "repeat"];
     private static readonly HashSet<string> MixerActions = ["volume", "mute"];
 
+    [DllImport("shell32.dll")]
+    private static extern int SHQueryUserNotificationState(out int state);
+
     [STAThread]
     public static void Main(string[] args)
     {
         Console.InputEncoding = Encoding.UTF8;
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (args is ["--quiet-state"])
+        {
+            int result = SHQueryUserNotificationState(out int state);
+            if (result == 0) Console.WriteLine(state);
+            else Environment.ExitCode = 1;
+            return;
+        }
         Forms.Application.SetHighDpiMode(Forms.HighDpiMode.PerMonitorV2);
         Forms.Application.EnableVisualStyles();
         if (args is ["--test-taskbar-placement"])
@@ -85,8 +97,7 @@ static class Program
                         return;
                 }
             }
-            catch (Exception e) when (e is JsonException or COMException or InvalidOperationException or ArgumentException
-                or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            catch (Exception)
             {
                 Send(new { type = "error" });
             }
@@ -125,7 +136,8 @@ sealed class KeyboardObserver : IDisposable
 {
     private static readonly Dictionary<int, string> LockKeys = new() { [0x14] = "caps", [0x90] = "num", [0x91] = "scroll" };
     private static readonly HashSet<int> MediaKeys = [0xAD, 0xAE, 0xAF, 0xB0, 0xB1, 0xB2, 0xB3];
-    private readonly Action<string, bool> notify;
+    private readonly Channel<(string Key, bool Enabled)> notifications = Channel.CreateBounded<(string, bool)>(
+        new BoundedChannelOptions(32) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.DropOldest });
     private readonly HookProc hookProc;
     private readonly Forms.Timer timer = new() { Interval = 80 };
     private IntPtr hook;
@@ -134,13 +146,22 @@ sealed class KeyboardObserver : IDisposable
 
     public KeyboardObserver(Action<string, bool> notify)
     {
-        this.notify = notify;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var item in notifications.Reader.ReadAllAsync())
+                    notify(item.Key, item.Enabled);
+            }
+            catch (IOException) { /* the parent closed the pipe */ }
+            catch (ObjectDisposedException) { /* the parent closed the pipe */ }
+        });
         hookProc = Observe;
         timer.Tick += (_, _) =>
         {
             timer.Stop();
             if (observeLocks && LockKeys.TryGetValue(pendingKey, out var key))
-                notify(key, (GetKeyState(pendingKey) & 1) != 0);
+                notifications.Writer.TryWrite((key, (GetKeyState(pendingKey) & 1) != 0));
         };
     }
 
@@ -165,7 +186,7 @@ sealed class KeyboardObserver : IDisposable
                 timer.Stop();
                 timer.Start();
             }
-            if (observeMedia && MediaKeys.Contains(key)) notify(key <= 0xAF ? "volume" : "media", false);
+            if (observeMedia && MediaKeys.Contains(key)) notifications.Writer.TryWrite((key <= 0xAF ? "volume" : "media", false));
         }
         return CallNextHookEx(hook, code, message, data);
     }
@@ -177,7 +198,7 @@ sealed class KeyboardObserver : IDisposable
         hook = IntPtr.Zero;
     }
 
-    public void Dispose() { Unhook(); timer.Dispose(); }
+    public void Dispose() { Unhook(); timer.Dispose(); notifications.Writer.TryComplete(); }
 
     private delegate IntPtr HookProc(int code, IntPtr message, IntPtr data);
     [DllImport("user32.dll", EntryPoint = "SetWindowsHookExW")] private static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr module, uint thread);

@@ -1,3 +1,4 @@
+const { makeTrust } = require('./ipc-trust.js');
 const { BrowserWindow, ipcMain, nativeImage, screen, systemPreferences } = require('electron');
 const path = require('node:path');
 const { createWindowsDesktop } = require('./windows-desktop');
@@ -352,11 +353,8 @@ function attachFlyout(owner, getTheme, isOwnerMinimized = () => owner.isMinimize
   }
 
   function listen(channel, windowForSender, handle) {
-    const listener = (event, value) => {
-      const win = windowForSender();
-      if (win && !win.isDestroyed() && event.sender === win.webContents &&
-          event.senderFrame && event.senderFrame === win.webContents.mainFrame) handle(value);
-    };
+    const trusted = makeTrust(windowForSender);
+    const listener = (event, value) => { if (trusted(event)) handle(value); };
     ipcMain.on(channel, listener);
     listeners.push([channel, listener]);
   }

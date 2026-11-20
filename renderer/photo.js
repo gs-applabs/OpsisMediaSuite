@@ -14,7 +14,7 @@
   const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
+  let bmp = null, name = 'photo', takenAt = null, params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
   const info = (text) => { $('phInfo').textContent = text || ''; };
 
@@ -68,15 +68,15 @@
     info(t('ph.loading'));
     const r = await api.photoRead(p);
     if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
-    await openBlob(new Blob([r.bytes]), r.name);
+    await openBlob(new Blob([r.bytes]), r.name, r.takenAt);
   }
 
-  async function openBlob(blob, nm) {
+  async function openBlob(blob, nm, capture = null) {
     try {
       const b = await createImageBitmap(blob, { imageOrientation: 'from-image' });
       if (b.width * b.height > P.LIMITS.maxPixels) { b.close(); info(t('ph.tooLarge')); return; }
       if (bmp) bmp.close();
-      bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders();
+      bmp = b; name = nm || 'photo'; takenAt = capture; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders();
       const sz = P.previewSize(b.width, b.height);
       const c = document.createElement('canvas'); c.width = sz.width; c.height = sz.height;
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0, sz.width, sz.height);
@@ -130,7 +130,7 @@
       const f = $('phFormat').value, q = Number($('phQuality').value) / 100;
       const blob = await new Promise((res) => oc.toBlob(res, P.OUT_FORMATS[f].mime, q));
       if (!blob) { info(t('ph.saveFailed')); return; }
-      const r = await api.photoSave({ format: f, name, bytes: await blob.arrayBuffer() });
+      const r = await api.photoSave({ format: f, name, takenAt, bytes: await blob.arrayBuffer() });
       info(r && r.ok ? fmt(t('ph.saved'), { w: out.width, h: out.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
     } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
   }

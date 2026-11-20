@@ -46,6 +46,8 @@
 | 🛡 Αξιοπιστία | Crash overlay με αρχείο καταγραφής αντί για σιωπηλή κατάρρευση, backup/restore ρυθμίσεων σε JSON (για συγχρονισμό μέσω OneDrive/Drive/Dropbox) |
 | 👋 Οδηγός & οικογένεια εφαρμογών | Οδηγός καλωσορίσματος 6 σελίδων σε κάθε νέα έκδοση (major.minor) που «μαζεύεται» στο λογότυπο, παρουσίαση «Η οικογένεια Opsis» με κατάσταση εγκατάστασης και λήψη εγκαταστάτη μόνο με επιβεβαίωση και έλεγχο SHA-256, ειδοποίηση για νέα έκδοση (μία φορά ανά έκδοση, με διακόπτη) |
 
+Το προαιρετικό χειριστήριο πλήκτρων παρατηρεί μόνο τα πλήκτρα Caps Lock, Num Lock, Scroll Lock, πολυμέσων και έντασης. Τα συμβάντα χρησιμοποιούνται τοπικά για τις ενδείξεις της εφαρμογής.
+
 ### Εγκατάσταση
 
 Κατέβασε το τελευταίο `OpsisMediaSuite-Setup-*.exe` από τα [Releases](../../releases). Ο οδηγός Inno Setup ζητά δικαιώματα διαχειριστή, εγκαθιστά την εφαρμογή στο Program Files και δημιουργεί συντομεύσεις. Για παλιές εγκαταστάσεις με το όνομα Waveframe, η απεγκατάσταση γίνεται από τις Εγκατεστημένες εφαρμογές των Windows. Διατίθεται επίσης φορητή έκδοση.
@@ -104,7 +106,7 @@ The app needs an FFmpeg (LGPL build) for exporting; if one isn't already on your
 
 #### Verify your download (SHA-256)
 
-Every release file has a matching `.sha256` file. In PowerShell: `(Get-FileHash .\OpsisMediaSuite-Setup-2.3.0.exe -Algorithm SHA256).Hash` and compare it with the contents of `OpsisMediaSuite-Setup-2.3.0.exe.sha256`. **Requirements:** Windows 10/11 x64; installs to Program Files (asks for administrator rights). Updates: new-version notification with "Download and install" (SHA-256, silent install).
+Every release file has a matching `.sha256` file. In PowerShell: `(Get-FileHash .\OpsisMediaSuite-Setup-2.3.0.exe -Algorithm SHA256).Hash` and compare it with the contents of `OpsisMediaSuite-Setup-2.3.0.exe.sha256`. **Requirements:** Windows 10/11 x64; installs to Program Files (asks for administrator rights). In-app installation requires both a valid Authenticode signature and a pinned publisher certificate. Builds without a publisher pin open the official release page for manual installation.
 
 ### Building from source
 

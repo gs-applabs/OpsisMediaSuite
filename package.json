@@ -30,11 +30,22 @@
     "appId": "com.example.waveframe",
     "productName": "Opsis Media Suite",
     "copyright": "Copyright (c) 2026 gs-applabs",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "directories": {
       "output": "release"
     },
     "files": [
       "main.js",
+      "atomic-write.js",
+      "local-path.js",
+      "ipc-trust.js",
       "audio-tags.js",
       "preload.js",
       "flyout-main.js",
@@ -48,9 +59,12 @@
       "conv-video.js",
       "ffmpeg-path.js",
       "media-main.js",
+      "photo-metadata.js",
+      "media-types.js",
       "suite-apps.json",
       "icon.ico",
       "renderer/**/*",
+      "decode-text.js",
       "m3u.js"
     ],
     "extraResources": [

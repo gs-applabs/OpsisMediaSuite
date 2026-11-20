@@ -20,7 +20,7 @@ test('FFmpeg discovery uses only explicit absolute PATH directories in order', (
 function converterFixture(resolveFfmpegPath = () => null) {
   const handlers = new Map();
   const listeners = new Map();
-  const webContents = { mainFrame: {} };
+  const webContents = { mainFrame: { url: 'file:///fixture.html' } };
   const source = path.resolve('source.wav');
   const calls = { stats: 0, jobs: 0 };
   const module = { exports: {} };
@@ -103,7 +103,7 @@ test('every page has a strict CSP (no inline script/style, no eval, no plugins, 
 });
 
 test('every ipcMain channel of main.js, conv-main.js and suite-main.js checks who is asking', () => {
-  const cases = [['main.js', /fromMain\(|fromApp\(/], ['conv-main.js', /trusted\(/], ['suite-main.js', /fromSplash\(|isTrusted\(/]];
+  const cases = [['main.js', /fromMain\(|fromApp\(/], ['conv-main.js', /trusted\(/], ['suite-main.js', /fromSplash\(|isTrusted\(/], ['media-main.js', /trusted\(/]];
   for (const [file, guard] of cases) {
     const src = read(file);
     const parts = src.split(/\n\s*ipcMain\.(?:on|handle)\(/).slice(1);
@@ -123,8 +123,8 @@ test('IPC arguments are validated in main.js (types, sizes, patterns)', () => {
   assert.match(m, /PNG_DATA_URL/);
   assert.match(m, /slice\(0, 4000\)/, 'crash log entries are bounded');
   assert.match(m, /512 \* 1024/, 'crash log is rotated');
-  assert.match(m, /path\.isAbsolute\(filePath\)/);
-  assert.match(m, /AUDIO_FILE_EXTENSIONS\.includes/);
+  assert.match(m, /safeLocalPath\(filePath\)/);
+  assert.match(m, /AUDIO_EXTS\.includes/);
   assert.match(m, /\^\[a-z0-9-\]\{1,30\}\$/, 'theme names are a strict pattern');
 });
 
@@ -145,4 +145,50 @@ test('the update never runs a download that was not verified: hash is required a
   assert.match(sm, /expectedSha256: sha/);
   assert.match(sm, /buildUpdateScript/);
   assert.ok(!/execFile\([^)]*setupPath|spawn\([^)]*asset\.url/.test(sm));
+});
+
+test('media paths reject Windows UNC and device namespaces on every host', () => {
+  const { safeLocalPath } = require('../local-path.js');
+  for (const fragment of ['\\\\host\\share\\a.mp3', '//host/share/a.mp3', '\\\\?\\UNC\\host\\share\\a.mp3', '\\\\.\\C:\\a'])
+    assert.equal(safeLocalPath(fragment, 'win32'), false);
+  assert.equal(safeLocalPath('C:\\Music\\a.mp3', 'win32'), true);
+  assert.equal(safeLocalPath('C:relative.mp3', 'win32'), false);
+});
+
+test('backup restore checks local folder paths and rolls back a failed batch', () => {
+  const { restore } = require('../renderer/backup.js');
+  const values = new Map([['waveframe.lang', 'en']]);
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem(key, value) { if (value === 'fail') throw new Error('quota'); values.set(key, value); },
+    removeItem: (key) => values.delete(key),
+  };
+  assert.equal(restore(storage, { 'waveframe.lang': 'el', 'waveframe.skin': 'fail' }), false);
+  assert.equal(restore(storage, { 'waveframe.lang': 'el', 'waveframe.destFolder': '//server/share' }), false);
+  assert.equal(restore(storage, { 'waveframe.lang': 'el', 'waveframe.video.queue': '{}' }), false);
+  assert.deepEqual([...values], [['waveframe.lang', 'en']]);
+  assert.equal(restore(storage, { 'waveframe.lang': 'el', 'waveframe.unknown': 'value' }), true);
+  assert.deepEqual([...values], [['waveframe.lang', 'el']]);
+});
+
+test('one IPC trust policy rejects child frames and non-local top frames', () => {
+  const { makeTrust } = require('../ipc-trust.js');
+  const frame = { url: 'file:///C:/Opsis/index.html' };
+  const sender = { mainFrame: frame };
+  const trust = makeTrust(() => ({ webContents: sender, isDestroyed: () => false }));
+  assert.equal(trust({ sender, senderFrame: frame }), true);
+  assert.equal(trust({ sender, senderFrame: { ...frame } }), false);
+  frame.url = 'file://other-host/path';
+  assert.equal(trust({ sender, senderFrame: frame }), false);
+  frame.url = 'https://example.org';
+  assert.equal(trust({ sender, senderFrame: frame }), false);
+});
+
+test('every installer file association belongs to a supported media type', () => {
+  const { AUDIO_EXTS, VIDEO_EXTS } = require('../media-types.js');
+  for (const match of read('installer/OpsisMediaSuite.iss').matchAll(/Classes\\\.([a-z0-9]+)\\OpenWithProgids/g)) {
+    assert.ok([...AUDIO_EXTS, ...VIDEO_EXTS].includes(match[1]), match[1]);
+  }
+  assert.ok(AUDIO_EXTS.includes('aac'));
+  assert.ok(VIDEO_EXTS.includes('ogv'));
 });

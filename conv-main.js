@@ -2,9 +2,11 @@
 // IPC glue for the audio converter. Only the main window may call these channels; every payload is validated here
 // (options through convlib.validateOptions, files must exist and be regular files). The original files are only read.
 
+const { makeTrust } = require('./ipc-trust.js');
 const { ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { safeLocalPath } = require('./local-path.js');
 const L = require('./renderer/convlib.js');
 const E = require('./conv-engine.js');
 const EV = require('./conv-video.js');
@@ -12,11 +14,12 @@ const V = require('./renderer/vidlib.js');
 
 const MAX_READ = 600 * 1024 * 1024; // the renderer decodes the whole file in memory
 
-function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
+function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir, isApprovedOutDir }) {
+  const trusted = makeTrust(getMainWin);
   const jobs = new Map();
+  let closing = false;
   const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
-  const okFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
+  const okFile = (p) => { try { return safeLocalPath(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
   const okId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
   const errorOf = (e) => ({ ok: false, code: e && e.code || 'failed', error: (e && e.message || String(e)).slice(0, 400) });
 
@@ -48,21 +51,39 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   });
 
   ipcMain.handle('conv:read', async (e, p) => {
-    if (!trusted(e) || !okFile(p)) return null;
-    if (fs.statSync(p).size > MAX_READ) return { tooLarge: true };
-    return { bytes: fs.readFileSync(p) };
+    if (!trusted(e) || !safeLocalPath(p)) return null;
+    let file;
+    try {
+      file = await fs.promises.open(p, 'r');
+      const stat = await file.stat();
+      if (!stat.isFile()) return null;
+      if (stat.size > MAX_READ) return { tooLarge: true };
+      const bytes = Buffer.allocUnsafe(stat.size);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset);
+        if (!bytesRead) return null;
+        offset += bytesRead;
+      }
+      return { bytes };
+    } catch { return null; }
+    finally { await file?.close().catch(() => {}); }
   });
 
   ipcMain.handle('conv:predecode', async (e, p, sampleRate) => {
     if (!trusted(e) || !okFile(p)) return null;
     const ff = await resolveFfmpegPath();
     if (!ff) return null;
-    try { return { bytes: await E.predecodeToWav({ ffmpegPath: ff, input: p, sampleRate: Number.isFinite(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate : 0 }) }; } catch (_) { return null; }
+    try { return { bytes: await E.predecodeToWav({ ffmpegPath: ff, input: p, sampleRate: Number.isFinite(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate : 0 }) }; }
+    catch (error) { return error.code === 'too-large' ? { tooLarge: true } : null; }
   });
 
   // 'default' = MusicWaveFrame (created on demand), 'custom' = a folder the user picked, 'source' = next to the original (undefined).
   function resolveOutDir(req, hasSource, def = defaultOutDir) {
-    if (req.outMode === 'custom' && typeof req.outDir === 'string' && path.isAbsolute(req.outDir)) return req.outDir;
+    if (req.outMode === 'custom') {
+      if (!safeLocalPath(req.outDir) || !isApprovedOutDir(req.outDir)) throw Object.assign(new Error('bad-output-dir'), { code: 'bad-output-dir' });
+      return req.outDir;
+    }
     if (req.outMode === 'source' && hasSource) return undefined;
     return def();
   }
@@ -70,11 +91,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('conv:default-dir', (e) => (trusted(e) ? defaultOutDir() : null));
 
   async function track(id, run) {
+    if (closing) return { ok: false, code: 'cancelled' };
     if (jobs.has(id)) return { ok: false, code: 'busy' };
     const state = { cancelled: false, job: null };
     jobs.set(id, state);
     try {
-      return await run(state);
+      state.finished = run(state);
+      return await state.finished;
     } catch (err) { return errorOf(err); } finally { jobs.delete(id); }
   }
 
@@ -100,20 +123,21 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.handle('conv:encode', async (e, req) => {
     if (!trusted(e) || !req || !okId(req.id) || !(req.wav instanceof Uint8Array || req.wav instanceof ArrayBuffer)) return { ok: false, code: 'bad-request' };
+    if (req.wav.byteLength > MAX_READ) return { ok: false, code: 'too-large' };
     const hasSource = okFile(req.path);
     const hasName = typeof req.name === 'string' && req.name.length > 0 && req.name.length < 200;
     if (!(hasSource || hasName)) return { ok: false, code: 'bad-request' };
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
     return track(req.id, async (state) => {
-      const ff = v.options.format === 'wav' ? null : await resolveFfmpegPath();
+      const ff = v.options.format === 'wav' && !(hasSource && v.options.preserveMetadata) ? null : await resolveFfmpegPath();
       if (v.options.format !== 'wav' && !ff && !state.cancelled) return { ok: false, code: 'no-ffmpeg' };
       return runJob(state, () => {
         const wavBytes = req.wav instanceof ArrayBuffer ? new Uint8Array(req.wav) : req.wav;
         const outDir = resolveOutDir(req, hasSource);
         // Tracks from the playlist have no file on disk: name them in the output folder.
         const input = hasSource ? req.path : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
-        return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
+        return E.convertFromWav({ ffmpegPath: ff, input, original: hasSource ? req.path : undefined, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
       });
     });
   });
@@ -291,7 +315,17 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     return out;
   }
 
-  return { selfTest };
+  async function cancelAll() {
+    closing = true;
+    const active = [...jobs.values()];
+    for (const state of active) {
+      state.cancelled = true;
+      state.job?.cancel();
+    }
+    await Promise.allSettled([E.cancelAllFfmpeg(), ...active.map((state) => state.finished)]);
+  }
+
+  return { selfTest, cancelAll };
 }
 
 module.exports = { init };

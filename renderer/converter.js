@@ -97,13 +97,15 @@
     let read;
     if (isTrack) {
       const t0 = item.track; // playlist entry: a File from the picker or a URL
-      read = { bytes: new Uint8Array(t0.file ? await t0.file.arrayBuffer() : await (await fetch(t0.url)).arrayBuffer()) };
+      read = t0.path && !t0.file ? await api.convRead(t0.path)
+        : { bytes: new Uint8Array(t0.file ? await t0.file.arrayBuffer() : await (await fetch(t0.url)).arrayBuffer()) };
     } else read = await api.convRead(item.path);
     if (!read || read.tooLarge) throw Object.assign(new Error('file too large to process in memory'), { code: 'too-large' });
     let decoded;
     try { decoded = await decode(read.bytes, info && info.sampleRate); }
     catch (_) {
       const pre = ctx.ffmpeg && !isTrack ? await api.convPredecode(item.path, info && info.sampleRate) : null; // WMA, AIFF, video containers ...
+      if (pre?.tooLarge) throw Object.assign(new Error('Decoded audio exceeds 256 MB'), { code: 'too-large' });
       if (!pre) throw Object.assign(new Error('decode-failed'), { code: 'decode-failed' });
       decoded = await decode(pre.bytes, info && info.sampleRate);
     }
@@ -178,6 +180,7 @@
     const chSel = select('convChannels', [[0, t('conv.auto')], [1, t('conv.mono')], [2, t('conv.stereo')]], saved.channels);
     const tStart = h('input', { id: 'convTrimStart', type: 'text', placeholder: '0:00', value: saved.trimStartText || '' });
     const tEnd = h('input', { id: 'convTrimEnd', type: 'text', placeholder: '', value: saved.trimEndText || '' });
+    const metadata = h('input', { id: 'convMetadata', type: 'checkbox', checked: saved.preserveMetadata !== false });
     const norm = h('input', { id: 'convNorm', type: 'checkbox', checked: !!saved.normalize });
     const target = h('input', { id: 'convTarget', type: 'number', min: -40, max: -5, step: 1, value: saved.targetLufs });
     const fx = h('input', { id: 'convFx', type: 'checkbox', checked: !!saved.effects });
@@ -198,6 +201,7 @@
       outRow,
       h('label', { class: 'conv-check' }, [norm, h('span', { 'data-i18n': 'conv.normalize', text: t('conv.normalize') }), h('span', { class: 'conv-inline' }, [h('span', { 'data-i18n': 'conv.target', text: t('conv.target') }), target])]),
       h('label', { class: 'conv-check' }, [fx, h('span', { 'data-i18n': 'conv.effects', text: t('conv.effects') })]),
+      h('label', { class: 'conv-check' }, [metadata, h('span', { 'data-i18n': 'conv.preserveMetadata', text: t('conv.preserveMetadata') })]),
       h('p', { class: 'hint', id: 'convNote', 'data-i18n': 'conv.processedNote', text: t('conv.processedNote') }),
     );
     const bStart = h('button', { class: 'export-btn', id: 'convStart', 'data-i18n': 'conv.start', text: t('conv.start') });
@@ -299,7 +303,7 @@
     const raw = {
       format: $('convFormat').value, depth: +$('convDepth').value, bitrate: +$('convBitrate').value, mode: $('convMode').value, vbrQuality: +$('convVbr').value,
       sampleRate: +$('convRate').value, channels: +$('convChannels').value, trimStart: ts, trimEnd: te,
-      normalize: $('convNorm').checked, targetLufs: +$('convTarget').value, effects: $('convFx').checked, suffix: $('convSuffix').value,
+      preserveMetadata: $('convMetadata').checked, normalize: $('convNorm').checked, targetLufs: +$('convTarget').value, effects: $('convFx').checked, suffix: $('convSuffix').value,
     };
     save({ ...raw, trimStartText: $('convTrimStart').value, trimEndText: $('convTrimEnd').value });
     return raw;
@@ -334,7 +338,7 @@
         return r;
       } catch (e) {
         item.state = e.code === 'cancelled' ? 'cancelled' : 'failed';
-        item.err = ({ 'decode-failed': t('conv.err.decode'), 'no-audio': t('conv.err.noaudio'), trim: t('conv.err.trim') })[e.code] || e.message;
+        item.err = ({ 'bad-output-dir': t('conv.out.needFolder'), 'decode-failed': t('conv.err.decode'), 'no-audio': t('conv.err.noaudio'), trim: t('conv.err.trim') })[e.code] || e.message;
         throw e;
       } finally { renderList(); }
     }, (p) => { $('convFill').style.width = `${Math.round(p.overall * 100)}%`; });

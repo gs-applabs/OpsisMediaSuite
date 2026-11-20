@@ -292,7 +292,6 @@ test('release notes are kept (capped) and the .sha256 asset next to the installe
 test('no balloon while a game / full-screen app / presentation is in front (SHQueryUserNotificationState 2, 3, 4)', () => {
   for (const n of [2, 3, 4]) assert.equal(S.isBusyNotificationState(n), true);
   for (const n of [0, 1, 5, 6, 7, NaN]) assert.equal(S.isBusyNotificationState(n), false);
-  assert.match(S.FULLSCREEN_PS, /SHQueryUserNotificationState/);
 });
 
 test('update helper script: waits for the app, re-checks the SHA-256, runs the setup silently, restarts the app; quotes safely', () => {
@@ -301,8 +300,8 @@ test('update helper script: waits for the app, re-checks the SHA-256, runs the s
   assert.match(script, /Get-FileHash -LiteralPath 'C:\\Users\\o''brien\\update\\Waveframe\.Setup\.exe' -Algorithm SHA256/);
   assert.ok(script.includes("'" + 'ab'.repeat(32) + "'"), 'expected hash is lower-cased');
   assert.match(script, /'\/SILENT','\/SUPPRESSMSGBOXES','\/NORESTART','\/CLOSEAPPLICATIONS'/);
-  assert.match(script, /exit 2/, 'a hash mismatch aborts');
-  assert.match(script, /if \(\$p\.ExitCode -eq 0 -and \$exe\)/, 'the app is only restarted after a successful install');
+  assert.match(script, /\$failureCode = 2; throw/, 'a hash mismatch aborts setup');
+  assert.match(script, /if \(\$p\.ExitCode -ne 0\) \{ throw/, 'a failing installer enters recovery');
   assert.match(script, /@\('C:\\Program Files\\Waveframe\\Waveframe\.exe','C:\\old\\Waveframe\.exe'\)/, 'the new Program Files location is tried first');
   assert.throws(() => S.buildUpdateScript({ pid: '1; calc', setupPath: 'x', sha256: 'a'.repeat(64), exePaths: ['y'] }));
   assert.throws(() => S.buildUpdateScript({ pid: 1, setupPath: 'x', sha256: 'zz', exePaths: ['y'] }));
@@ -329,4 +328,18 @@ test('repository rename: waveframe and OpsisMediaSuite are the same repository f
   const tr = S.trimRelease(rel, 'waveframe');     // what the 2.2.0 / 2.3.1 clients ask for
   assert.ok(tr, 'a release whose URLs carry the new repository name is accepted when asked for by the old name');
   assert.equal(S.pickInstaller(tr, S.validateCatalogue(embedded).apps.find((a) => a.id === 'waveframe')).name, 'OpsisMediaSuite-Setup-2.3.1.exe', 'the portable exe is never picked');
+});
+
+test('installer patterns accept bounded literal alternatives and reject regular expressions', () => {
+  const release = { assets: [{ name: 'A-3.exe' }, { name: 'A-3.zip' }] };
+  assert.equal(S.pickInstaller(release, { installerAsset: '^(A-|B-).*\\.exe$' })?.name, 'A-3.exe');
+  for (const input of ['^(A+)+\\.exe$', '^(A-).*.*\\.exe$', '^.*\\.exe$']) {
+    assert.equal(S.pickInstaller(release, { installerAsset: input }), null);
+  }
+});
+
+test('a standalone Opsis News Crawler plugin is detected without offering to launch its DLL', () => {
+  const app = S.validateCatalogue(JSON.stringify(require('../suite-apps.json'))).apps.find((item) => item.id === 'newscrawler');
+  const result = S.findInstalled(app, { env: { AppData: 'C:\\Profile' }, exists: (p) => p.endsWith('.OpsisPlugin.dll') });
+  assert.deepEqual(result, { installed: true, version: '', exePath: null });
 });

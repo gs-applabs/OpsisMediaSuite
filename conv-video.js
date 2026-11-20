@@ -35,12 +35,14 @@ async function detectEncoders(ffmpegPath) {
     encoders: V.parseEncoders(await capture(ffmpegPath, ['-hide_banner', '-encoders'])),
     hwaccels: V.parseHwaccels(await capture(ffmpegPath, ['-hide_banner', '-hwaccels'])),
   };
-  encoderCache.set(ffmpegPath, res);
+  if (res.encoders.size > 0) encoderCache.set(ffmpegPath, res);
   return res;
 }
 
+function invalidateEncoders(ffmpegPath) { encoderCache.delete(ffmpegPath); }
+
 async function probeVideo(ffmpegPath, file) {
-  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-i', file]).promise; // exit code 1 is normal (no output file)
+  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-nostdin', '-i', file], { timeoutMs: 30000 }).promise; // exit code 1 is normal (no output file)
   return V.parseProbe(r.stderr);
 }
 
@@ -49,11 +51,15 @@ function thumbnail(ffmpegPath, file, atSec = 1) {
   return new Promise((resolve) => {
     const at = Number.isFinite(atSec) && atSec >= 0 ? atSec : 1;
     const chunks = []; let n = 0; let child;
-    try { child = spawn(ffmpegPath, ['-hide_banner', '-nostdin', '-v', 'error', '-ss', String(at), '-i', file, '-frames:v', '1', '-vf', 'scale=320:-2', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'], { windowsHide: true }); } catch (_) { return resolve(null); }
+    try { child = spawn(ffmpegPath, ['-hide_banner', '-nostdin', '-v', 'error', '-ss', String(at), '-i', file, '-frames:v', '1', '-vf', 'scale=320:-2', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (_) { return resolve(null); }
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch { /* child already exited */ }
+      resolve(null);
+    }, 30000);
     child.stdout.on('data', (c) => { n += c.length; if (n > 2 * 1024 * 1024) child.kill(); else chunks.push(c); });
     child.stderr.on('data', () => {});
-    child.on('error', () => resolve(null));
-    child.on('close', () => resolve(n > 0 && n <= 2 * 1024 * 1024 ? 'data:image/png;base64,' + Buffer.concat(chunks).toString('base64') : null));
+    child.on('error', () => { clearTimeout(timer); resolve(null); });
+    child.on('close', () => { clearTimeout(timer); resolve(n > 0 && n <= 2 * 1024 * 1024 ? 'data:image/png;base64,' + Buffer.concat(chunks).toString('base64') : null); });
   });
 }
 
@@ -123,4 +129,4 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   return { promise, cancel() { cancelled = true; if (current) current.cancel(); } };
 }
 
-module.exports = { capture, detectEncoders, probeVideo, thumbnail, encodeVideo };
+module.exports = { capture, detectEncoders, invalidateEncoders, probeVideo, thumbnail, encodeVideo };

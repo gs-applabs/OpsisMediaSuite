@@ -1,5 +1,9 @@
+const { atomicWrite } = require('./atomic-write.js');
+const { makeTrust } = require('./ipc-trust.js');
 const { app, BrowserWindow, ipcMain, dialog, globalShortcut, nativeImage, Notification, screen, Menu, Tray } = require('electron');
 const path = require('path');
+const { AUDIO_EXTS, VIDEO_EXTS } = require('./media-types.js');
+const { safeLocalPath } = require('./local-path.js');
 const { readTrackText } = require('./audio-tags');
 const fs = require('fs');
 const os = require('os');
@@ -9,10 +13,19 @@ const AdmZip = require('adm-zip');
 const suite = require('./suite-main.js');
 const suiteLib = require('./suite.js');
 const converter = require('./conv-main.js');
+const { removeStaleOutput } = require('./conv-engine.js');
 const media = require('./media-main.js');
 const { attachFlyout } = require('./flyout-main.js');
+const { detectEncoders, invalidateEncoders } = require('./conv-video.js');
 const { systemFfmpegCandidates } = require('./ffmpeg-path.js');
 media.registerScheme(); // the read-only wfmedia: protocol of the video player must be declared before the app is ready
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (event) => event.preventDefault());
+  contents.on('will-frame-navigate', (event) => event.preventDefault());
+});
+
 
 // Isolated profile for tests/self-test (never touches the real settings).
 if (process.env.WAVEFRAME_USER_DATA) app.setPath('userData', process.env.WAVEFRAME_USER_DATA);
@@ -51,12 +64,27 @@ function testFfmpeg(ffmpegPath) {
 // that user at all. See CLAUDE.md rule 11. Waveframe does not bundle any
 // ffmpeg binary itself; if none is found, the Settings > dependencies panel
 // offers to download the LGPL build on demand.
-async function resolveFfmpegPath() {
-  for (const candidate of [...systemFfmpegCandidates(process.env.PATH), FALLBACK_FFMPEG()]) {
-    const executable = await fs.promises.realpath(candidate).catch(() => null);
-    if (executable && await testFfmpeg(executable).catch(() => false)) return executable;
-  }
-  return null;
+const requiredAudioEncoders = ['libmp3lame', 'libopus', 'libvorbis', 'wmav2', 'flac', 'aac'];
+let preferManagedFfmpeg = false;
+let ffmpegLookup;
+let ffmpegCheckedAt = 0;
+
+async function hasRequiredEncoders(executable) {
+  const { encoders } = await detectEncoders(executable);
+  return requiredAudioEncoders.every((codec) => encoders.has(codec));
+}
+
+function resolveFfmpegPath() {
+  if (ffmpegLookup && Date.now() - ffmpegCheckedAt < 60000) return ffmpegLookup;
+  ffmpegCheckedAt = Date.now();
+  ffmpegLookup = (async () => {
+    for (const candidate of [...(preferManagedFfmpeg ? [] : systemFfmpegCandidates(process.env.PATH)), FALLBACK_FFMPEG()]) {
+      const executable = await fs.promises.realpath(candidate).catch(() => null);
+      if (executable && await hasRequiredEncoders(executable)) return executable;
+    }
+    return null;
+  })();
+  return ffmpegLookup;
 }
 
 // The Windows uninstall entry identifies the installed edition without loading any DirectShow filters.
@@ -99,28 +127,34 @@ async function installFfmpeg(onProgress, confirm) {
   const info = await getFfmpegAsset();
   if (confirm && !(await confirm(info))) { const e = new Error('cancelled'); e.code = 'cancelled'; throw e; }
   const dir = FALLBACK_DIR();
-  fs.mkdirSync(dir, { recursive: true });
-  const zipPath = path.join(os.tmpdir(), `waveframe-ffmpeg-${Date.now()}.zip`);
-
-  onProgress({ phase: 'download', pct: 0 });
+  await fs.promises.mkdir(dir, { recursive: true });
+  const stage = await fs.promises.mkdtemp(path.join(dir, 'ffmpeg-stage-'));
+  const zipPath = path.join(stage, 'ffmpeg.zip');
+  const stagedExe = path.join(stage, 'ffmpeg.exe');
   try {
+    onProgress({ phase: 'download', pct: 0 });
     await suiteLib.downloadVerified(info.url, zipPath, { expectedSha256: info.sha256, expectedSize: info.size, maxBytes: 400 * 1024 * 1024, onProgress: (pct) => onProgress({ phase: 'download', pct }) });
-  } catch (e) {
-    if (e.code === 'sha-mismatch' || e.code === 'size-mismatch') throw new Error('Το αρχείο που κατέβηκε δεν ταιριάζει με το δημοσιευμένο SHA-256 και διαγράφηκε.');
-    throw e;
+    onProgress({ phase: 'extract', pct: 0 });
+    const entry = new AdmZip(zipPath).getEntries().find((e) => /(^|\/)bin\/ffmpeg\.exe$/i.test(e.entryName));
+    if (!entry) throw new Error('Το ffmpeg.exe δεν βρέθηκε μέσα στο πακέτο λήψης.');
+    await fs.promises.writeFile(stagedExe, entry.getData(), { flag: 'wx' });
+    const works = await testFfmpeg(stagedExe);
+    try {
+      if (!works || !await hasRequiredEncoders(stagedExe)) throw new Error('Το ffmpeg δεν εκτελείται σωστά.');
+      await fs.promises.rename(stagedExe, FALLBACK_FFMPEG());
+    } finally {
+      invalidateEncoders(stagedExe);
+    }
+    invalidateEncoders(FALLBACK_FFMPEG());
+    ffmpegLookup = undefined;
+    onProgress({ phase: 'done', pct: 1 });
+    return FALLBACK_FFMPEG();
+  } catch (error) {
+    if (error.code === 'sha-mismatch' || error.code === 'size-mismatch') throw new Error('Το αρχείο που κατέβηκε δεν ταιριάζει με το δημοσιευμένο SHA-256 και διαγράφηκε.');
+    throw error;
+  } finally {
+    await fs.promises.rm(stage, { recursive: true, force: true }).catch((error) => console.error('FFmpeg staging cleanup:', error));
   }
-
-  onProgress({ phase: 'extract', pct: 0 });
-  const zip = new AdmZip(zipPath);
-  const entry = zip.getEntries().find((e) => /(^|\/)bin\/ffmpeg\.exe$/i.test(e.entryName));
-  if (!entry) throw new Error('Το ffmpeg.exe δεν βρέθηκε μέσα στο πακέτο λήψης.');
-  fs.writeFileSync(FALLBACK_FFMPEG(), entry.getData());
-  fs.unlink(zipPath, () => {});
-  onProgress({ phase: 'done', pct: 1 });
-
-  const ok = await testFfmpeg(FALLBACK_FFMPEG());
-  if (!ok) throw new Error('Η εγκατάσταση ολοκληρώθηκε αλλά το ffmpeg δεν εκτελείται σωστά.');
-  return FALLBACK_FFMPEG();
 }
 
 async function confirmFfmpegDownload(win, info) {
@@ -152,7 +186,7 @@ function createHelpWindow(parent) {
   helpWindow = new BrowserWindow({
     width: 720, height: 620, minWidth: 560, minHeight: 420,
     parent,
-    title: 'Opsis Media Suite — Βοήθεια',
+    title: 'Opsis Media Suite — ' + suiteApi.tx('help.title'),
     icon: path.join(__dirname, 'icon.ico'),
     backgroundColor: '#0b0b14',
     webPreferences: {
@@ -171,6 +205,8 @@ const WINDOW_STATE_FILE = () => path.join(app.getPath('userData'), 'window-state
 function loadWindowState() {
   try {
     const state = JSON.parse(fs.readFileSync(WINDOW_STATE_FILE(), 'utf-8'));
+    if (![state.x, state.y, state.width, state.height].every(Number.isSafeInteger) ||
+        state.width < WINDOW_WIDTH || state.height < WINDOW_HEIGHT || state.width > 32768 || state.height > 32768) return null;
     const onScreen = screen.getAllDisplays().some((d) => {
       const b = d.bounds;
       return state.x >= b.x - 50 && state.y >= b.y - 50 && state.x < b.x + b.width && state.y < b.y + b.height;
@@ -180,16 +216,14 @@ function loadWindowState() {
 }
 function saveWindowState(win) {
   if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) return;
-  try { fs.writeFileSync(WINDOW_STATE_FILE(), JSON.stringify(win.getBounds())); } catch { /* best-effort */ }
+  try { atomicWrite(WINDOW_STATE_FILE(), JSON.stringify(win.getBounds())); } catch { /* best-effort */ }
 }
 
-const AUDIO_FILE_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.opus', '.wma'];
-const VIDEO_FILE_EXTENSIONS = ['.mp4', '.m4v', '.mkv', '.webm', '.mov', '.avi', '.wmv', '.mpg', '.mpeg', '.ts', '.ogv'];
 function extractAudioFileArg(argv) {
-  return argv.find((a) => AUDIO_FILE_EXTENSIONS.includes(path.extname(a).toLowerCase()) && fs.existsSync(a)) || null;
+  return argv.map((a) => path.resolve(a)).find((a) => safeLocalPath(a) && AUDIO_EXTS.includes(path.extname(a).slice(1).toLowerCase()) && fs.existsSync(a)) || null;
 }
 function extractVideoFileArg(argv) {
-  return argv.find((a) => VIDEO_FILE_EXTENSIONS.includes(path.extname(a).toLowerCase()) && fs.existsSync(a)) || null;
+  return argv.map((a) => path.resolve(a)).find((a) => safeLocalPath(a) && VIDEO_EXTS.includes(path.extname(a).slice(1).toLowerCase()) && fs.existsSync(a)) || null;
 }
 function forwardOpenFile(argv) {
   const filePath = extractAudioFileArg(argv);
@@ -207,9 +241,9 @@ function updateJumpList() {
     {
       type: 'tasks',
       items: [
-        { type: 'task', title: 'Play / Pause', program: process.execPath, args: '--jumplist-action=playpause', iconPath: process.execPath, iconIndex: 0 },
-        { type: 'task', title: 'Επόμενο', program: process.execPath, args: '--jumplist-action=next', iconPath: process.execPath, iconIndex: 0 },
-        { type: 'task', title: 'Προηγούμενο', program: process.execPath, args: '--jumplist-action=prev', iconPath: process.execPath, iconIndex: 0 },
+        { type: 'task', title: suiteApi.tx('vp.play') + ' / ' + suiteApi.tx('vp.pause'), program: process.execPath, args: '--jumplist-action=playpause', iconPath: process.execPath, iconIndex: 0 },
+        { type: 'task', title: suiteApi.tx('vp.next'), program: process.execPath, args: '--jumplist-action=next', iconPath: process.execPath, iconIndex: 0 },
+        { type: 'task', title: suiteApi.tx('vp.prev'), program: process.execPath, args: '--jumplist-action=prev', iconPath: process.execPath, iconIndex: 0 },
       ],
     },
   ]);
@@ -218,16 +252,6 @@ function updateJumpList() {
 let mainWin = null;
 let restoreMainWindow = null;
 
-const trayLabels = {
-  el: ['Εμφάνιση του Opsis', 'Έξοδος'], en: ['Show Opsis', 'Quit'],
-  fr: ['Afficher Opsis', 'Quitter'], de: ['Opsis anzeigen', 'Beenden'],
-  es: ['Mostrar Opsis', 'Salir'], it: ['Mostra Opsis', 'Esci'], pt: ['Mostrar Opsis', 'Sair'],
-  ru: ['Показать Opsis', 'Выход'], tr: ['Opsis’i göster', 'Çıkış'], pl: ['Pokaż Opsis', 'Zakończ'],
-  nl: ['Opsis tonen', 'Afsluiten'], sv: ['Visa Opsis', 'Avsluta'], da: ['Vis Opsis', 'Afslut'],
-  no: ['Vis Opsis', 'Avslutt'], fi: ['Näytä Opsis', 'Lopeta'], cs: ['Zobrazit Opsis', 'Ukončit'],
-  sk: ['Zobraziť Opsis', 'Ukončiť'], hu: ['Opsis megjelenítése', 'Kilépés'],
-  ro: ['Afișează Opsis', 'Ieșire'], uk: ['Показати Opsis', 'Вийти'],
-};
 let suiteApi = null;
 let converterApi = null;
 let mediaApi = null;
@@ -312,7 +336,7 @@ function createWindow() {
     win.on('minimize', () => {
       if (minimizedToTray) return;
       try {
-        const [show, quit] = trayLabels[helpLang] || trayLabels.en;
+        const show = suiteApi.tx('tray.show'), quit = suiteApi.tx('tray.quit');
         tray = new Tray(path.join(__dirname, 'icon.ico'));
         tray.setToolTip('Opsis Media Suite');
         tray.on('click', restoreMainWindow);
@@ -341,8 +365,19 @@ function createWindow() {
     callback(contents === win.webContents && permission === 'media' && details.isMainFrame && audioOnly);
   });
   // A crashed/killed renderer (GPU driver reset, out of memory on low-RAM PCs) used to leave a blank window until restart.
+  const rendererFailures = [];
+  let rendererStopped = false;
   win.webContents.on('render-process-gone', (_e, details) => {
-    if (details.reason === 'clean-exit' || win.isDestroyed()) return;
+    if (details.reason === 'clean-exit' || win.isDestroyed() || rendererStopped) return;
+    const now = Date.now();
+    while (rendererFailures.length && now - rendererFailures[0] >= 120000) rendererFailures.shift();
+    if (rendererFailures.length >= 4) {
+      rendererStopped = true;
+      void dialog.showMessageBox(win, { type: 'error', title: suiteApi.tx('crash.title'), message: suiteApi.tx('crash.desc') })
+        .catch(() => {});
+      return;
+    }
+    rendererFailures.push(now);
     try { win.reload(); } catch (_) { /* window is closing */ }
   });
   win.on('unresponsive', () => { /* keep the window: the audio engine may just be busy decoding a large file */ });
@@ -410,21 +445,22 @@ function createWindow() {
   function updateThumbbar() {
     if (!thumbbarIcons || win.isDestroyed()) return;
     win.setThumbarButtons([
-      { icon: thumbbarIcons.prev, tooltip: 'Προηγούμενο', click: () => win.webContents.send('media-key', 'prev') },
+      { icon: thumbbarIcons.prev, tooltip: suiteApi.tx('vp.prev'), click: () => win.webContents.send('media-key', 'prev') },
       {
         icon: isPlaying ? thumbbarIcons.pause : thumbbarIcons.play,
-        tooltip: isPlaying ? 'Παύση' : 'Αναπαραγωγή',
+        tooltip: suiteApi.tx(isPlaying ? 'vp.pause' : 'vp.play'),
         click: () => win.webContents.send('media-key', 'playpause'),
       },
-      { icon: thumbbarIcons.next, tooltip: 'Επόμενο', click: () => win.webContents.send('media-key', 'next') },
+      { icon: thumbbarIcons.next, tooltip: suiteApi.tx('vp.next'), click: () => win.webContents.send('media-key', 'next') },
       { icon: thumbbarIcons.flyout, tooltip: thumbbarIcons.flyoutLabel, click: () => flyout.show('manual') },
     ]);
   }
 
   // IPC hardening: every channel is answered only to the main window (or, for the two read-only constants, the Help window)
   // and every argument is type-checked and size-limited here - the renderer is not trusted.
-  const fromMain = (e) => e.sender === win.webContents;
-  const fromApp = (e) => fromMain(e) || (!!helpWindow && !helpWindow.isDestroyed() && e.sender === helpWindow.webContents);
+  const fromMain = makeTrust(() => win);
+  const fromHelp = makeTrust(() => helpWindow);
+  const fromApp = (e) => fromMain(e) || fromHelp(e);
   const PNG_DATA_URL = /^data:image\/png;base64,[A-Za-z0-9+/=]{1,200000}$/;
 
   ipcMain.on('thumbbar:icons', (event, icons) => {
@@ -516,6 +552,15 @@ function createWindow() {
   ipcMain.on('paths:music-sync', (event) => { event.returnValue = fromApp(event) ? app.getPath('music') : ''; });
   ipcMain.on('help:open', (e) => { if (fromMain(e)) createHelpWindow(win); });
 
+  ipcMain.handle('deps:prefer-managed', (event, enabled) => {
+    if (!fromMain(event) || typeof enabled !== 'boolean') return false;
+    if (preferManagedFfmpeg !== enabled) {
+      preferManagedFfmpeg = enabled;
+      ffmpegLookup = undefined;
+    }
+    return true;
+  });
+
   ipcMain.handle('deps:check', async (e) => {
     if (!fromMain(e)) return { ffmpeg: { ok: false, path: null }, kLite: null };
     const [ffmpegPath, kLite] = await Promise.all([resolveFfmpegPath(), detectKLite()]);
@@ -537,13 +582,13 @@ function createWindow() {
   ipcMain.handle('metadata:read', async (event, filePath) => {
     try {
       // tags are only read from absolute paths of real audio files
-      if (!fromMain(event) || typeof filePath !== 'string' || !path.isAbsolute(filePath) || !AUDIO_FILE_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) || !fs.statSync(filePath).isFile()) return null;
+      if (!fromMain(event) || typeof filePath !== 'string' || !safeLocalPath(filePath) || !AUDIO_EXTS.includes(path.extname(filePath).slice(1).toLowerCase()) || !(await fs.promises.stat(filePath)).isFile()) return null;
       const mm = await import('music-metadata');
       const meta = await mm.parseFile(filePath, { duration: false, skipCovers: false });
       const { common } = meta;
       let picture = null;
-      if (common.picture && common.picture[0]) {
-        const pic = common.picture[0];
+      const pic = common.picture?.[0];
+      if (pic?.data?.byteLength <= 4 * 1024 * 1024 && /^image\/(?:png|jpe?g|webp|gif)$/i.test(pic.format)) {
         picture = `data:${pic.format};base64,${Buffer.from(pic.data).toString('base64')}`;
       }
       return {
@@ -563,7 +608,7 @@ function createWindow() {
     });
     if (result.canceled || !result.filePath) return { canceled: true };
     try {
-      fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
+      atomicWrite(result.filePath, JSON.stringify(data, null, 2));
       return { canceled: false, ok: true, path: result.filePath };
     } catch (err) {
       return { canceled: false, ok: false, error: err.message };
@@ -592,9 +637,24 @@ function createWindow() {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
       properties: ['openDirectory', 'createDirectory'],
     });
-    if (canceled || !filePaths[0]) return { canceled: true };
-    return { canceled: false, folderPath: filePaths[0] };
+    const folder = filePaths[0];
+    if (canceled || !safeLocalPath(folder)) return { canceled: true };
+    const target = outputFolderFile();
+    try {
+      atomicWrite(target, JSON.stringify([folder, ...readOutputFolders().filter((item) => item !== folder)].slice(0, 50)));
+    } catch {
+      return { canceled: true };
+    }
+    return { canceled: false, folderPath: folder };
   });
+}
+
+const outputFolderFile = () => path.join(app.getPath('userData'), 'output-folders.json');
+function readOutputFolders() {
+  try {
+    const folders = JSON.parse(fs.readFileSync(outputFolderFile(), 'utf8'));
+    return Array.isArray(folders) ? folders.filter((folder) => safeLocalPath(folder)).slice(0, 50) : [];
+  } catch { return []; }
 }
 
 function forwardJumpListAction(argv) {
@@ -619,19 +679,26 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId('com.example.waveframe');
     reapplyAutostartAfterRename();
+    const mainWindowTrust = makeTrust(() => mainWin);
+    const helpWindowTrust = makeTrust(() => helpWindow);
     suiteApi = suite.init({
-      onLang: (l) => { helpLang = l; },
+      onLang: (l) => { helpLang = l; updateJumpList(); },
       getMainWin: () => mainWin,
       getTheme: () => currentTheme,
       isMini: () => !!mainWin && !mainWin.isDestroyed() && mainWin.getBounds().width < 700,
-      isTrusted: (wc) => (!!mainWin && !mainWin.isDestroyed() && wc === mainWin.webContents) || (!!helpWindow && !helpWindow.isDestroyed() && wc === helpWindow.webContents),
+      isTrusted: (e) => mainWindowTrust(e) || helpWindowTrust(e),
     });
     converterApi = converter.init({
       getMainWin: () => mainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload,
       // default place for every encode: Windows Music folder > Opsis Media Suite (created automatically; the old Music\WaveFrame folder of earlier versions is left as it is)
       defaultVideoOutDir: () => { const d = path.join(app.getPath('videos'), 'Opsis Media Suite'); fs.mkdirSync(d, { recursive: true }); return d; },
+      isApprovedOutDir: (folder) => readOutputFolders().includes(folder),
       defaultOutDir: () => { const d = path.join(app.getPath('music'), 'Opsis Media Suite'); fs.mkdirSync(d, { recursive: true }); return d; },
     });
+    for (const type of ['music', 'videos']) {
+      const dir = path.join(app.getPath(type), 'Opsis Media Suite');
+      if (safeLocalPath(dir)) void removeStaleOutput(dir);
+    }
     mediaApi = media.init({ getMainWin: () => mainWin, resolveFfmpegPath });
     createWindow();
     forwardJumpListAction(process.argv);
@@ -642,6 +709,21 @@ if (!gotSingleInstanceLock) {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
       else if (mainWin && !mainWin.isVisible()) restoreMainWindow?.();
     });
+  });
+
+  let shutdown;
+  let shutdownReady = false;
+  app.on('before-quit', (event) => {
+    if (shutdownReady || !converterApi) return;
+    event.preventDefault();
+    if (shutdown) return;
+    let timer;
+    shutdown = Promise.race([converterApi.cancelAll(), new Promise((resolve) => { timer = setTimeout(resolve, 5000); })])
+      .finally(() => {
+        clearTimeout(timer);
+        shutdownReady = true;
+        app.quit();
+      });
   });
 
   app.on('window-all-closed', () => {

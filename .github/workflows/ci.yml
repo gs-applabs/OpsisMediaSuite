@@ -55,7 +55,7 @@ jobs:
           $version = node -p "require('./package.json').version"
           & (Join-Path $compiler 'ISCC.exe') "/DMyAppVersion=$version" 'installer/OpsisMediaSuite.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
-      - name: Scan and smoke-test the installer
+      - name: Scan the installer and test the unpacked application
         if: github.event_name == 'push'
         shell: pwsh
         run: |
@@ -68,23 +68,24 @@ jobs:
             $scan
             if ($LASTEXITCODE -ne 0 -or $scan -notmatch 'found no threats') { throw "Defender did not report a clean scan for $target" }
           }
-          $install = Start-Process $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Opsis installer exited with $($install.ExitCode)" }
-          $app = Join-Path $env:ProgramFiles 'Opsis Media Suite\Opsis Media Suite.exe'
-          $env:WAVEFRAME_USER_DATA = Join-Path $env:RUNNER_TEMP 'opsis-installed-test'
+          $app = (Resolve-Path 'release/win-unpacked/Opsis Media Suite.exe').Path
+          $env:WAVEFRAME_USER_DATA = Join-Path $env:RUNNER_TEMP 'opsis-unpacked-test'
           New-Item -ItemType Directory -Path $env:WAVEFRAME_USER_DATA | Out-Null
           $env:WAVEFRAME_SELFTEST = '1'
           $process = Start-Process $app -NoNewWindow -PassThru
-          if (-not $process.WaitForExit(240000)) { Stop-Process -Id $process.Id -Force; throw 'Installed app test timed out' }
-          if ($process.ExitCode -ne 0) { throw "Installed app test exited with $($process.ExitCode)" }
+          if (-not $process.WaitForExit(240000)) { Stop-Process -Id $process.Id -Force; throw 'Unpacked app test timed out' }
+          if ($process.ExitCode -ne 0) { throw "Unpacked app test exited with $($process.ExitCode)" }
+          $reviewName = "OpsisMediaSuite-Setup-$version-Review-x64.exe"
+          Rename-Item -LiteralPath $setup.FullName -NewName $reviewName
+          $setup = Get-Item (Join-Path $setup.DirectoryName $reviewName) -ErrorAction Stop
           $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($setup.Name)" | Set-Content -Encoding ascii "$($setup.FullName).sha256"
           "Installer SHA-256: $hash"
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
         with:
-          name: OpsisMediaSuite-InnoSetup-x64
+          name: OpsisMediaSuite-2.4.2-Review-Installer-x64
           path: |
-            installer/output/OpsisMediaSuite-Setup-*.exe
-            installer/output/OpsisMediaSuite-Setup-*.exe.sha256
+            installer/output/OpsisMediaSuite-Setup-*-Review-x64.exe
+            installer/output/OpsisMediaSuite-Setup-*-Review-x64.exe.sha256
           if-no-files-found: error

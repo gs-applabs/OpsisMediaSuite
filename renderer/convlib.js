@@ -22,7 +22,7 @@
     wma: { ext: 'wma', muxer: 'asf', bitrates: [64, 96, 128, 160, 192, 256, 320], maxRate: 48000 },
   };
 
-  const DEFAULTS = { format: 'mp3', bitrate: 192, mode: 'cbr', vbrQuality: 2, depth: 16, sampleRate: 0, channels: 0, trimStart: 0, trimEnd: 0, normalize: false, targetLufs: -16, effects: false, suffix: '-converted' };
+  const DEFAULTS = { format: 'mp3', bitrate: 192, mode: 'cbr', vbrQuality: 2, depth: 16, sampleRate: 0, channels: 0, trimStart: 0, trimEnd: 0, normalize: false, preserveMetadata: true, targetLufs: -16, effects: false, suffix: '-converted' };
 
   function sanitizeSuffix(s) {
     return String(s == null ? '' : s).replace(/[<>:"/\\|?*\x00-\x1F]/g, '').replace(/[. ]+$/, '').slice(0, 40);
@@ -37,6 +37,7 @@
     const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
     o.sampleRate = num(o.sampleRate); o.channels = num(o.channels); o.bitrate = num(o.bitrate); o.depth = num(o.depth);
     o.vbrQuality = num(o.vbrQuality); o.trimStart = num(o.trimStart); o.trimEnd = num(o.trimEnd); o.targetLufs = num(o.targetLufs);
+    o.preserveMetadata = o.preserveMetadata !== false;
     o.normalize = o.normalize === true; o.effects = o.effects === true;
 
     if (!RATES.includes(o.sampleRate)) errors.push('sampleRate');
@@ -165,17 +166,28 @@
 
   // mode 'direct': ffmpeg decodes the original (any audio, or the first audio track of a video) and applies trim / rate / channels.
   // mode 'encode': the input is the already processed WAV from the renderer (trim, rate, channels, effects, gain are done), only the codec runs.
-  function buildFfmpegArgs({ input, output, options, mode }) {
+  function buildFfmpegArgs({ input, output, options, mode, original }) {
     const o = options, spec = FORMATS[o.format];
     const a = ['-hide_banner', '-nostdin', '-y', '-i', input];
+    if (mode !== 'direct' && original && o.preserveMetadata) a.push('-i', original);
     if (mode === 'direct') {
       if (o.trimStart > 0) a.push('-ss', String(o.trimStart));
       if (o.trimEnd > 0) a.push('-t', String(o.trimEnd - o.trimStart));
-      a.push('-vn', '-map', '0:a:0');
+      if (!(o.preserveMetadata && ['mp3', 'flac', 'alac'].includes(o.format))) a.push('-vn');
+      a.push('-map', '0:a:0');
       const rate = o.format === 'opus' && !o.sampleRate ? 48000 : o.sampleRate;
       if (rate > 0) a.push('-ar', String(rate));
       if (o.channels > 0) a.push('-ac', String(o.channels));
-    } else if (o.format === 'opus') a.push('-ar', '48000');
+    } else {
+      a.push('-map', '0:a:0');
+      if (o.format === 'opus') a.push('-ar', '48000');
+    }
+    const tagInput = o.preserveMetadata ? (mode === 'direct' ? 0 : original ? 1 : -1) : -1;
+    if (tagInput >= 0 && ['mp3', 'flac', 'alac'].includes(o.format)) {
+      a.push('-map', `${tagInput}:v:disp:attached_pic?`, '-c:v', 'copy', '-disposition:v', 'attached_pic');
+    }
+    if (tagInput !== 0 && (tagInput !== -1 || o.preserveMetadata === false))
+      a.push('-map_metadata', String(tagInput));
     a.push(...codecArgs(o), '-f', spec.muxer, output);
     return a;
   }

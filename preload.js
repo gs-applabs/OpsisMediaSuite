@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   photoSave: (req) => ipcRenderer.invoke('photo:save', req),
   vpPickM3u: () => ipcRenderer.invoke('vp:pick-m3u'),
   openHelp: () => ipcRenderer.send('help:open'),
+  preferManagedFfmpeg: (enabled) => ipcRenderer.invoke('deps:prefer-managed', enabled),
   checkDeps: () => ipcRenderer.invoke('deps:check'),
   installDeps: () => ipcRenderer.invoke('deps:install'),
   onDepsProgress: (cb) => ipcRenderer.on('deps:progress', (event, data) => cb(data)),

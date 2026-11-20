@@ -395,15 +395,17 @@ class AudioEngine {
     slot.name = null;
   }
 
-  loadTrack(slot, item) {
+  loadTrack(slot, item, mediaUrl = item.url) {
     this.releaseSlot(slot);
     slot.objectUrl = item.file ? URL.createObjectURL(item.file) : null;
-    slot.el.src = slot.objectUrl || item.url;
+    if (mediaUrl?.startsWith('wfmedia:')) slot.el.crossOrigin = 'anonymous';
+    else slot.el.removeAttribute('crossorigin');
+    slot.el.src = slot.objectUrl || mediaUrl;
     slot.name = item.name;
     slot.item = item;
   }
 
-  switchTrack(item, onReady) {
+  switchTrack(item, onReady, mediaUrl) {
     const generation = ++this.trackGeneration;
     this.stopAlternateSources();
     const previous = this.slots[this.activeSlot];
@@ -412,7 +414,7 @@ class AudioEngine {
     if (fade) this.activeSlot = 1 - this.activeSlot;
     const next = this.slots[this.activeSlot];
 
-    this.loadTrack(next, item);
+    this.loadTrack(next, item, mediaUrl);
     if (!fade) this.releaseSlot(this.slots[1 - this.activeSlot]);
     this.resume();
     next.el.playbackRate = this.state.tempo;
@@ -1230,8 +1232,10 @@ let loudnessBusy = false;
 
 async function readLoudnessInput(item, signal) {
   if (item.file) return item.file.size <= loudnessMaxBytes ? item.file.arrayBuffer() : null;
-  if (!item.url?.startsWith('file:')) return null;
-  const response = await fetch(item.url, { signal });
+  if (!item.path) return null;
+  const url = await window.waveframe.vpStreamUrl(item.path);
+  if (!url || signal.aborted) return null;
+  const response = await fetch(url, { signal });
   const size = Number(response.headers.get('content-length'));
   if (!response.ok || size > loudnessMaxBytes || !response.body) {
     await response.body?.cancel();
@@ -1306,16 +1310,24 @@ async function drainLoudnessAnalysis() {
   } finally { loudnessBusy = false; }
 }
 
-function playTrackAt(index) {
+let trackRequest = 0;
+async function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
-  currentTrackIndex = index;
+  const request = ++trackRequest;
   const item = playlist[index];
+  let url = item.url;
+  if (!item.file && item.path) {
+    engine.resume();
+    url = await window.waveframe.vpStreamUrl(item.path).catch(() => null);
+  }
+  if (request !== trackRequest || playlist[index] !== item || (!item.file && !url)) return;
+  currentTrackIndex = index;
   queuedShuffleTrack = null;
   announcedTrack = null;
   engine.setNormalizationGain(1);
   showLoudnessInfo(null);
   queueLoudnessAnalysis(item);
-  engine.switchTrack(item, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
+  engine.switchTrack(item, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); }, url);
 }
 function showLoudnessInfo(item) {
   const el = document.getElementById('loudnessInfo');
@@ -1664,16 +1676,15 @@ async function enrichTrackMetadata(item, redraw = true) {
 }
 
 const PLAYLIST_KEY = 'waveframe.playlist';
-function pathToFileUrl(p) {
-  const encoded = encodeURI(p.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
-  return encoded.startsWith('//') ? 'file:' + encoded : 'file:///' + encoded.replace(/^\/+/, '');
+function isRemoteTrackUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
 }
 
 // "Open with Waveframe" from Explorer (file association) or double-clicking
 // an audio file while the app is already running (forwarded via second-instance).
 window.waveframe.onOpenFile((filePath) => {
   const name = filePath.split(/[\\/]/).pop().replace(/\.[^/.]+$/, '');
-  const item = { path: filePath, url: pathToFileUrl(filePath), name };
+  const item = { path: filePath, name };
   playlist.push(item);
   renderPlaylist();
   playTrackAt(playlist.length - 1);
@@ -1692,10 +1703,10 @@ function restorePlaylist() {
   const localTracks = [];
   for (const entry of saved) {
     if (entry.path) {
-      const item = { path: entry.path, url: pathToFileUrl(entry.path), name: entry.name };
+      const item = { path: entry.path, name: entry.name };
       localTracks.push(item);
       playlist.push(item);
-    } else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
+    } else if (isRemoteTrackUrl(entry.url)) playlist.push({ url: entry.url, name: entry.name });
   }
   renderPlaylist();
   refreshRestoredTrackMetadata(localTracks);
@@ -1720,7 +1731,7 @@ document.body.addEventListener('drop', (e) => {
 });
 els.btnUrl.addEventListener('click', async () => {
   const url = await showInputDialog(t('player.urlPromptTitle'));
-  if (!url) return;
+  if (!isRemoteTrackUrl(url)) return;
   const wasEmpty = playlist.length === 0;
   playlist.push({ url, name: url.split('/').pop() || url });
   renderPlaylist();
@@ -2246,16 +2257,8 @@ document.getElementById('btnOpenFamily').addEventListener('click', () => window.
 document.addEventListener('waveframe:language-changed', () => { if (tutorialOverlay.classList.contains('open')) renderTutorial(); });
 
 /* ---- Backup & Cloud Sync ---- */
-function collectBackupData() {
-  const data = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('waveframe.')) data[key] = localStorage.getItem(key);
-  }
-  return data;
-}
 els.btnBackupExport.addEventListener('click', async () => {
-  const result = await window.waveframe.exportSettings(collectBackupData());
+  const result = await window.waveframe.exportSettings(WaveframeBackup.collect(localStorage));
   if (result.canceled) return;
   els.backupStatus.textContent = result.ok ? t('settings.backupExportOk') : (result.error || t('settings.backupError'));
 });
@@ -2263,12 +2266,7 @@ els.btnBackupImport.addEventListener('click', async () => {
   const result = await window.waveframe.importSettings();
   if (result.canceled) return;
   if (!result.ok) { els.backupStatus.textContent = result.error || t('settings.backupError'); return; }
-  // a backup file is untrusted input: it must be a plain object and only waveframe.* string values are restored
-  const data = result.data && typeof result.data === 'object' && !Array.isArray(result.data) ? result.data : null;
-  if (!data) { els.backupStatus.textContent = t('settings.backupError'); return; }
-  Object.entries(data).forEach(([key, value]) => {
-    if (key.startsWith('waveframe.') && typeof value === 'string' && value.length < 5 * 1024 * 1024) localStorage.setItem(key, value);
-  });
+  if (!WaveframeBackup.restore(localStorage, result.data)) { els.backupStatus.textContent = t('settings.backupError'); return; }
   await showAlertDialog(t('settings.backupImportTitle'), t('settings.backupImportDone'));
   location.reload();
 });
@@ -2742,6 +2740,19 @@ requestAnimationFrame(renderLoop);
 
 const depFfmpegStatus = document.getElementById('depFfmpegStatus');
 const btnInstallDeps = document.getElementById('btnInstallDeps');
+const managedFfmpegKey = 'waveframe.preferManagedFfmpeg';
+const managedFfmpegCheckbox = document.getElementById('preferManagedFfmpeg');
+managedFfmpegCheckbox.checked = localStorage.getItem(managedFfmpegKey) === '1';
+let managedFfmpegReady = window.waveframe.preferManagedFfmpeg(managedFfmpegCheckbox.checked).catch(() => false);
+managedFfmpegCheckbox.addEventListener('change', async () => {
+  const enabled = managedFfmpegCheckbox.checked;
+  managedFfmpegReady = window.waveframe.preferManagedFfmpeg(enabled).catch(() => false);
+  if (await managedFfmpegReady) {
+    localStorage.setItem(managedFfmpegKey, enabled ? '1' : '0');
+    await dependencyCheck;
+    await refreshDepsStatus(true);
+  }
+});
 const depsProgress = document.getElementById('depsProgress');
 
 const playbackFormats = [
@@ -2793,10 +2804,10 @@ let dependencyCheckedAt = 0;
 function refreshDepsStatus(force = false) {
   if (dependencyCheck) return dependencyCheck;
   if (!force && dependencySnapshot && Date.now() - dependencyCheckedAt < 30_000) return Promise.resolve();
-  dependencyCheck = Promise.all([
+  dependencyCheck = managedFfmpegReady.then(() => Promise.all([
     window.waveframe.checkDeps().catch(() => ({ ffmpeg: { ok: false }, kLite: null })),
     window.waveframe.vidEncoders().catch(() => ({ ffmpeg: false })),
-  ]).then(([status, encoders]) => {
+  ])).then(([status, encoders]) => {
     dependencySnapshot = { status, encoders };
     dependencyCheckedAt = Date.now();
     renderDependencies();

@@ -44,7 +44,9 @@
       "uninstallDisplayName": "Opsis News Crawler",
       "paths": [
         "%LocalAppData%\\Programs\\Opsis News Crawler\\OpsisNewsCrawler.exe",
-        "%ProgramFiles%\\Opsis News Crawler\\OpsisNewsCrawler.exe",
+        "%ProgramFiles%\\Opsis News Crawler\\OpsisNewsCrawler.exe"
+      ],
+      "detectPaths": [
         "%AppData%\\Opsis\\plugins\\Opsis - Desktop Customization\\OpsisNewsCrawler.OpsisPlugin.dll"
       ],
       "tagline": {

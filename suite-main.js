@@ -1,8 +1,11 @@
 'use strict';
+const { helperPath } = require('./windows-desktop.js');
 // Main-process glue for the welcome guide, the "Opsis family" showcase and the new-version balloon.
 // All network access (catalogue, releases, installer download) happens here; the windows never fetch anything themselves.
 // Pure logic and its unit tests: suite.js / test/suite.test.js.
 
+const { atomicWrite } = require('./atomic-write.js');
+const { makeTrust } = require('./ipc-trust.js');
 const { app, BrowserWindow, ipcMain, dialog, shell, Notification, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -17,6 +20,9 @@ function translate(lang, key, vars) {
   for (const [k, v] of Object.entries(vars || {})) t = t.split(`{${k}}`).join(String(v));
   return t;
 }
+
+// Pin the SHA-256 of the Authenticode leaf certificate when a production signer is provisioned.
+const UPDATE_SIGNER_SHA256 = '';
 
 function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
   const userData = () => app.getPath('userData');
@@ -46,7 +52,7 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
     try {
       const r = await S.httpGet(S.CATALOGUE_URL, { timeout: 5000, maxBytes: S.CATALOGUE_MAX_BYTES, hostOpts: { hosts: S.API_HOSTS } });
       const raw = r.body.toString('utf8');
-      if (S.validateCatalogue(raw).ok) fs.writeFileSync(CAT_CACHE(), JSON.stringify({ at: Date.now(), raw }));
+      if (S.validateCatalogue(raw).ok) atomicWrite(CAT_CACHE(), JSON.stringify({ at: Date.now(), raw }));
     } catch (_) { /* silently keep the previous copy */ }
   }
 
@@ -77,7 +83,10 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
 
   function isFullscreenBusy() {
     return new Promise((resolve) => {
-      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', S.FULLSCREEN_PS], { windowsHide: true, timeout: 8000 }, (err, out) => resolve(!err && S.isBusyNotificationState(parseInt(String(out).trim(), 10))));
+      const helper = helperPath();
+      if (process.platform !== 'win32' || !fs.existsSync(helper)) return resolve(false);
+      execFile(helper, ['--quiet-state'], { windowsHide: true, timeout: 3000, maxBuffer: 4096 },
+        (err, out) => resolve(!err && S.isBusyNotificationState(Number(String(out).trim()))));
     });
   }
 
@@ -135,7 +144,7 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
       if (ck && S.isTrustedReleaseDownload(ck.url, S.SELF_REPO)) { try { sha = S.parseChecksumText((await S.httpGet(ck.url, { timeout: 8000, maxBytes: 4096 })).body.toString('utf8'), asset.name); } catch (_) { /* no digest */ } }
     }
     // nothing to verify against, a portable copy, or a foreign URL: never run anything - the release page opens instead
-    if (!asset || !sha || isPortable() || !S.isTrustedReleaseDownload(asset.url, S.SELF_REPO) || !/\.exe$/i.test(asset.name)) {
+    if (!asset || !sha || !UPDATE_SIGNER_SHA256 || isPortable() || !S.isTrustedReleaseDownload(asset.url, S.SELF_REPO) || !/\.exe$/i.test(asset.name)) {
       if (S.isRepoPageUrl(rel.url, S.SELF_REPO)) shell.openExternal(rel.url);
       return { status: 'page', reason: !sha ? 'no-digest' : 'manual' };
     }
@@ -154,8 +163,10 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
         expectedSha256: sha, expectedSize: asset.size, maxBytes: 200 * 1024 * 1024,
         onProgress: (p) => { const n = Math.floor(p * 100); if (n !== last && splash && !splash.isDestroyed()) { last = n; splash.webContents.send('update:progress', { pct: n }); } },
       });
-      const script = S.buildUpdateScript({ pid: process.pid, setupPath: file, sha256: sha, exePaths: [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Opsis Media Suite', 'Opsis Media Suite.exe'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Waveframe', 'Waveframe.exe'), process.execPath] });
-      const helper = require('child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', script], { detached: true, stdio: 'ignore', windowsHide: true, env: S.powershellEnv(process.env) });
+      const script = S.buildUpdateScript({ pid: process.pid, setupPath: file, sha256: sha, signerSha256: UPDATE_SIGNER_SHA256, logPath: path.join(app.getPath('userData'), 'last-update.log'), exePaths: [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Opsis Media Suite', 'Opsis Media Suite.exe'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Waveframe', 'Waveframe.exe'), process.execPath] });
+      const powershell = path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      const helper = require('child_process').spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', script], { detached: true, stdio: 'ignore', windowsHide: true, env: S.powershellEnv(process.env) });
+      await new Promise((resolve, reject) => { helper.once('error', reject); helper.once('spawn', resolve); });
       helper.unref();
       setTimeout(() => app.quit(), 600);
       return { status: 'installing' };
@@ -206,7 +217,7 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
     return true;
   }
 
-  const fromSplash = (e) => !!splash && !splash.isDestroyed() && e.sender === splash.webContents;
+  const fromSplash = makeTrust(() => splash);
 
   ipcMain.handle('splash:init', async (e) => {
     if (!fromSplash(e)) return null;
@@ -263,11 +274,13 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
   let installedVersions = {};
   ipcMain.handle('suite:catalogue', async (e) => {
     if (!fromSplash(e)) return null;
-    refreshCatalogue(); // background: used by the next opening
+    void refreshCatalogue().catch(() => {}); // background: used by the next opening
     const cat = loadCatalogue();
     const entries = await readUninstallEntries();
+    const trustedApps = embeddedCatalogue().apps;
     const apps = cat.apps.map((a) => {
-      const inst = S.findInstalled(a, { entries, exists: (p) => fs.existsSync(p), env: process.env });
+      const local = trustedApps.find((entry) => entry.id === a.id && entry.repo === a.repo);
+      const inst = S.findInstalled(local || { ...a, paths: [], detectPaths: [] }, { entries, exists: (p) => fs.existsSync(p), env: process.env });
       const self = a.id === 'waveframe';
       return {
         id: a.id, name: a.name, self, hasIcon: !self && fs.existsSync(path.join(__dirname, 'renderer', 'appicons', `${a.id}.png`)),
@@ -301,7 +314,9 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
     const repoUrl = `https://github.com/${S.OWNER}/${a.repo}`;
     if (req.action === 'details') { shell.openExternal(repoUrl); return { status: 'page' }; }
     if (req.action === 'open') {
-      const inst = S.findInstalled(a, { entries: [], exists: (p) => fs.existsSync(p), env: process.env });
+      const embedded = embeddedCatalogue().apps.find((entry) => entry.id === a.id && entry.repo === a.repo);
+      if (!embedded) return { status: 'error' };
+      const inst = S.findInstalled(embedded, { entries: [], exists: (p) => fs.existsSync(p), env: process.env });
       if (!inst.exePath) return { status: 'error' };
       const err = await shell.openPath(inst.exePath);
       return { status: err ? 'error' : 'opened' };
@@ -310,14 +325,14 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
     if (downloading) return { status: 'busy' };
 
     const rel = await getRelease(a.repo, 3600 * 1000);
-    const page = () => { shell.openExternal(rel ? rel.url : `${repoUrl}/releases`); return { status: 'page' }; };
+    const page = () => { shell.openExternal(rel && S.isRepoPageUrl(rel.url, a.repo) ? rel.url : `${repoUrl}/releases`); return { status: 'page' }; };
     if (!rel) return page();
     const asset = S.pickInstaller(rel, a);
-    if (!asset || !/\.exe$/i.test(asset.name)) return page();
+    if (!asset || !/\.exe$/i.test(asset.name) || !S.isTrustedReleaseDownload(asset.url, a.repo)) return page();
     let sha = S.digestSha256(asset);
     if (!sha && a.checksumAsset) {
       const ck = rel.assets.find((x) => x.name === a.checksumAsset);
-      if (ck) { try { sha = S.parseChecksumText((await S.httpGet(ck.url, { timeout: 8000, maxBytes: 4096 })).body.toString('utf8'), asset.name); } catch (_) { /* falls through to the page */ } }
+      if (ck && S.isTrustedReleaseDownload(ck.url, a.repo)) { try { sha = S.parseChecksumText((await S.httpGet(ck.url, { timeout: 8000, maxBytes: 4096 })).body.toString('utf8'), asset.name); } catch (_) { /* falls through to the page */ } }
     }
     if (!sha) return page();
 
@@ -350,19 +365,19 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
 
   /* ---------- main window / help window entry points ---------- */
   ipcMain.on('suite:open', (e, kind) => {
-    if (!isTrusted(e.sender)) return;
+    if (!isTrusted(e)) return;
     if (kind === 'welcome' || kind === 'family') openSplash(kind);
   });
   ipcMain.on('suite:settings', (e, s) => {
-    if (!isTrusted(e.sender) || !s || typeof s !== 'object') return;
+    if (!isTrusted(e) || !s || typeof s !== 'object') return;
     if (typeof s.lang === 'string' && /^[a-z]{2}$/.test(s.lang)) { lang = s.lang; if (onLang) onLang(lang); }
     if (typeof s.notify === 'boolean') store.set({ notifyEnabled: s.notify });
   });
   ipcMain.handle('updates:check-now', async (e) => {
-    if (!isTrusted(e.sender)) return { status: 'error' };
+    if (!isTrusted(e)) return { status: 'error' };
     return checkForUpdate({ manual: true });
   });
-  ipcMain.on('suite:get-notify-sync', (e) => { e.returnValue = isTrusted(e.sender) ? store.get().notifyEnabled : true; });
+  ipcMain.on('suite:get-notify-sync', (e) => { e.returnValue = isTrusted(e) ? store.get().notifyEnabled : true; });
 
   /* ---------- startup hooks ---------- */
   function onMainLoaded() {

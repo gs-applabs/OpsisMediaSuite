@@ -34,3 +34,15 @@ test('EXTINF metadata does not consume the 5000-track limit', () => {
   assert.equal(r.items.length, 5000);
   assert.equal(r.items[4999], 'C:\\m\\4999.mp4');
 });
+
+test('legacy Greek playlists decode Windows-1253 while M3U8 requires UTF-8', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-m3u-greek-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const line = Buffer.concat([Buffer.from('C:\\Music\\'), Buffer.from([0xc5, 0xeb, 0xeb, 0xdc, 0xe4, 0xe1]), Buffer.from('.mp3\n')]);
+  const legacy = path.join(dir, 'Greek.m3u');
+  const utf8 = legacy + '8';
+  fs.writeFileSync(legacy, line);
+  fs.writeFileSync(utf8, line);
+  assert.deepEqual(M.readM3uFile(legacy)?.items, ['C:\\Music\\Ελλάδα.mp3']);
+  assert.equal(M.readM3uFile(utf8), null);
+});

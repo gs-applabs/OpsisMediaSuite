@@ -444,6 +444,7 @@
             <span class="dep-name">FFmpeg <span class="hint">(MP3, FLAC, OGG, AAC, Opus, WMA)</span></span>
             <span class="dep-status" id="depFfmpegStatus">…</span>
           </div>
+          <label class="conv-check"><input type="checkbox" id="preferManagedFfmpeg"><span data-i18n="settings.managedFfmpeg">Χρήση του FFmpeg της εφαρμογής</span></label>
           <button id="btnInstallDeps" class="small-btn dep-hidden" data-i18n="settings.depsInstall">⬇ Λήψη &amp; εγκατάσταση</button>
           <p class="hint" id="depsProgress"></p>
           <div class="deps-codecs">
@@ -523,6 +524,7 @@
         <div class="panel">
           <h2 data-i18n="settings.backup">Αντίγραφο ασφαλείας &amp; Συγχρονισμός Νέφους</h2>
           <p class="hint" data-i18n="settings.backupHint">Αποθήκευσε τις ρυθμίσεις, τις προεπιλογές και τη λίστα αναπαραγωγής σου σε ένα αρχείο. Αποθήκευσέ το μέσα σε φάκελο OneDrive/Google Drive/Dropbox για να τις έχεις σε κάθε υπολογιστή.</p>
+          <p class="hint" data-i18n="settings.backupPrivacy">Το αντίγραφο περιλαμβάνει διαδρομές αρχείων και μπορεί να εμφανίζει το όνομα χρήστη σου.</p>
           <div class="settings-btn-row">
             <button id="btnBackupExport" class="small-btn" data-i18n="settings.backupExport">⬆ Αποθήκευση σε αρχείο</button>
             <button id="btnBackupImport" class="small-btn" data-i18n="settings.backupImport">⬇ Επαναφορά από αρχείο</button>
@@ -662,6 +664,7 @@
   <script src="desktop-i18n.js"></script>
   <script src="backgrounds.js"></script>
   <script src="audiolib.js"></script>
+  <script src="backup.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

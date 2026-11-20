@@ -5,17 +5,23 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { AUDIO_EXTS, VIDEO_EXTS } = require('./media-types.js');
 const crypto = require('crypto');
 const L = require('./renderer/convlib.js');
 
-const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif', 'alac', 'ape', 'wv', 'mka', 'mp2', 'ac3', 'amr'];
-const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mpg', 'mpeg', '3gp'];
 
-function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress } = {}) {
-  let child = null, cancelled = false;
+const activeFfmpeg = new Set();
+
+function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 0 } = {}) {
+  let child = null, cancelled = false, timedOut = false;
   const promise = new Promise((resolve, reject) => {
     let tail = '';
-    try { child = spawn(ffmpegPath, args, { windowsHide: true }); } catch (e) { return reject(e); }
+    try { child = spawn(ffmpegPath, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return reject(e); }
+    const timer = timeoutMs > 0 ? setTimeout(() => {
+      timedOut = true;
+      try { child.kill(); } catch { /* child already exited */ }
+      reject(Object.assign(new Error('FFmpeg inspection timed out'), { code: 'timeout' }));
+    }, timeoutMs) : null;
     let outTail = '';
     child.stdout.on('data', (c) => { outTail = (outTail + c.toString()).slice(-6000); });
     child.stderr.on('data', (c) => {
@@ -24,17 +30,40 @@ function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress } = {}) {
       const t = L.parseFfmpegTime(s);
       if (t != null && duration > 0 && onProgress) onProgress(Math.min(0.99, t / duration));
     });
-    child.on('error', reject);
+    child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) return;
       if (cancelled) return reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }));
       resolve({ code, stderr: tail, stdout: outTail });
     });
   });
-  return { promise, cancel() { cancelled = true; if (child) try { child.kill(); } catch (_) { /* gone */ } } };
+  const job = { promise, cancel() { cancelled = true; if (child) try { child.kill(); } catch (_) { /* gone */ } } };
+  activeFfmpeg.add(job);
+  const remove = () => activeFfmpeg.delete(job);
+  promise.then(remove, remove);
+  return job;
+}
+
+async function cancelAllFfmpeg() {
+  const jobs = [...activeFfmpeg];
+  for (const job of jobs) job.cancel();
+  await Promise.allSettled(jobs.map((job) => job.promise));
+}
+
+async function removeStaleOutput(dir) {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isFile() || !/^\.waveframe-\d+-[a-f0-9]+\.[a-z0-9]+$/i.test(entry.name)) continue;
+    const file = path.join(dir, entry.name);
+    try {
+      if (Date.now() - (await fs.promises.stat(file)).mtimeMs > 86400000) await fs.promises.unlink(file);
+    } catch { /* another process cleaned up the file */ }
+  }
 }
 
 async function probe(ffmpegPath, file) {
-  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-i', file]).promise; // exit code 1 is normal (no output file)
+  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-nostdin', '-i', file], { timeoutMs: 30000 }).promise; // exit code 1 is normal (no output file)
   return L.parseProbe(r.stderr);
 }
 
@@ -63,9 +92,9 @@ function finalize(tmp, input, options, outDir) {
   return out;
 }
 
-async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir }) {
+async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir, original }) {
   const { tmp } = planOutput(input, options, fs.existsSync, outDir);
-  const args = L.buildFfmpegArgs({ input: source, output: tmp, options, mode });
+  const args = L.buildFfmpegArgs({ input: source, output: tmp, options, mode, original });
   const run = runFfmpeg(ffmpegPath, args, { duration, onProgress });
   const promise = run.promise.then((r) => {
     if (r.code !== 0 || !fs.existsSync(tmp)) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } throw new Error(r.stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(' ') || `ffmpeg exited with code ${r.code}`); }
@@ -83,30 +112,48 @@ async function convertDirect({ ffmpegPath, input, options, onProgress, outDir })
 }
 
 // The renderer already applied trim/rate/channels/effects/gain and sent a WAV: for WAV output it is written as is, otherwise ffmpeg encodes it.
-async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress, duration, outDir }) {
-  if (options.format === 'wav') {
-    const { tmp } = planOutput(input, options, fs.existsSync, outDir);
-    fs.writeFileSync(tmp, Buffer.from(wavBytes));
-    if (onProgress) onProgress(1);
-    return { promise: Promise.resolve({ output: finalize(tmp, input, options, outDir) }), cancel() {} };
-  }
-  if (!ffmpegPath) throw Object.assign(new Error('no-ffmpeg'), { code: 'no-ffmpeg' });
-  const wavTmp = path.join(require('os').tmpdir(), `waveframe-conv-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
-  fs.writeFileSync(wavTmp, Buffer.from(wavBytes));
-  const job = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: wavTmp, duration, onProgress, outDir });
-  const cleanup = () => { try { fs.unlinkSync(wavTmp); } catch (_) { /* none */ } };
-  return { promise: job.promise.finally(cleanup), cancel: job.cancel };
+async function convertFromWav({ ffmpegPath, input, original, wavBytes, options, onProgress, duration, outDir }) {
+  if (options.format !== 'wav' && !ffmpegPath) throw Object.assign(new Error('no-ffmpeg'), { code: 'no-ffmpeg' });
+  const bytes = wavBytes instanceof ArrayBuffer ? new Uint8Array(wavBytes) : wavBytes;
+  const controller = new AbortController();
+  let childJob;
+  const promise = (async () => {
+    const wavOutput = options.format === 'wav' && !(ffmpegPath && original && options.preserveMetadata);
+    const tmp = wavOutput ? planOutput(input, options, fs.existsSync, outDir).tmp
+      : path.join(require('os').tmpdir(), `waveframe-conv-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
+    try {
+      await fs.promises.writeFile(tmp, bytes, { signal: controller.signal });
+      controller.signal.throwIfAborted();
+      if (wavOutput) {
+        if (onProgress) onProgress(1);
+        return { output: finalize(tmp, input, options, outDir) };
+      }
+      childJob = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: tmp, duration, onProgress, outDir, original });
+      if (controller.signal.aborted) childJob.cancel();
+      return await childJob.promise;
+    } catch (error) {
+      if (controller.signal.aborted) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
+      throw error;
+    } finally {
+      await fs.promises.rm(tmp, { force: true }).catch(() => {});
+    }
+  })();
+  return { promise, cancel() { controller.abort(); childJob?.cancel(); } };
 }
 
 // ffmpeg decodes anything it knows to 32-bit float WAV when the renderer's own decoder cannot (WMA, AIFF, some video containers).
 async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
   const tmp = path.join(require('os').tmpdir(), `waveframe-pre-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
-  const args = ['-hide_banner', '-nostdin', '-y', '-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-f', 'wav', tmp];
-  const r = await runFfmpeg(ffmpegPath, args).promise;
-  if (r.code !== 0) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } throw new Error('predecode-failed'); }
-  const bytes = fs.readFileSync(tmp);
-  fs.unlinkSync(tmp);
-  return bytes;
+  const limit = 256 * 1024 * 1024;
+  const args = ['-hide_banner', '-nostdin', '-y', '-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-fs', String(limit), '-f', 'wav', tmp];
+  try {
+    const r = await runFfmpeg(ffmpegPath, args, { timeoutMs: 120000 }).promise;
+    if (r.code !== 0) throw new Error('predecode-failed');
+    if ((await fs.promises.stat(tmp)).size >= limit) throw Object.assign(new Error('Decoded audio exceeds 256 MB'), { code: 'too-large' });
+    return await fs.promises.readFile(tmp);
+  } finally {
+    await fs.promises.rm(tmp, { force: true }).catch(() => {});
+  }
 }
 
-module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, probe, verifyDecodes, planOutput, convertDirect, convertFromWav, predecodeToWav };
+module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelAllFfmpeg, removeStaleOutput, probe, verifyDecodes, planOutput, convertDirect, convertFromWav, predecodeToWav };

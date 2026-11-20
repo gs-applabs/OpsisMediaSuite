@@ -167,3 +167,28 @@ test('outDir: results go to the chosen folder (created on demand), named after t
   const w = await (await E.convertFromWav({ ffmpegPath: null, input: path.join(target, 'Song title.src'), wavBytes: wav, options: C.validateOptions({ format: 'wav', suffix: '' }).options, outDir: target })).promise;
   assert.equal(path.basename(w.output), 'Song title-converted.wav');
 });
+
+test('processed audio preserves original tags and supports opting out', opts, async () => {
+  const original = path.join(dir, 'tag-source.flac');
+  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-metadata', 'title=Original title', '-metadata', 'artist=Original artist', original]);
+  for (const preserveMetadata of [true, false]) {
+    const job = await E.convertFromWav({ ffmpegPath: FFMPEG, original, input: original, wavBytes: fs.readFileSync(src),
+      options: C.validateOptions({ format: 'flac', preserveMetadata, suffix: preserveMetadata ? '-tags' : '-no-tags' }).options });
+    const { output } = await job.promise;
+    const tags = execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-i', output, '-f', 'ffmetadata', '-'], { encoding: 'utf8' });
+    assert.equal(tags.includes('Original title'), preserveMetadata);
+    assert.equal(tags.includes('Original artist'), preserveMetadata);
+  }
+});
+
+test('processed MP3 copies an attached cover without mapping ordinary video', opts, async () => {
+  const original = path.join(dir, 'cover-source.mp3');
+  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', src,
+    '-f', 'lavfi', '-i', 'color=c=blue:s=16x16', '-map', '0:a', '-map', '1:v',
+    '-c:a', 'libmp3lame', '-c:v', 'mjpeg', '-frames:v', '1', '-disposition:v', 'attached_pic', original]);
+  const job = await E.convertFromWav({ ffmpegPath: FFMPEG, original, input: original, wavBytes: fs.readFileSync(src),
+    options: C.validateOptions({ format: 'mp3', suffix: '-cover' }).options });
+  const { output } = await job.promise;
+  const { stderr } = await E.runFfmpeg(FFMPEG, ['-hide_banner', '-i', output]).promise;
+  assert.match(stderr, /Video:.*attached pic/i);
+});

@@ -15,7 +15,7 @@ function fixture(t, desktopAvailable = false) {
     constructor() {
       super();
       this.webContents = new EventEmitter();
-      this.webContents.mainFrame = {};
+      this.webContents.mainFrame = { url: 'file:///fixture.html' };
       this.webContents.setWindowOpenHandler = () => {};
       this.messages = [];
       this.webContents.send = (...args) => this.messages.push(args);
@@ -44,6 +44,7 @@ function fixture(t, desktopAvailable = false) {
   vm.runInNewContext(source, {
     module, __dirname: path.join(__dirname, '..'), setTimeout, clearTimeout, setInterval, clearInterval, process,
     require(name) {
+      if (name === './ipc-trust.js') return require('../ipc-trust.js');
       if (name === 'electron') return { BrowserWindow: Window, ipcMain, screen };
       if (name === './windows-desktop') return {
         createWindowsDesktop: (receive) => {
@@ -188,4 +189,34 @@ test('closing the owner tears down an open flyout without querying a destroyed w
   assert.doesNotThrow(() => owner.destroy());
   assert.equal(panel.isDestroyed(), true);
   assert.equal(ipcMain.listenerCount('flyout:open'), 0);
+});
+
+test('Windows helper stops restarting after four quick child exits', () => {
+  const { PassThrough } = require('node:stream');
+  let spawns = 0;
+  let active;
+  const events = [];
+  const mod = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'windows-desktop.js'), 'utf8'), {
+    module: mod, __dirname, process: { platform: 'win32' },
+    require(name) {
+      if (name === 'node:fs') return { existsSync: () => true };
+      if (name === 'node:child_process') return { spawn() {
+        spawns++;
+        active = new EventEmitter();
+        active.stdin = new PassThrough();
+        active.stdout = new PassThrough();
+        return active;
+      } };
+      return require(name);
+    },
+  });
+  const bridge = mod.exports.createWindowsDesktop((event) => events.push(event.type));
+  for (let i = 0; i < 8; i++) {
+    bridge.send({ type: 'snapshot' });
+    active.emit('exit', 1);
+  }
+  assert.equal(spawns, 4);
+  assert.equal(bridge.available, false);
+  assert.deepEqual(events, ['exit', 'exit', 'exit', 'exit']);
 });

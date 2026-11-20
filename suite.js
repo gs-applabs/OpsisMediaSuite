@@ -173,12 +173,13 @@ function validateCatalogue(raw, { maxBytes = CATALOGUE_MAX_BYTES } = {}) {
     const id = str(a.id, 32), name = str(a.name, 80), repo = str(a.repo, 100);
     if (!id || !ID_RE.test(id) || !name || !repo || !REPO_RE.test(repo) || seen.has(id)) continue;
     let installerAsset = null;
-    if (str(a.installerAsset, 200)) { try { new RegExp(a.installerAsset); installerAsset = a.installerAsset; } catch (_) { /* skip */ } }
+    if (installerPattern(a.installerAsset)) installerAsset = a.installerAsset;
     seen.add(id);
     apps.push({
       id, name, repo, installerAsset,
       checksumAsset: str(a.checksumAsset, 200),
       uninstallDisplayName: str(a.uninstallDisplayName, 120) || name,
+      detectPaths: Array.isArray(a.detectPaths) ? a.detectPaths.slice(0, 6).filter((p) => str(p, 260)) : [],
       paths: Array.isArray(a.paths) ? a.paths.slice(0, 6).filter((p) => str(p, 260)) : [],
       tagline: cleanLocalised(a.tagline, 160),
       capabilities: cleanLocalisedList(a.capabilities),
@@ -193,7 +194,7 @@ function validateCatalogue(raw, { maxBytes = CATALOGUE_MAX_BYTES } = {}) {
 const ENV_ALLOWED = ['LOCALAPPDATA', 'PROGRAMFILES', 'PROGRAMFILES(X86)', 'APPDATA'];
 
 // Expands only whitelisted %VARS%; returns null for anything else, for relative paths, "..", or non-.exe targets.
-function expandInstallPath(p, env) {
+function expandInstallPath(p, env, detectionOnly = false) {
   if (typeof p !== 'string' || p.includes('..')) return null;
   let bad = false;
   const out = p.replace(/%([^%]+)%/g, (_, name) => {
@@ -201,7 +202,7 @@ function expandInstallPath(p, env) {
     if (!ENV_ALLOWED.includes(key) || !env[Object.keys(env).find((k) => k.toUpperCase() === key)]) { bad = true; return ''; }
     return env[Object.keys(env).find((k) => k.toUpperCase() === key)];
   });
-  if (bad || !/^[A-Za-z]:\\/.test(out) || !/\.exe$/i.test(out)) return null;
+  if (bad || !/^[A-Za-z]:\\/.test(out) || !(detectionOnly ? /\.dll$/i : /\.exe$/i).test(out)) return null;
   return out;
 }
 
@@ -229,7 +230,11 @@ function findInstalled(app, { entries = [], exists = () => false, env = {} }) {
     const x = expandInstallPath(p, env);
     if (x && exists(x)) { exePath = x; break; }
   }
-  if (!hit && !exePath) return { installed: false, version: '', exePath: null };
+  const detectedPlugin = (app.detectPaths || []).some((p) => {
+    const file = expandInstallPath(p, env, true);
+    return file && exists(file);
+  });
+  if (!hit && !exePath && !detectedPlugin) return { installed: false, version: '', exePath: null };
   return { installed: true, version: hit && parseVersion(hit.displayVersion) ? hit.displayVersion : '', exePath };
 }
 
@@ -246,10 +251,22 @@ function trimRelease(r, repo) {
   return { tag: r.tag_name, version: r.tag_name.replace(/^v/, ''), url: r.html_url, assets, notes: typeof r.body === 'string' ? r.body.slice(0, 4000) : '' };
 }
 
+function installerPattern(value) {
+  if (typeof value !== 'string' || value.length > 120 || !value.startsWith('^') || !value.endsWith('$')) return null;
+  let pattern = value.slice(1, -1);
+  const wildcard = pattern.endsWith('.*\\.exe');
+  if (wildcard) pattern = pattern.slice(0, -7);
+  const variants = pattern.startsWith('(') && pattern.endsWith(')') ? pattern.slice(1, -1).split('|') : [pattern];
+  if (variants.length > 4 || variants.some((name) => !/^(?:[a-z0-9_-]|\\\.)+$/i.test(name))) return null;
+  return { names: variants.map((name) => name.replace(/\\\./g, '.')), wildcard };
+}
+
 function pickInstaller(release, app) {
-  if (!release || !app.installerAsset) return null;
-  const re = new RegExp(app.installerAsset);
-  return release.assets.find((a) => re.test(a.name)) || null;
+  const pattern = installerPattern(app?.installerAsset);
+  if (!release || !pattern) return null;
+  return release.assets.find(({ name }) => pattern.wildcard
+    ? name.endsWith('.exe') && pattern.names.some((prefix) => name.startsWith(prefix))
+    : pattern.names.includes(name)) || null;
 }
 
 // Only files of THIS repository's own releases are ever downloaded as an update.
@@ -284,7 +301,6 @@ function sha256Matches(actual, expected) {
 
 // SHQueryUserNotificationState: 2 = busy (full-screen app), 3 = D3D full screen (game), 4 = presentation mode.
 const isBusyNotificationState = (n) => n === 2 || n === 3 || n === 4;
-const FULLSCREEN_PS = "Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class Q { [DllImport(\"shell32.dll\")] public static extern int SHQueryUserNotificationState(out int s); }'; $s = 0; [void][Q]::SHQueryUserNotificationState([ref]$s); $s";
 
 const psQuote = (x) => "'" + String(x).replace(/'/g, "''") + "'";
 
@@ -299,15 +315,36 @@ function powershellEnv(env) {
   return out;
 }
 
-function buildUpdateScript({ pid, setupPath, sha256, exePaths }) {
+function buildUpdateScript({ pid, setupPath, sha256, exePaths, fallbackExe = exePaths.at(-1), logPath = setupPath + '.log', signerSha256 }) {
   if (!/^\d+$/.test(String(pid)) || !/^[0-9a-f]{64}$/i.test(sha256)) throw new Error('bad update parameters');
+  if (signerSha256 !== undefined && !/^[0-9a-f]{64}$/i.test(signerSha256)) throw new Error('invalid signer certificate pin');
   return [
     "$ErrorActionPreference = 'Stop'",
-    `try { Wait-Process -Id ${pid} -Timeout 120 -ErrorAction SilentlyContinue } catch { }`,
-    `if ((Get-FileHash -LiteralPath ${psQuote(setupPath)} -Algorithm SHA256).Hash.ToLowerInvariant() -ne ${psQuote(sha256.toLowerCase())}) { exit 2 }`,
-    `$p = Start-Process -FilePath ${psQuote(setupPath)} -ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS' -Wait -PassThru`,
-    `$exe = @(${exePaths.map(psQuote).join(',')}) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1`,
-    'if ($p.ExitCode -eq 0 -and $exe) { Start-Process -FilePath $exe }',
+    '$failureCode = 1',
+    'try {',
+    `  try { Wait-Process -Id ${pid} -Timeout 120 -ErrorAction SilentlyContinue } catch { }`,
+    `  if (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { throw 'The running app did not exit' }`,
+    `  if ((Get-FileHash -LiteralPath ${psQuote(setupPath)} -Algorithm SHA256).Hash.ToLowerInvariant() -ne ${psQuote(sha256.toLowerCase())}) { $failureCode = 2; throw 'Installer SHA-256 mismatch' }`,
+    ...(signerSha256 ? [
+      `  $sig = Get-AuthenticodeSignature -LiteralPath ${psQuote(setupPath)}`,
+      "  if ($sig.Status -ne 'Valid' -or !$sig.SignerCertificate) { throw 'Invalid installer Authenticode signature' }",
+      '  $hasher = [System.Security.Cryptography.SHA256]::Create()',
+      "  try { $fingerprint = ([BitConverter]::ToString($hasher.ComputeHash($sig.SignerCertificate.RawData))).Replace('-', '').ToLowerInvariant() } finally { $hasher.Dispose() }",
+      `  if ($fingerprint -ne ${psQuote(signerSha256.toLowerCase())}) { throw 'Unexpected installer certificate' }`,
+    ] : []),
+    `  $p = Start-Process -FilePath ${psQuote(setupPath)} -ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS' -Wait -PassThru`,
+    '  if ($p.ExitCode -ne 0) { throw ("Installer exited with code " + $p.ExitCode) }',
+    `  $exe = @(${exePaths.map(psQuote).join(',')}) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1`,
+    "  if (!$exe) { throw 'The installed application was not found' }",
+    '  Start-Process -FilePath $exe',
+    '  exit 0',
+    '} catch {',
+    `  try { Set-Content -LiteralPath ${psQuote(logPath)} -Encoding UTF8 -Value ((Get-Date -Format o) + ' ' + $_.Exception.Message) } catch { }`,
+    `  if (!(Get-Process -Id ${pid} -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath ${psQuote(fallbackExe)})) {`,
+    `    try { Start-Process -FilePath ${psQuote(fallbackExe)} } catch { }`,
+    '  }',
+    '  exit $failureCode',
+    '}',
   ].join('\r\n');
 }
 
@@ -391,6 +428,6 @@ module.exports = {
   isAllowedUrl, isRepoPageUrl, validateCatalogue,
   expandInstallPath, parseUninstallOutput, findInstalled,
   trimRelease, pickInstaller, digestSha256, parseChecksumText, sha256Matches, isTrustedReleaseDownload, findChecksumAsset,
-  isBusyNotificationState, FULLSCREEN_PS, psQuote, buildUpdateScript,
+  isBusyNotificationState, psQuote, buildUpdateScript,
   httpGet, downloadVerified,
 };

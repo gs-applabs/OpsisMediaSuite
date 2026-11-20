@@ -178,3 +178,17 @@ test('mapChannels: mono average, stereo duplication, multichannel front pair, un
   assert.equal(C.mapChannels([a, b], 0).length, 2);
   assert.equal(C.mapChannels([a, b], 2).length, 2);
 });
+
+test('bounded FFmpeg inspection rejects with a timeout and stops the child', async () => {
+  const { runFfmpeg } = require('../conv-engine.js');
+  const child = runFfmpeg(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeoutMs: 100 });
+  await assert.rejects(child.promise, { code: 'timeout' });
+});
+
+test('shutdown cancels active FFmpeg child processes', async () => {
+  const { runFfmpeg, cancelAllFfmpeg } = require('../conv-engine.js');
+  const job = runFfmpeg(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
+  const cancelled = assert.rejects(job.promise, { code: 'cancelled' });
+  await cancelAllFfmpeg();
+  await cancelled;
+});

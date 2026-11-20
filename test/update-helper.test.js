@@ -1,7 +1,7 @@
 'use strict';
 // Runs the REAL update helper script (PowerShell) with a harmless fake setup and a fake app (.bat files): nothing is installed.
 // Verifies: it waits for the app to end, re-checks the SHA-256, runs the setup with the silent switches, restarts the app (new location first),
-// and refuses to run anything when the hash does not match.
+// and refuses to run anything when the hash does not match and restarts the old app.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -42,14 +42,29 @@ test('update helper: matching hash -> silent setup runs, app restarts from the n
   assert.equal(r.oldApp, false, 'the old per-user location is not');
 });
 
-test('update helper: a tampered setup (hash mismatch) is never run and the app is not restarted', opts, () => {
+test('update helper: a tampered setup is refused and the old app is restarted', opts, () => {
   const r = runHelper(true);
   assert.equal(r.exit, 2, r.stderr);
   assert.equal(r.setupRan, false);
-  assert.equal(r.newApp || r.oldApp, false);
+  assert.equal(r.newApp, false);
+  assert.equal(r.oldApp, true);
 });
 
 test('powershellEnv drops an inherited PSModulePath (PowerShell 7 modules break Windows PowerShell 5.1) and keeps the rest', () => {
   const out = S.powershellEnv({ Path: 'x', PSModulePath: 'C:\pwsh7\Modules', psmodulepath: 'y', TEMP: 't' });
   assert.deepEqual(Object.keys(out).sort(), ['Path', 'TEMP']);
+});
+
+test('update helper reports failure and relaunches the previous executable', () => {
+  const script = S.buildUpdateScript({ pid: 123, setupPath: 'setup.exe', sha256: 'a'.repeat(64),
+    exePaths: ['new.exe', 'old.exe'], logPath: 'last-update.log' });
+  assert.match(script, /catch \{[\s\S]*Set-Content -LiteralPath 'last-update\.log'[\s\S]*Start-Process -FilePath 'old\.exe'/);
+});
+
+test('configured Authenticode pin is checked before launching an installer', () => {
+  const script = S.buildUpdateScript({ pid: 123, setupPath: 'setup.exe', sha256: 'a'.repeat(64),
+    signerSha256: 'b'.repeat(64), exePaths: ['new.exe', 'old.exe'] });
+  assert.ok(script.indexOf('Get-AuthenticodeSignature') < script.indexOf("Start-Process -FilePath 'setup.exe'"));
+  assert.match(script, /SignerCertificate\.RawData/);
+  assert.ok(script.includes('b'.repeat(64)));
 });

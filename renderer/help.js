@@ -1,6 +1,7 @@
 'use strict';
 
-document.getElementById('helpVersion').textContent = `v${window.waveframe?.version || '2.4.2'}`;
+const version = window.waveframe?.version;
+document.getElementById('helpVersion').textContent = version ? `v${version}` : '';
 document.getElementById('licenseYear').textContent = String(new Date().getFullYear());
 
 window.waveframe?.onThemeSync?.((theme) => {

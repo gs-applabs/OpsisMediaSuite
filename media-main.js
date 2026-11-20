@@ -2,17 +2,19 @@
 // IPC glue for the video player (file picker, subtitle discovery, a read-only "wfmedia" protocol with range support), the photo editor (open / save)
 // and M3U playlist import. Only the main window may call these channels; payloads are validated here.
 
+const { captureDate, attachCaptureDate } = require('./photo-metadata.js');
+const { atomicWrite } = require('./atomic-write.js');
+const { makeTrust } = require('./ipc-trust.js');
 const { ipcMain, dialog, protocol, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { AUDIO_EXTS, VIDEO_EXTS, SUB_EXTS, IMG_EXTS } = require('./media-types.js');
+const { safeLocalPath } = require('./local-path.js');
 const { randomUUID } = require('node:crypto');
 const { Readable } = require('node:stream');
+const { decodeText } = require('./decode-text.js');
 const M3U = require('./m3u.js');
 
-const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
-const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
-const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub'];
-const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
 const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS]);
 const MAX_SUB_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 200 * 1024 * 1024;
@@ -20,7 +22,7 @@ const MAX_SAVE_BYTES = 256 * 1024 * 1024;
 const SAVE_FORMATS = { jpeg: ['jpg', 'jpeg'], png: ['png'], webp: ['webp'] };
 
 const extOf = (p) => path.extname(String(p || '')).slice(1).toLowerCase();
-const isFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
+const isFile = (p) => { try { return safeLocalPath(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
 
 // Must run before the app is ready.
 function registerScheme() {
@@ -46,14 +48,6 @@ function byteRange(header, size) {
   return a <= end ? { start: a, end } : null;
 }
 
-// Subtitle bytes -> text: UTF-8 (with or without BOM), otherwise Windows-1253 (Greek) which is what old .srt files from Greek sites use.
-function decodeText(buf) {
-  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.slice(3).toString('utf8');
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.slice(2).toString('utf16le');
-  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (_) { /* not UTF-8 */ }
-  try { return new TextDecoder('windows-1253').decode(buf); } catch (_) { return buf.toString('latin1'); }
-}
-
 function siblingSubtitles(video) {
   const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase();
   let names = [];
@@ -72,16 +66,20 @@ function siblingSubtitles(video) {
 }
 
 function init({ getMainWin, resolveFfmpegPath }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents; };
+  const trusted = makeTrust(getMainWin);
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
   const streamFiles = new Map();
-  ipcMain.handle('vp:stream-url', (e, file) => {
-    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || typeof file !== 'string' ||
-        /^[\\/]{2}/.test(file) || !SERVE_EXTS.has(extOf(file)) || !isFile(file)) return null;
-    const key = randomUUID();
+  function touchStream(key, file) {
+    streamFiles.delete(key);
     streamFiles.set(key, file);
+  }
+  ipcMain.handle('vp:stream-url', (e, file) => {
+    if (!trusted(e) || typeof file !== 'string' ||
+        /^[\\/]{2}/.test(file) || !SERVE_EXTS.has(extOf(file)) || !isFile(file)) return null;
+    const key = [...streamFiles].find(([, existing]) => existing === file)?.[0] || randomUUID();
+    touchStream(key, file);
     if (streamFiles.size > 24) streamFiles.delete(streamFiles.keys().next().value);
     return 'wfmedia://f/' + key;
   });
@@ -89,7 +87,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
   protocol.handle('wfmedia', async (request) => {
     const url = new URL(request.url);
     // Only the trusted main frame can mint these unguessable, short-lived-in-memory URLs.
-    const file = url.hostname === 'f' && streamFiles.get(url.pathname.slice(1));
+    const key = url.pathname.slice(1);
+    const file = url.hostname === 'f' && streamFiles.get(key);
     const headers = new Headers({
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges',
@@ -102,6 +101,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       return new Response(null, { status: 204, headers });
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405, headers });
+    touchStream(key, file);
 
     try {
       const stat = await fs.promises.stat(file);
@@ -134,6 +134,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       : { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Media', extensions: [...VIDEO_EXTS, ...AUDIO_EXTS] }, { name: 'All files', extensions: ['*'] }] });
     if (r.canceled) return [];
     if (kind === 'folder') {
+      if (!safeLocalPath(r.filePaths[0])) return [];
       const out = [];
       (function walk(d, depth) {
         let list = []; try { list = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
@@ -166,7 +167,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   });
   ipcMain.handle('photo:read', (e, p) => {
     if (!trusted(e) || !isFile(p) || !IMG_EXTS.includes(extOf(p))) return null;
-    try { const st = fs.statSync(p); if (st.size > MAX_IMAGE_BYTES) return { error: 'too-large' }; const b = fs.readFileSync(p); return { name: path.basename(p), bytes: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; } catch (_) { return null; }
+    try { const st = fs.statSync(p); if (st.size > MAX_IMAGE_BYTES) return { error: 'too-large' }; const b = fs.readFileSync(p); return { name: path.basename(p), takenAt: captureDate(b), bytes: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; } catch (_) { return null; }
   });
   ipcMain.handle('photo:save', async (e, req) => {
     if (!trusted(e) || !req || !SAVE_FORMATS[req.format] || !(req.bytes instanceof ArrayBuffer || ArrayBuffer.isView(req.bytes)) || req.bytes.byteLength > MAX_SAVE_BYTES) return { ok: false };
@@ -179,7 +180,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       // A view can cover only part of its backing buffer (including pooled Buffers).
       const bytes = req.bytes instanceof ArrayBuffer ? Buffer.from(req.bytes)
         : Buffer.from(req.bytes.buffer, req.bytes.byteOffset, req.bytes.byteLength);
-      fs.writeFileSync(r.filePath, bytes);
+      atomicWrite(r.filePath, attachCaptureDate(bytes, req.format, req.takenAt));
       return { ok: true, file: r.filePath };
     } catch (_) { return { ok: false }; }
   });

@@ -17,10 +17,24 @@ function createWindowsDesktop(receive) {
   let child;
   let closed = false;
   let snapshotPending = false;
+  let unavailable = false;
+  const starts = [];
+  function pruneStarts() {
+    const now = Date.now();
+    while (starts.length && now - starts[0] >= 120000) starts.shift();
+    return now;
+  }
 
   function start() {
-    if (closed || !available || child) return;
-    const process = spawn(executable, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    if (closed || !available || unavailable || child) return;
+    starts.push(pruneStarts());
+    let process;
+    try { process = spawn(executable, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }); }
+    catch {
+      unavailable = starts.length >= 4;
+      receive({ type: 'exit' });
+      return;
+    }
     child = process;
     const lines = readline.createInterface({ input: process.stdout });
     lines.on('line', (line) => {
@@ -36,6 +50,8 @@ function createWindowsDesktop(receive) {
       lines.close();
       child = null;
       snapshotPending = false;
+      pruneStarts();
+      if (starts.length >= 4) unavailable = true;
       if (!closed) receive({ type: 'exit' });
     }
     process.once('error', ended);
@@ -62,7 +78,7 @@ function createWindowsDesktop(receive) {
     active.once('exit', () => clearTimeout(force));
   }
 
-  return { available, get running() { return !!child; }, send, close };
+  return { get available() { return available && !unavailable; }, get running() { return !!child; }, send, close };
 }
 
 module.exports = { createWindowsDesktop, helperPath };

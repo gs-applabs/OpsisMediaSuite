@@ -304,7 +304,7 @@
         return r;
       } catch (e) {
         item.state = e.code === 'cancelled' ? 'cancelled' : 'failed';
-        item.err = ({ 'no-video': t('vid.err.noVideo'), 'no-audio': t('conv.err.noaudio'), 'no-encoder': fmt(t('vid.err.noEncoder'), { codec: V.CODECS[v.options.codec].label }) })[e.code] || e.message;
+        item.err = ({ 'bad-output-dir': t('conv.out.needFolder'), 'no-video': t('vid.err.noVideo'), 'no-audio': t('conv.err.noaudio'), 'no-encoder': fmt(t('vid.err.noEncoder'), { codec: V.CODECS[v.options.codec].label }) })[e.code] || e.message;
         throw e;
       } finally { renderList(); }
     }, (p) => { const pct = Math.round(p.overall * 100); $('vidFill').style.width = `${pct}%`; $('vidTrack').setAttribute('aria-valuenow', String(pct)); });
