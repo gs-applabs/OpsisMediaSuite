@@ -6,7 +6,7 @@ namespace MediaSuite.OpsisPlugin.Tests;
 
 public class PluginTests
 {
-    private const string CanonicalSha = "f5f1a21cee0435abdc19e609fd785b762fc706103991579afe3eb13dcf10ffaf";
+    private const string CanonicalSha = "514f2a3eafa57770afd0f4b76cfe26397cfecd84edce06f071716fa0d9f30afe";
 
     private static string Up(int n, params string[] rest) => Path.GetFullPath(Path.Combine(new[] { AppContext.BaseDirectory }.Concat(Enumerable.Repeat("..", n)).Concat(rest).ToArray()));
     // test output: opsis-plugin/tests/<proj>/bin/<cfg>/<tfm>/ -> 5 levels up is opsis-plugin
