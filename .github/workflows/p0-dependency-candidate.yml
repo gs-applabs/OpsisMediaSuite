@@ -1,0 +1,42 @@
+name: P0 dependency upgrade candidate
+on:
+  push:
+    branches: [feat/p0-electron45-candidate]
+    paths: ['.github/workflows/p0-dependency-candidate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/feat/p0-electron45-candidate'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Resolve exact candidate versions and lockfile
+        run: npm install --save-dev --save-exact electron@45.5.0 electron-builder@26.18.0
+      - name: Preserve generated manifests and patch for review
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force candidate | Out-Null
+          Copy-Item package.json,package-lock.json candidate
+          git diff -- package.json package-lock.json | Out-File -Encoding utf8 candidate/dependency-upgrade.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-candidate-manifests
+          path: candidate/
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+      - name: FFmpeg for actual playback and conversion tests
+        run: choco install ffmpeg --no-progress -y
+      - name: Tests against new runtime
+        run: npm test
+      - name: Electron real renderer self-test
+        run: npm run selftest
+      - name: Build Windows portable candidate (no publication)
+        run: npx --no-install electron-builder --win --publish never
