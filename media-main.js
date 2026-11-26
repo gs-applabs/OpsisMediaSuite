@@ -235,6 +235,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
       await js("(() => { document.getElementById('phRotR').click(); return 1; })()");
       await new Promise((r) => setTimeout(r, 200));
       check('photo editor rotates 90 degrees (64x48 -> 48x64)', await js("document.getElementById('phCanvas').width === 48 && document.getElementById('phCanvas').height === 64"));
+      const workerOk=await js("(async()=>{const data=new Uint8ClampedArray([10,20,30,255,40,50,60,255]);const r=await WaveframePhotoUi.processExport({width:2,height:1,data},{rotate:90},0);return r.width===1&&r.height===2&&r.data[3]===255&&data.byteLength===0;})()");
+      check('photo export worker transfers pixels and rotates',workerOk);
+      await js("document.getElementById('phUndo').click();1");
+      check('photo undo restores original orientation',await until("document.getElementById('phCanvas').width===64",3000));
+      await js("document.getElementById('phRedo').click();1");
+      check('photo redo restores rotation',await until("document.getElementById('phCanvas').width===48",3000));
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     try {
       /* layout of the three new areas in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */

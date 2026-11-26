@@ -45,3 +45,6 @@ Native CI 45868860734 confirmed LibVLC playback elapsed 524 ms, length 5023 ms, 
 
 ## Pass 13 — FxSound coexistence policy
 Read-only cached installed/running detector, status distinguishes default output label from processing. User-selectable native/external/auto modes; only live EQ/FX bypass changes, not saved master/export preference or OS routing. Limiter/volume remain. Video EQ follows live bypass. Auto is opt-in and default output label must match FxSound; actual FxSound DSP engagement cannot be proven from label or process. Tests added; real installed FxSound hardware validation pending.
+
+## Pass 14 — photo export worker and resizing
+Pass 13 CI 173/173, Electron self-test and native CI passed. Export pixel processing moves to dedicated transferable-buffer worker with 120s timeout; export long-edge choices, dimensions display, no upscale; conservative 768 MiB work estimate rejects expensive exports (including some previously permitted 80MP images). Decode still happens in renderer, not a fully tiled pipeline. Real worker/undo/redo checks added. Resize output still uses canvas and re-encodes metadata. No final packaging.

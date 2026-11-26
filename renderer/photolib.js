@@ -5,7 +5,7 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.WaveframePhoto = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const LIMITS = { maxPixels: 80e6, previewEdge: 1400, maxFileBytes: 200 * 1024 * 1024 };
+  const LIMITS = { maxPixels: 80e6, previewEdge: 1400, maxFileBytes: 200 * 1024 * 1024, exportWorkBytes: 768 * 1024 * 1024, maxExportEdge: 16384 };
   const RANGE = {
     exposure: [-2, 2], contrast: [-100, 100], saturation: [-100, 100], temperature: [-100, 100], tint: [-100, 100],
     highlights: [-100, 100], shadows: [-100, 100], sharpen: [0, 100], denoise: [0, 100],
@@ -160,7 +160,7 @@
   // Whole pipeline. The source is never modified (a copy is made).
   function process(img, params) {
     const p = clampParams(params);
-    let cur = geometry({ data: new Uint8ClampedArray(img.data), width: img.width, height: img.height }, p);
+    let cur = geometry(img, p);
     if (cur.data === img.data) cur = { data: new Uint8ClampedArray(img.data), width: img.width, height: img.height };
     cur = denoise(cur, p.denoise);
     applyColor(cur.data, p);
@@ -211,8 +211,22 @@
     const cw = p.crop ? Math.max(1, Math.min(w, Math.round(p.crop.w * w))) : w, ch = p.crop ? Math.max(1, Math.min(h, Math.round(p.crop.h * h))) : h;
     return p.rotate === 90 || p.rotate === 270 ? { width: ch, height: cw } : { width: cw, height: ch };
   }
+  function resizeOutput(w,h,maxEdge=0) {
+    if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1)throw Error('invalid-size');
+    const edge=Number(maxEdge)||0;
+    const limit=edge>0?Math.min(LIMITS.maxExportEdge,Math.max(1,Math.floor(edge))):Math.max(w,h);
+    const scale=Math.min(1,limit/Math.max(w,h));
+    return {width:Math.max(1,Math.round(w*scale)),height:Math.max(1,Math.round(h*scale))};
+  }
+  // Conservative estimate includes decoded bitmap, readback, processing and
+  // output surfaces. Not an OS memory guarantee; reject oversized jobs early.
+  function exportBudget(w,h,params,maxEdge=0) {
+    if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1||w*h>LIMITS.maxPixels)return false;
+    const size=outputSize(w,h,params),out=resizeOutput(size.width,size.height,maxEdge);
+    return w*h*12+size.width*size.height*8+out.width*out.height*8<=LIMITS.exportWorkBytes && out.width<=LIMITS.maxExportEdge&&out.height<=LIMITS.maxExportEdge;
+  }
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

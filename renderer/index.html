@@ -2,7 +2,7 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data:; media-src 'self' blob: http: https: wfmedia:; connect-src 'self' blob: http: https:;" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data:; media-src 'self' blob: http: https: wfmedia:; connect-src 'self' blob: http: https:;" />
 <title>Opsis Media Suite</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
@@ -398,6 +398,7 @@
               <label class="vp-inline" id="phQualityField"><span data-i18n="ph.quality">Ποιότητα</span>
                 <input type="range" id="phQuality" min="50" max="100" step="1" value="92" /></label>
             </div>
+            <div class="vp-bar"><label class="vp-inline">Max edge / Μέγιστη πλευρά <select id="phResize"><option value="0">Original</option><option value="4096">4096 px</option><option value="2048">2048 px</option><option value="1280">1280 px</option><option value="640">640 px</option></select></label><span id="phDimensions" class="hint" aria-live="polite"></span></div>
             <button class="small-btn" id="phSave" data-i18n="ph.save">Αποθήκευση στην αρχική ανάλυση…</button>
           </div>
         </div>

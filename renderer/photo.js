@@ -52,6 +52,7 @@
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
     $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png'); });
     $('phSave').addEventListener('click', save);
+    $('phResize').addEventListener('change',exportSize);
     const drop = $('phDrop');
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
@@ -118,7 +119,8 @@
     const c = $('phCanvas'); c.width = out.width; c.height = out.height;
     c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
     drawHist(out.data);
-    const o = P.outputSize(bmp.width, bmp.height, full());
+    exportSize();
+    const o = P.resizeOutput(...Object.values(P.outputSize(bmp.width, bmp.height, full())),Number($('phResize').value));
     $('phSave').title = fmt(t('ph.outputSize'), { w: o.width, h: o.height });
   }
   function drawHist(data) {
@@ -129,26 +131,44 @@
     for (let i = 0; i < 256; i++) { const h = Math.round(Math.min(1, bins[i] / max) * (c.height - 2)); g.fillRect(i, c.height - h, 1, h); }
   }
 
+  function processExport(img,snapshot,maxEdge) {
+    return new Promise((resolve,reject)=>{
+      const worker=new Worker('photo-worker.js');
+      let timer;
+      const finish=(err,value)=>{clearTimeout(timer);worker.terminate();err?reject(err):resolve(value);};
+      timer=setTimeout(()=>finish(Error('photo-timeout')),120000);
+      worker.onerror=()=>finish(Error('photo-worker'));
+      worker.onmessage=({data:r})=>{if(!r?.ok){finish(Error(r?.error||'photo-worker'));return;}finish(null,{width:r.width,height:r.height,data:new Uint8ClampedArray(r.buffer)});};
+      try{worker.postMessage({width:img.width,height:img.height,buffer:img.data.buffer,params:snapshot,maxEdge},[img.data.buffer]);}catch(e){finish(e);}
+    });
+  }
+  function exportSize(){if(!bmp)return;const s=P.outputSize(bmp.width,bmp.height,full()),o=P.resizeOutput(s.width,s.height,Number($('phResize').value));$('phDimensions').textContent=o.width+' × '+o.height+' px';}
   async function save() {
     if (!bmp || busy) return;
     busy = true; ++openGeneration;
-    const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100;
+    const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value);
+    if(!P.exportBudget(source.width,source.height,snapshot,maxEdge)){busy=false;info(t('ph.tooLarge'));return;}
     $('phSave').disabled = true; info(t('ph.processing'));
     await new Promise((r) => setTimeout(r, 30)); // let the message paint before the heavy work
     try {
       const c = document.createElement('canvas'); c.width = source.width; c.height = source.height;
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(source, 0, 0);
       const d = g.getImageData(0, 0, c.width, c.height);
-      const out = P.process({ data: d.data, width: d.width, height: d.height }, snapshot);
+      c.width=0;c.height=0;
+      const out = await processExport(d,snapshot,maxEdge);
       const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
-      oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-      const blob = await new Promise((res) => oc.toBlob(res, P.OUT_FORMATS[f].mime, q));
+      oc.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
+      const size=P.resizeOutput(out.width,out.height,maxEdge);
+      let target=oc;
+      if(size.width!==out.width||size.height!==out.height){target=document.createElement('canvas');target.width=size.width;target.height=size.height;const ctx=target.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(oc,0,0,size.width,size.height);oc.width=0;oc.height=0;}
+      const blob = await new Promise((res) => target.toBlob(res, P.OUT_FORMATS[f].mime, q));
+      target.width=0;target.height=0;
       if (!blob) { info(t('ph.saveFailed')); return; }
       const r = await api.photoSave({ format: f, name: sourceName, bytes: await blob.arrayBuffer() });
-      info(r && r.ok ? fmt(t('ph.saved'), { w: out.width, h: out.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
+      info(r && r.ok ? fmt(t('ph.saved'), { w: size.width, h: size.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
     } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
   }
 
-  window.WaveframePhotoUi = { show() { build(); }, open: (p) => { build(); return openPath(p); } };
+  window.WaveframePhotoUi = { processExport, show() { build(); }, open: (p) => { build(); return openPath(p); } };
   build();
 })();

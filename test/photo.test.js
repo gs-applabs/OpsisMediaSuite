@@ -129,3 +129,11 @@ test('auto enhance preserves geometry and creative adjustments',()=>{
  const p=P.applyAuto(flat(8,8,90),{...P.defaults(),rotate:90,flipH:true,vignette:70});
  assert.equal(p.rotate,90);assert.equal(p.flipH,true);assert.equal(p.vignette,70);
 });
+
+test('resize output preserves aspect ratio, never upscales and validates budget',()=>{
+ assert.deepEqual(P.resizeOutput(4000,3000,2048),{width:2048,height:1536});
+ assert.deepEqual(P.resizeOutput(100,50,2048),{width:100,height:50});
+ assert.equal(P.exportBudget(8000,10000,{},0),false);
+ assert.equal(P.exportBudget(4000,3000,{},2048),true);
+ assert.equal(P.exportBudget(0,10,{},0),false);
+});
