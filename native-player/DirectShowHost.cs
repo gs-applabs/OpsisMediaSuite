@@ -169,6 +169,29 @@ internal static class DirectShowHost
         Console.WriteLine(JsonSerializer.Serialize(new{engine="directshow",graph="AsyncReader -> WaveParser -> NullRenderer",duration100ns=duration,position100ns=pos}));
         return duration>10000000&&pos>=1000000?0:6;
     }
+#if CODEC_CI_TEST
+    // Compiled only into the isolated codec CI binary. Not present in release builds.
+    public static int LavSelfTest(string file)
+    {
+        if(!string.Equals(Path.GetExtension(file),".mkv",StringComparison.OrdinalIgnoreCase))return 2;
+        using var source=new Approved(LavSource,"LAVSplitter.ax");
+        using var video=new Approved(LavVideo,"LAVVideo.ax");
+        using var audio=new Approved(LavAudio,"LAVAudio.ax");
+        using var g=new Graph();
+        var src=g.Add(source.Id,"LAV Splitter Source",source.Path);
+        var vd=g.Add(video.Id,"LAV Video Decoder",video.Path);
+        var ad=g.Add(audio.Id,"LAV Audio Decoder",audio.Path);
+        var vr=g.Add(NullRendererId,"Video Null Renderer");
+        var ar=g.Add(NullRendererId,"Audio Null Renderer");
+        g.Load(src,file);g.Connect(src,vd,MediaType.Video);g.Connect(vd,vr,MediaType.Video);g.Connect(src,ad,MediaType.Audio);g.Connect(ad,ar,MediaType.Audio);
+        Check(g.Seeking.GetDuration(out long duration));Check(g.Control.Run());
+        var timer=Stopwatch.StartNew();long pos=0;
+        while(timer.ElapsedMilliseconds<8000){Check(g.Seeking.GetCurrentPosition(out pos));if(pos>=5000000)break;Thread.Sleep(50);}
+        Check(g.Control.Stop());
+        Console.WriteLine(JsonSerializer.Serialize(new{engine="directshow-lav",videoConnected=true,audioConnected=true,duration100ns=duration,position100ns=pos,modules=new[]{source,video,audio}.Select(x=>new{file=System.IO.Path.GetFileName(x.Path),sha256=x.Hash})}));
+        return duration>10000000&&pos>=5000000?0:8;
+    }
+#endif
     public static int Run(string file)
     {
         // Explicit experimental local-only path. No automatic fallback.

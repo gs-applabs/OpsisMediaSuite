@@ -1528,7 +1528,7 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
   select.value=mode;
   function show() {
     const el=document.documentElement.lang==='el';
-    panel.hidden=!(installed===true||running===true||route||deviceSeen||mode!=='native');
+    panel.hidden=false; // manual external processing remains available even without detected FxSound
     engine.setRouteBypass(WaveframeAudio.routeBypass(mode,route));
     const details=el?['Εγκατάσταση: '+(installed===true?'ναι':installed===false?'δεν εντοπίστηκε':'άγνωστη'),'Διεργασία: '+(running===true?'εντοπίστηκε':running===false?'δεν εντοπίστηκε':'άγνωστη'),'Προεπιλεγμένη έξοδος: '+(route?'FxSound (βάσει ονόματος)':'μη επιβεβαιωμένη')]:['Installed: '+(installed===true?'yes':installed===false?'not detected':'unknown'),'Process: '+(running===true?'detected':running===false?'not detected':'unknown'),'Default output: '+(route?'FxSound (label match)':'unconfirmed')];
     details.push(engine.state.routeBypass?(el?'Τα ζωντανά εφέ OPSIS παρακάμπτονται.':'OPSIS live effects bypassed.'):(el?'Η ρύθμιση Master DSP διατηρείται.':'Master DSP preference retained.'));

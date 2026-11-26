@@ -51,3 +51,6 @@ Pass 13 CI 173/173, Electron self-test and native CI passed. Export pixel proces
 
 ## Pass 15 — audio presence and balance
 Independent 2.8 kHz peaking presence control (0–6 dB), stereo balance, live and offline graph and Chromium video EQ, presets and reset, bounded values, real frequency-response test. Native engines not yet using Web Audio DSP. New labels bilingual; full translation and layout verification pending. Equalizer APO export remains EQ/bass only, not full DSP settings.
+
+## Pass 16 — actual installed K-Lite test matrix (first Mega row)
+Added dedicated Windows disposable-runner workflow for pinned Chocolatey K-Lite Mega 20.1.0, registry scan and actual H.264/AAC MKV explicit graph with installed LAV x64 filters, dummy sinks and clock check. CI-only code path is conditional at compile time, not part of normal host. No package is installed on user PC. Evidence pending; package availability, default registered filters and compatibility remain to be verified. Manual external DSP mode now accessible without detected FxSound.

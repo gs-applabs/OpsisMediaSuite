@@ -13,6 +13,9 @@
     <DebugSymbols>false</DebugSymbols>
     <PathMap>$(MSBuildProjectDirectory)=/_/native-player</PathMap>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(CodecTest)' == 'true'">
+    <DefineConstants>$(DefineConstants);CODEC_CI_TEST</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="DirectShowLib.Standard" Version="2.1.0" />
     <PackageReference Include="LibVLCSharp" Version="3.10.2" />
