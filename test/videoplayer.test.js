@@ -181,3 +181,15 @@ test('subtitle FPS correction scales timestamps before offset and supports Greek
  assert.equal(V.preferredSubtitle([{name:'film.en.srt'},{name:'film.Greek.srt'}]),1);
  assert.equal(V.preferredSubtitle([],['el']),-1);
 });
+
+test('LAV registration classification distinguishes name, architecture and user override; never enables a decoder',()=>{
+ const {classifyLav}=require('../codec-inventory');
+ const id='{EE30215D-164F-4A92-A4EB-9D4C13390F9F}',p='C:\\Program Files\\LAV\\LAVVideo.ax';
+ const base={clsid:id,server:p,hive:'LocalMachine',view:'64'};
+ const inspect=()=>({file:p,machine:'x64'});
+ assert.equal(classifyLav([base],'x64',inspect)[0].status,'identity-review-required');
+ assert.equal(classifyLav([{...base,hive:'CurrentUser'}],'x64',inspect)[0].status,'user-override-review');
+ assert.equal(classifyLav([{...base,view:'32'}],'x64',inspect)[0].status,'architecture-mismatch');
+ assert.equal(classifyLav([{...base,server:'C:\\bad.dll'}],'x64',inspect)[0].status,'missing-or-invalid-file');
+ assert.equal(classifyLav([{...base,clsid:'unknown'}],'x64',inspect).length,0);
+});

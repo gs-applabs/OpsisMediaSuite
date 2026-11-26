@@ -422,6 +422,7 @@
       const lines=['Active engine / Ενεργός μηχανισμός: '+(playbackEngine||'—'), 'Architecture: '+report.arch, 'Inventory only / Μόνο ανίχνευση — not loaded / χωρίς φόρτωση'];
       for(const row of report.packs)lines.push(row.name+' '+row.version+' ['+row.view+']');
       for(const row of report.filters)lines.push(row.name+' ['+row.view+']');
+      for(const row of (report.lav||[]))lines.push(row.name+' ['+row.view+'] '+row.status+' ('+row.hive+')');
       for(const row of report.transforms)lines.push(row.name+' [Media Foundation '+row.view+']');
       if(report.status!=='ok')lines.push('Scan status: '+report.status);
       await showAlertDialog('Codec Manager',lines.join('\n'));

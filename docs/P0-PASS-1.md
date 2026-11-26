@@ -36,3 +36,6 @@ Integrated Electron checkpoint cadbb2ea passed. Native initial build failed CS02
 
 ## Pass 10 — P2/P5 parallel improvements
 Photo undo/redo (60 parameter snapshots, no full image copies), preserve geometry/creative controls on auto enhance, clear compare on lost pointer/blur. Subtitle FPS correction for 23.976/24/25 and reset delay; language aliases Greek/English and common languages; unit coverage. New controls currently English/bilingual fallback, full 20-locale localisation pending. DirectShow execution not yet implemented.
+
+## Pass 11 — DirectShow registration identity groundwork
+Read-only LAV CLSID inventory (splitter source/splitter/video/audio), per-user versus machine hive, expected DLL/AX basename and PE DLL architecture checks, no COM activation. Status explicitly requires identity review; no signed trust decision, no decoder graph yet. Uses published LAV CLSIDs. Native actual playback still needs CI and real installed pack test.
