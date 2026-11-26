@@ -30,3 +30,6 @@ Candidate CI 45866698447: 168/168 unit tests, real renderer WebM/MP4/Greek subti
 
 ## Pass 8 — first actual LibVLC native host
 Added independent .NET 10 WinForms x64 native host, pinned LibVLCSharp 3.10.2 / non-GPL VideoLAN.LibVLC.Windows 3.0.24, local-only approval, explicit optional button, no automatic fallback. Separate native window supports transport, audio and subtitle selection, external subtitle and delay, volume. CI builds and tests real MKV clock, 2 audio streams and embedded subtitle with dummy outputs; hardware/UI rendering and licenses not yet certified. Host not bundled by ordinary portable installer yet. DirectShow graph and Media Foundation adapters remain unimplemented.
+
+## Pass 9 — fix actual CI regressions
+Integrated Electron checkpoint cadbb2ea passed. Native initial build failed CS0246 (TrackDescription namespace); now maps inferred LibVLC track values into host-owned TrackItem before passing to UI. Photo mock exposed missing app.on, fixed optional lifecycle subscription. Added frame, rate, chapter and fullscreen controls and actual selected-track verification. New CI pending.

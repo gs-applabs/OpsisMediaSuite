@@ -49,6 +49,8 @@ internal static class Program
                 var audio = player.AudioTrackDescription.Last(t => t.Id >= 0);
                 var subtitle = player.SpuDescription.First(t => t.Id >= 0);
                 var a = player.SetAudioTrack(audio.Id); var s = player.SetSpu(subtitle.Id);
+                var selectedClock=Stopwatch.StartNew();while(selectedClock.ElapsedMilliseconds<2500 && (player.AudioTrack!=audio.Id||player.Spu!=subtitle.Id))Thread.Sleep(50);
+                a=a&&player.AudioTrack==audio.Id;s=s&&player.Spu==subtitle.Id;
                 Console.WriteLine(JsonSerializer.Serialize(new { engine="libvlc", elapsed=player.Time, length=player.Length,
                     audioTracks=player.AudioTrackDescription.Count(t => t.Id >= 0), subtitleTracks=player.SpuDescription.Count(t => t.Id >= 0), audioSelected=a, subtitleSelected=s }));
                 player.Stop();
@@ -81,8 +83,11 @@ internal static class Program
             var transport=new FlowLayoutPanel { Dock=DockStyle.Fill, AutoScroll=true, WrapContents=true };
             Button Button(string label, Action action) { var b=new Button{Text=label,AutoSize=true}; b.Click+=(_,_)=>action(); transport.Controls.Add(b);return b; }
             Button("Play / Pause",()=>{if(player.IsPlaying)player.SetPause(true);else if(player.State==VLCState.Paused)player.SetPause(false);else player.Play(media);});
-            Button("Stop",()=>player.Stop()); Button("−10 s",()=>Move(-10000));Button("+10 s",()=>Move(10000));
+            Button("Stop",()=>player.Stop()); Button("Next frame",()=>{player.SetPause(true);player.NextFrame();}); Button("−10 s",()=>SeekRelative(-10000));Button("+10 s",()=>SeekRelative(10000));
             transport.Controls.Add(time);
+            var rate=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=75};foreach(var r in new float[]{.5f,.75f,1f,1.25f,1.5f,2f})rate.Items.Add(r);rate.SelectedItem=1f;rate.SelectedIndexChanged+=(_,_)=>{if(rate.SelectedItem is float r)player.SetRate(r);};transport.Controls.Add(rate);
+            Button("Previous chapter",()=>{if(player.Chapter>0)player.Chapter--;});Button("Next chapter",()=>{if(player.Chapter+1<player.ChapterCount)player.Chapter++;});
+            Button("Fullscreen",()=>{if(FormBorderStyle==FormBorderStyle.None){FormBorderStyle=FormBorderStyle.Sizable;WindowState=FormWindowState.Normal;}else{FormBorderStyle=FormBorderStyle.None;WindowState=FormWindowState.Maximized;}});
             transport.Controls.Add(new Label{Text="Audio",AutoSize=true});transport.Controls.Add(audio);
             transport.Controls.Add(new Label{Text="Subtitles",AutoSize=true});transport.Controls.Add(subtitle);
             Button("Load subtitle",()=>{using var pick=new OpenFileDialog{Filter="Subtitles|*.srt;*.ass;*.ssa;*.vtt;*.sub;*.idx"};if(pick.ShowDialog(this)==DialogResult.OK &&
@@ -91,6 +96,7 @@ internal static class Program
             Button("Sub −0.5s",()=>player.SetSpuDelay(Math.Max(-3600000000L,player.SpuDelay-500000)));
             Button("Sub +0.5s",()=>player.SetSpuDelay(Math.Min(3600000000L,player.SpuDelay+500000)));
             var volume=new TrackBar{Minimum=0,Maximum=100,Value=75,TickStyle=TickStyle.None,Width=100};volume.ValueChanged+=(_,_)=>player.Volume=volume.Value;transport.Controls.Add(volume);transport.Controls.Add(status);
+            KeyPreview=true;KeyDown+=(_,e)=>{if(e.KeyCode==Keys.Escape&&FormBorderStyle==FormBorderStyle.None){FormBorderStyle=FormBorderStyle.Sizable;WindowState=FormWindowState.Normal;e.Handled=true;}};
             var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3};layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,42));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,100));layout.Controls.Add(video,0,0);layout.Controls.Add(seek,0,1);layout.Controls.Add(transport,0,2);Controls.Add(layout);
             audio.SelectedIndexChanged+=(_,_)=>{if(!updating&&audio.SelectedItem is TrackItem t)player.SetAudioTrack(t.Id);};
             subtitle.SelectedIndexChanged+=(_,_)=>{if(!updating&&subtitle.SelectedItem is TrackItem t)player.SetSpu(t.Id);};
@@ -100,7 +106,7 @@ internal static class Program
             Shown+=(_,_)=>{player.Hwnd=video.Handle;player.Volume=75;if(!player.Play(media))status.Text="Playback failed";timer.Start();};
             FormClosing+=(_,_)=>{if(closing)return;closing=true;timer.Stop();player.Stop();};
         }
-        private void Move(long delta){if(player.IsSeekable&&player.Length>0)player.Time=Math.Clamp(player.Time+delta,0,player.Length);}
+        private void SeekRelative(long delta){if(player.IsSeekable&&player.Length>0)player.Time=Math.Clamp(player.Time+delta,0,player.Length);}
         private static string Clock(long ms)=>TimeSpan.FromMilliseconds(Math.Max(0,ms)).ToString(@"hh\:mm\:ss");
         private void RefreshState()
         {
@@ -110,12 +116,11 @@ internal static class Program
             if(!seeking&&seek.Enabled)seek.Value=(int)Math.Clamp(player.Time*1000d/player.Length,0,1000);
             status.Text="LibVLC • "+player.State;
             updating=true;
-            try { Fill(audio,player.AudioTrackDescription,player.AudioTrack);Fill(subtitle,player.SpuDescription,player.Spu); }
+            try { Fill(audio,player.AudioTrackDescription.Select(t=>new TrackItem(t.Id,t.Name??("Track "+t.Id))).ToArray(),player.AudioTrack);Fill(subtitle,player.SpuDescription.Select(t=>new TrackItem(t.Id,t.Name??("Track "+t.Id))).ToArray(),player.Spu); }
             finally {updating=false;}
         }
-        private static void Fill(ComboBox box,TrackDescription[] tracks,int selected)
+        private static void Fill(ComboBox box,TrackItem[] next,int selected)
         {
-            var next=tracks.Select(t=>new TrackItem(t.Id,t.Name??("Track "+t.Id))).ToArray();
             if(!box.Items.Cast<TrackItem>().SequenceEqual(next)){box.Items.Clear();box.Items.AddRange(next);}
             var index=Array.FindIndex(next,t=>t.Id==selected);if(box.SelectedIndex!=index)box.SelectedIndex=index;
         }

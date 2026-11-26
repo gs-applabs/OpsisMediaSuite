@@ -23,7 +23,7 @@ function createNativeHost({app,extensions,authorize}){
   });
  }
  function stop(){if(child)try{child.kill();}catch(_){}}
- app.on('before-quit',stop);
+ if(typeof app.on==='function')app.on('before-quit',stop);
  return {available,open,stop};
 }
 module.exports={createNativeHost};
