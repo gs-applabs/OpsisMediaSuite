@@ -2,7 +2,7 @@
 
 # Opsis Media Suite
 
-**v2.3.0** · *πρώην Opsis Media Suite / formerly Opsis Media Suite* · Windows 10/11 · MIT · [Releases](../../releases) · [The Opsis family](#η-οικογένεια-opsis--the-opsis-family)
+**v2.4.2** · *πρώην Opsis Media Suite / formerly Opsis Media Suite* · Windows 10/11 · MIT · [Releases](../../releases) · [The Opsis family](#η-οικογένεια-opsis--the-opsis-family)
 
 <p align="center">
   <img src="docs/img/dark-player.png" alt="Player (dark)" width="48%" />
@@ -128,6 +128,10 @@ npm run dist        # produces a portable build + NSIS installer (Windows x64) i
 Από το Opsis Media Suite (Ρυθμίσεις → Σχετικά → «Η οικογένεια Opsis») βλέπεις τις άλλες εφαρμογές του ίδιου δημιουργού: [Opsis](https://github.com/gs-applabs/Opsis), [Opsis News Crawler](https://github.com/gs-applabs/OpsisNewsCrawler), [Opsis Appearance](https://github.com/gs-applabs/OpsisAppearance), [GearWin](https://github.com/gs-applabs/GearWin), [Opsis Media Player Pro](https://github.com/gs-applabs/OpsisMediaPlayerPro), [Kombos](https://github.com/gs-applabs/Kombos).
 
 *From Opsis Media Suite (Settings → About → "The Opsis family") you can browse the author's other apps, listed above.*
+
+**Plugin για το Opsis / Opsis plugin (`opsis-plugin/`)**: μικρό plugin .NET (net11.0-windows, συμβόλαιο plugin 1.0.0.0, απαιτεί Opsis 2.8) που δείχνει το Media Suite μέσα στο [Opsis](https://github.com/gs-applabs/Opsis) και το ανοίγει όταν είναι εγκατεστημένο. Το [Opsis News Crawler](https://github.com/gs-applabs/OpsisNewsCrawler) (0.28.x) εξάγει playlists M3U· η καρτέλα Βίντεο του Media Suite τα εισάγει, αλλά παίζει μόνο τα αρχεία και τις διευθύνσεις που υποστηρίζει ο player του (όχι κάθε πηγή). Δες `opsis-plugin/README.md`.
+
+*A small .NET plugin (net11.0-windows, plugin contract 1.0.0.0, requires Opsis 2.8) shows the Media Suite inside Opsis and launches it when installed. The Opsis News Crawler (0.28.x) exports M3U playlists; the Suite's Video tab imports them but plays only the files and web addresses its player supports (not every source).*
 
 ## Απόρρητο / Privacy
 

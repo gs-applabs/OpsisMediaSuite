@@ -1,6 +1,6 @@
 # Opsis Media Suite — Opsis plugin (bridge)
 
-Small .NET plugin (contract `OpsisNewsCrawler.Plugin.Abstractions` **1.0.0.0**, requires **Opsis 2.6.0**, which runs on **.NET 11**: the plugin targets net11.0-windows and needs the .NET 11 Desktop Runtime; a net11 plugin does not load in a net10 host) that lets the Electron-based Opsis Media Suite appear in Opsis:
+Small .NET plugin (contract `OpsisNewsCrawler.Plugin.Abstractions` **1.0.0.0**, SHA-256 `514f2a3e…`, requires **Opsis 2.8** (plugin mechanism 1.0.0.0), which runs on **.NET 11**: the plugin targets net11.0-windows and needs the .NET 11 Desktop Runtime; a net11 plugin does not load in a net10 host) that lets the Electron-based Opsis Media Suite appear in Opsis:
 a card/page ("Media Suite"), a widget with the same card, and a tray entry that launches the installed app (path from `suite-apps.json` known paths, then the uninstall registry key; existence checked at click time).
 
 - Implements `IOpsisNewsCrawlerPlugin`, `IPluginWidgetProvider`, `IPluginUpdateSource` (`gs-applabs/OpsisMediaSuite`, asset `MediaSuite-Plugin.zip`), `IPluginHostSettingsAware` (language).

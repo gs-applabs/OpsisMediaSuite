@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.2 — Opsis family: plugin bridge, documentation
+- **`opsis-plugin/`** (new, 1.0.0): a small .NET plugin (net11.0-windows, plugin contract `OpsisNewsCrawler.Plugin.Abstractions` 1.0.0.0, SHA-256 `514f2a3e…`, requires Opsis 2.8) that shows the Media Suite as a page, a widget and a tray entry inside Opsis and launches the installed app; shown only when the Suite is installed. Opsis keeps enabling its own "Audio management" tab by itself. There is no "now playing" link: the Suite exposes none. 11 unit tests; loading checked with Opsis against a temporary `OPSIS_APPDATA` (a real Opsis release was not tested).
+- **Family status** (documentation only): Opsis 2.8.0, Opsis News Crawler 0.28.x, Chronikologio 1.1.0, Opsis.UI 0.6.0. The News Crawler exports M3U playlists; the Suite's Video tab imports M3U, and plays only the files and web addresses its player supports (it does not play every source).
+- The player and the Suite's own features are unchanged. History entry in 20 languages.
+
 ## 2.4.1 — Safer playlists and photo save
 - **M3U hardening**: Windows paths are read correctly, a limit per track, no UNC network paths, control characters removed.
 - **Photo save** writes only the bytes of the view you see.
