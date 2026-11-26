@@ -191,6 +191,17 @@ function init({ getMainWin, resolveFfmpegPath }) {
           check('wfmedia rejects an unapproved media path', unauthorized === 404 || unauthorized === 'blocked', String(unauthorized));
           const guard = await js("fetch('wfmedia://f/' + encodeURIComponent('C:\\Windows\\System32\\drivers\\etc\\hosts')).then((r) => r.status).catch(() => 'blocked')");
           check('wfmedia: refuses files that are not media / subtitles', guard === 404 || guard === 'blocked', String(guard));
+          // MP4 is a separate required capability; a successful WebM fixture is not proof of H.264 playback.
+          const mp4 = path.join(dir,'h264.mp4');
+          const mp4Built = await new Promise(res => require('child_process').execFile(ff,['-hide_banner','-v','error','-y','-f','lavfi','-i','testsrc2=size=352x192:rate=25:duration=3','-f','lavfi','-i','sine=frequency=440:duration=3','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart','-shortest',mp4],{timeout:60000},err=>res(!err)));
+          check('H.264/AAC MP4 test fixture generated',mp4Built && fs.existsSync(mp4),'MP4');
+          if(mp4Built && fs.existsSync(mp4)) {
+            remember(allowedFile(mp4,PLAY_EXTS));
+            await js(`window.WaveframeVideoPlayer.open(${JSON.stringify(mp4)});1`);
+            const mp4Ok=await until("(() => {const v=document.getElementById('vpVideo');return v.readyState>=2 && v.videoWidth===352;})()",15000);
+            check('H.264/AAC MP4 playback',mp4Ok,await js("(() => {const v=document.getElementById('vpVideo');return JSON.stringify({w:v.videoWidth,error:v.error?.code,message:v.error?.message,mp4:v.canPlayType('video/mp4'),ready:v.readyState});})()"));
+            check('no stale subtitle track after source change',await js("document.getElementById('vpVideo').textTracks.length===0"),'new media');
+          }
         }
       }
       /* photo editor */

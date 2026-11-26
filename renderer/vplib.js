@@ -15,8 +15,8 @@
   const titleOf = (p) => { const s = String(p || ''); const n = s.split(/[\\/]/).pop().replace(/\?.*$/, ''); return n.replace(/\.[A-Za-z0-9]{1,5}$/, '') || s; };
   const isUrl = (p) => /^https?:\/\//i.test(String(p || ''));
 
-  // Local files are played through the read-only wfmedia: protocol of the main process (range requests, no whole-file blob); URLs play directly.
-  function mediaUrl(p) { return isUrl(p) ? String(p) : 'wfmedia://f/' + encodeURIComponent(String(p)); }
+  // Local playback requires an opaque main-process ticket, never a path in a URL.
+  function mediaUrl(p) { return isUrl(p) ? String(p) : null; }
 
   function clock(ms) {
     const s = Number.isFinite(Number(ms)) ? Math.max(0, Math.floor(Number(ms) / 1000)) : 0, h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;

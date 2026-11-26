@@ -45,9 +45,9 @@ test('file kinds, titles and URLs', () => {
   assert.equal(V.kindOf('C:\\a\\b.MKV'), 'video'); assert.equal(V.kindOf('C:\\a\\b.flac'), 'audio'); assert.equal(V.kindOf('C:\\a\\b.txt'), '');
   assert.equal(V.kindOf('https://x.org/live'), 'video');
   assert.equal(V.titleOf('C:\\Films\\My.Movie.2020.mkv'), 'My.Movie.2020'); assert.equal(V.titleOf('https://x.org/a/b.mp4?token=1'), 'b');
-  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), 'wfmedia://f/C%3A%5CFilms%5Ca%20b.mp4');
+  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), null);
   assert.equal(V.mediaUrl('https://x.org/a.mp4'), 'https://x.org/a.mp4');
-  assert.equal(decodeURIComponent(new URL(V.mediaUrl('C:\\Films\\a b.mp4')).pathname.replace(/^\//, '')), 'C:\\Films\\a b.mp4', 'round-trips through the URL the main process parses');
+  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), null, 'local media must obtain an opaque ticket from main');
   assert.equal(V.playable('C:\\x\\y.mp4'), true); assert.equal(V.playable('C:\\x\\y.exe'), false); assert.equal(V.playable('..\\y.mp4'), false); assert.equal(V.playable(5), false);
   assert.equal(V.playable('C:\\x\\y.mp4\n'), false); assert.equal(V.playable('C:\\x\\y\0.mp4'), false); assert.equal(V.playable('\\\\srv\\share\\y.mp4'), false);
 });
@@ -65,7 +65,7 @@ test('the main process side only serves media and subtitles, never other file ty
     const i = src.indexOf(`'${ch}'`); assert.ok(i > 0, ch);
     assert.ok(/trusted\(e\)/.test(src.slice(i, i + 220)), ch + ' checks the sender');
   }
-  assert.ok(!/\.sub|exe|bat|dll/.test(M.VIDEO_EXTS.join(',') + M.AUDIO_EXTS.join(',')) || true);
+  assert.ok(!/\.sub|exe|bat|dll/.test(M.VIDEO_EXTS.join(',') + M.AUDIO_EXTS.join(',')));
   assert.ok(![...M.VIDEO_EXTS, ...M.AUDIO_EXTS].some((e) => ['exe', 'bat', 'cmd', 'dll', 'js', 'ps1', 'json'].includes(e)));
 });
 

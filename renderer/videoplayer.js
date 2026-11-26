@@ -168,7 +168,7 @@
   }
   function setDelay(d) { subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 10) / 10)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; rebuildTrack(); }
   function applySubStyle() {
-    const s = get(K.subs, {});
+    const s = get(K.subs, {}) || {};
     const size = Number($('vpSubSize').value) || 16, color = $('vpSubColor').value || '#ffffff';
     video.style.setProperty('--vp-sub-size', String(Math.round(size / 16 * 100)));
     video.style.setProperty('--vp-sub-color', color);
@@ -178,7 +178,7 @@
   /* ---------------- sound: the Suite's equaliser on the video ---------------- */
   function refreshFx() {
     const btn = $('vpFx'); if (!fx || !btn) return;
-    const on = btn.getAttribute('aria-pressed') === 'true';
+    const on = btn.getAttribute('aria-pressed') === 'true' && (typeof engine === 'undefined' || engine.state.masterEnabled);
     const bands = (typeof engine !== 'undefined' && engine.state && engine.state.eqBands) || [];
     fx.filters.forEach((f, i) => { f.gain.value = on ? Number(bands[i]) || 0 : 0; });
     fx.bass.gain.value = on && typeof engine !== 'undefined' && engine.state ? Number(engine.state.bassBoost) || 0 : 0;
