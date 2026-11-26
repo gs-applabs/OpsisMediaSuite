@@ -5,6 +5,7 @@ const musicPath = ipcRenderer.sendSync('paths:music-sync');
 
 contextBridge.exposeInMainWorld('waveframe', {
   version,
+  detectFxSound: () => ipcRenderer.invoke('fxsound:detect'),
   musicPath,
   minimize: () => ipcRenderer.send('window:minimize'),
   maximizeToggle: () => ipcRenderer.send('window:maximize-toggle'),

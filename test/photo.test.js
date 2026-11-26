@@ -105,3 +105,17 @@ test('preview size keeps the aspect ratio and never upscales; histogram counts e
   assert.equal(P.previewSize(800, 600, 1500).scale, 1);
   const h = P.histogram(flat(10, 5, 5).data); assert.equal(h[10], 25); assert.equal(h.reduce((a, b) => a + b, 0), 25);
 });
+
+test('creative photo controls preserve alpha, source and neutral output', () => {
+  const P = require('../renderer/photolib.js');
+  const img = {data: new Uint8ClampedArray([80,100,120,99, 120,80,40,255]), width:2,height:1};
+  const source = Array.from(img.data);
+  assert.deepEqual(Array.from(P.process(img,P.defaults()).data),source);
+  const out=P.process(img,{vibrance:75,sepia:50});
+  assert.notDeepEqual(Array.from(out.data),source);
+  assert.equal(out.data[3],99); assert.equal(out.data[7],255);
+  assert.deepEqual(Array.from(img.data),source);
+  const uniform={data:new Uint8ClampedArray(5*5*4).fill(200),width:5,height:5};
+  const v=P.process(uniform,{vignette:100});
+  assert.ok(v.data[0]<v.data[(2*5+2)*4]); assert.equal(v.data[3],200);
+});

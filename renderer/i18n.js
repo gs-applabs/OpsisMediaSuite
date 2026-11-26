@@ -2,6 +2,7 @@
 
 const I18N = {
   el: {
+    'ph.vibrance': "Ζωντάνια χρωμάτων", 'ph.sepia': "Σέπια", 'ph.vignette': "Βινιέτα",
     'common.cancel': 'Άκυρο',
     'common.ok': 'OK',
     'player.urlPromptTitle': 'Διεύθυνση URL αρχείου ήχου',
@@ -518,6 +519,7 @@ const I18N = {
     'preset.trebleBoost.name': 'Ενίσχυση Πρίμων', 'preset.trebleBoost.desc': 'Έμφαση στα υψηλά για λεπτομέρεια',
   },
   en: {
+    'ph.vibrance': "Vibrance", 'ph.sepia': "Sepia", 'ph.vignette': "Vignette",
     'common.cancel': 'Cancel',
     'common.ok': 'OK',
     'player.urlPromptTitle': 'Audio file URL',
@@ -1033,6 +1035,7 @@ const I18N = {
     'preset.trebleBoost.name': 'Treble Boost', 'preset.trebleBoost.desc': 'Extra high-end detail and air',
   },
   fr: {
+    'ph.vibrance': "Vibrance", 'ph.sepia': "Sépia", 'ph.vignette': "Vignettage",
     'common.cancel': 'Annuler', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL du fichier audio', 'enhance.presetNamePromptTitle': 'Nom du préréglage',
     'tab.player': 'Lecture', 'tab.enhance': 'Amplificateur Audio', 'tab.export': 'Exporter', 'tab.settings': 'Paramètres',
@@ -1470,6 +1473,7 @@ const I18N = {
     'conv.warn.rateClamped': "Ce format prend en charge jusqu'à 48 kHz ; la fréquence a été réduite.",
   },
   de: {
+    'ph.vibrance': "Dynamik", 'ph.sepia': "Sepia", 'ph.vignette': "Vignette",
     'common.cancel': 'Abbrechen', 'common.ok': 'OK',
     'player.urlPromptTitle': 'Audiodatei-URL', 'enhance.presetNamePromptTitle': 'Presetname',
     'tab.player': 'Wiedergabe', 'tab.enhance': 'Audio-Verstärker', 'tab.export': 'Export', 'tab.settings': 'Einstellungen',
@@ -1907,6 +1911,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dieses Format unterstützt bis zu 48 kHz; die Rate wurde verringert.",
   },
   es: {
+    'ph.vibrance': "Intensidad", 'ph.sepia': "Sepia", 'ph.vignette': "Viñeta",
     'common.cancel': 'Cancelar', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL del archivo de audio', 'enhance.presetNamePromptTitle': 'Nombre del preajuste',
     'tab.player': 'Reproducción', 'tab.enhance': 'Amplificador de Audio', 'tab.export': 'Exportar', 'tab.settings': 'Ajustes',
@@ -2344,6 +2349,7 @@ const I18N = {
     'conv.warn.rateClamped': "Este formato admite hasta 48 kHz; se redujo la frecuencia.",
   },
   it: {
+    'ph.vibrance': "Vividezza", 'ph.sepia': "Seppia", 'ph.vignette': "Vignettatura",
     'common.cancel': 'Annulla', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL del file audio', 'enhance.presetNamePromptTitle': 'Nome del preset',
     'tab.player': 'Riproduzione', 'tab.enhance': 'Amplificatore Audio', 'tab.export': 'Esporta', 'tab.settings': 'Impostazioni',
@@ -2781,6 +2787,7 @@ const I18N = {
     'conv.warn.rateClamped': "Questo formato supporta fino a 48 kHz; la frequenza è stata ridotta.",
   },
   pt: {
+    'ph.vibrance': "Vivacidade", 'ph.sepia': "Sépia", 'ph.vignette': "Vinheta",
     'common.cancel': 'Cancelar', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL do arquivo de áudio', 'enhance.presetNamePromptTitle': 'Nome do preset',
     'tab.player': 'Reprodução', 'tab.enhance': 'Amplificador de Áudio', 'tab.export': 'Exportar', 'tab.settings': 'Configurações',
@@ -3218,6 +3225,7 @@ const I18N = {
     'conv.warn.rateClamped': "Este formato suporta até 48 kHz; a taxa foi reduzida.",
   },
   ru: {
+    'ph.vibrance': "Красочность", 'ph.sepia': "Сепия", 'ph.vignette': "Виньетка",
     'common.cancel': 'Отмена', 'common.ok': 'ОК',
     'player.urlPromptTitle': 'URL аудиофайла', 'enhance.presetNamePromptTitle': 'Название пресета',
     'tab.player': 'Плеер', 'tab.enhance': 'Аудио-усилитель', 'tab.export': 'Экспорт', 'tab.settings': 'Настройки',
@@ -3655,6 +3663,7 @@ const I18N = {
     'conv.warn.rateClamped': "Этот формат поддерживает до 48 кГц; частота снижена.",
   },
   tr: {
+    'ph.vibrance': "Canlılık", 'ph.sepia': "Sepya", 'ph.vignette': "Vinyet",
     'common.cancel': 'İptal', 'common.ok': 'Tamam',
     'player.urlPromptTitle': 'Ses dosyası URL\'si', 'enhance.presetNamePromptTitle': 'Ön ayar adı',
     'tab.player': 'Oynatıcı', 'tab.enhance': 'Ses Güçlendirici', 'tab.export': 'Dışa Aktar', 'tab.settings': 'Ayarlar',
@@ -4092,6 +4101,7 @@ const I18N = {
     'conv.warn.rateClamped': "Bu biçim en fazla 48 kHz destekler; hız düşürüldü.",
   },
   pl: {
+    'ph.vibrance': "Żywość", 'ph.sepia': "Sepia", 'ph.vignette': "Winieta",
     'common.cancel': 'Anuluj', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL pliku audio', 'enhance.presetNamePromptTitle': 'Nazwa ustawienia',
     'tab.player': 'Odtwarzacz', 'tab.enhance': 'Wzmacniacz Audio', 'tab.export': 'Eksport', 'tab.settings': 'Ustawienia',
@@ -4529,6 +4539,7 @@ const I18N = {
     'conv.warn.rateClamped': "Ten format obsługuje do 48 kHz; częstotliwość obniżono.",
   },
   nl: {
+    'ph.vibrance': "Levendigheid", 'ph.sepia': "Sepia", 'ph.vignette': "Vignet",
     'common.cancel': 'Annuleren', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL van het audiobestand', 'enhance.presetNamePromptTitle': 'Naam van de voorinstelling',
     'tab.player': 'Afspelen', 'tab.enhance': 'Audioversterker', 'tab.export': 'Exporteren', 'tab.settings': 'Instellingen',
@@ -4962,6 +4973,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dit formaat ondersteunt tot 48 kHz; de frequentie is verlaagd.",
   },
   sv: {
+    'ph.vibrance': "Lyster", 'ph.sepia': "Sepia", 'ph.vignette': "Vinjettering",
     'common.cancel': 'Avbryt', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL till ljudfil', 'enhance.presetNamePromptTitle': 'Förinställningens namn',
     'tab.player': 'Spelare', 'tab.enhance': 'Ljudförstärkare', 'tab.export': 'Exportera', 'tab.settings': 'Inställningar',
@@ -5395,6 +5407,7 @@ const I18N = {
     'conv.warn.rateClamped': "Det här formatet stöder upp till 48 kHz; frekvensen sänktes.",
   },
   da: {
+    'ph.vibrance': "Livlighed", 'ph.sepia': "Sepia", 'ph.vignette': "Vignet",
     'common.cancel': 'Annuller', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL til lydfil', 'enhance.presetNamePromptTitle': 'Navn på forudindstilling',
     'tab.player': 'Afspiller', 'tab.enhance': 'Lydforstærker', 'tab.export': 'Eksporter', 'tab.settings': 'Indstillinger',
@@ -5828,6 +5841,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dette format understøtter op til 48 kHz; frekvensen blev sænket.",
   },
   no: {
+    'ph.vibrance': "Livlighet", 'ph.sepia': "Sepia", 'ph.vignette': "Vignettering",
     'common.cancel': 'Avbryt', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL til lydfil', 'enhance.presetNamePromptTitle': 'Navn på forhåndsinnstilling',
     'tab.player': 'Spiller', 'tab.enhance': 'Lydforsterker', 'tab.export': 'Eksporter', 'tab.settings': 'Innstillinger',
@@ -6261,6 +6275,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dette formatet støtter opptil 48 kHz; frekvensen ble senket.",
   },
   fi: {
+    'ph.vibrance': "Värikkyys", 'ph.sepia': "Seepia", 'ph.vignette': "Vinjetointi",
     'common.cancel': 'Peruuta', 'common.ok': 'OK',
     'player.urlPromptTitle': 'Äänitiedoston URL-osoite', 'enhance.presetNamePromptTitle': 'Esiasetuksen nimi',
     'tab.player': 'Soitin', 'tab.enhance': 'Äänenparantaja', 'tab.export': 'Vie', 'tab.settings': 'Asetukset',
@@ -6694,6 +6709,7 @@ const I18N = {
     'conv.warn.rateClamped': "Tämä muoto tukee enintään 48 kHz:ä; taajuutta laskettiin.",
   },
   cs: {
+    'ph.vibrance': "Živost", 'ph.sepia': "Sépie", 'ph.vignette': "Vinětace",
     'common.cancel': 'Zrušit', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL zvukového souboru', 'enhance.presetNamePromptTitle': 'Název předvolby',
     'tab.player': 'Přehrávač', 'tab.enhance': 'Zvukový zesilovač', 'tab.export': 'Export', 'tab.settings': 'Nastavení',
@@ -7127,6 +7143,7 @@ const I18N = {
     'conv.warn.rateClamped': "Tento formát podporuje až 48 kHz; frekvence byla snížena.",
   },
   sk: {
+    'ph.vibrance': "Živosť", 'ph.sepia': "Sépia", 'ph.vignette': "Vinetácia",
     'common.cancel': 'Zrušiť', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL zvukového súboru', 'enhance.presetNamePromptTitle': 'Názov predvoľby',
     'tab.player': 'Prehrávač', 'tab.enhance': 'Zvukový zosilňovač', 'tab.export': 'Export', 'tab.settings': 'Nastavenia',
@@ -7560,6 +7577,7 @@ const I18N = {
     'conv.warn.rateClamped': "Tento formát podporuje až 48 kHz; frekvencia bola znížená.",
   },
   hu: {
+    'ph.vibrance': "Élénkség", 'ph.sepia': "Szépia", 'ph.vignette': "Vignettálás",
     'common.cancel': 'Mégse', 'common.ok': 'OK',
     'player.urlPromptTitle': 'Hangfájl URL-je', 'enhance.presetNamePromptTitle': 'Előbeállítás neve',
     'tab.player': 'Lejátszó', 'tab.enhance': 'Hangerősítő', 'tab.export': 'Exportálás', 'tab.settings': 'Beállítások',
@@ -7993,6 +8011,7 @@ const I18N = {
     'conv.warn.rateClamped': "Ez a formátum legfeljebb 48 kHz-et támogat; a frekvenciát csökkentettük.",
   },
   ro: {
+    'ph.vibrance': "Vibrație", 'ph.sepia': "Sepia", 'ph.vignette': "Vignetare",
     'common.cancel': 'Anulează', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL fișier audio', 'enhance.presetNamePromptTitle': 'Nume presetare',
     'tab.player': 'Player', 'tab.enhance': 'Amplificator Audio', 'tab.export': 'Exportă', 'tab.settings': 'Setări',
@@ -8426,6 +8445,7 @@ const I18N = {
     'conv.warn.rateClamped': "Acest format acceptă până la 48 kHz; frecvența a fost redusă.",
   },
   uk: {
+    'ph.vibrance': "Барвистість", 'ph.sepia': "Сепія", 'ph.vignette': "Віньєтування",
     'common.cancel': 'Скасувати', 'common.ok': 'ОК',
     'player.urlPromptTitle': 'URL аудіофайлу', 'enhance.presetNamePromptTitle': 'Назва пресету',
     'tab.player': 'Плеєр', 'tab.enhance': 'Аудіопідсилювач', 'tab.export': 'Експорт', 'tab.settings': 'Налаштування',

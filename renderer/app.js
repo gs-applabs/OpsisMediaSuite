@@ -1468,6 +1468,32 @@ els.btnResetFx.addEventListener('click', () => {
   activePresetKey = null;
 });
 wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.masterEnabled);
+// Advisory only: OS-wide processing must not be changed without consent.
+(() => {
+  const panel = document.getElementById('fxSoundNotice'), status = document.getElementById('fxSoundStatus'), bypass = document.getElementById('fxSoundBypass');
+  let installed = null, route = false, deviceSeen = false, revision = 0;
+  function show() {
+    panel.hidden = !(installed === true || route || deviceSeen);
+    const el = document.documentElement.lang === 'el';
+    status.textContent = route
+      ? (el ? 'Η προεπιλεγμένη έξοδος εμφανίζεται ως FxSound. Αποφύγετε διπλή ενίσχυση.' : 'The default output appears to be FxSound. Avoid double processing.')
+      : (el ? 'Εντοπίστηκε FxSound. Η ενεργή επεξεργασία δεν έχει επιβεβαιωθεί. Ελέγξτε την έξοδο των Windows.' : 'FxSound detected. Active processing is not confirmed. Check Windows output.');
+    bypass.textContent = el ? 'Απενεργοποίηση εφέ OPSIS' : 'Disable OPSIS effects';
+  }
+  async function devices() {
+    const n = ++revision;
+    const list = await navigator.mediaDevices?.enumerateDevices().catch(() => []) || [];
+    if (n !== revision) return;
+    deviceSeen = list.some(d => d.kind === 'audiooutput' && /fxsound/i.test(d.label));
+    route = list.some(d => d.kind === 'audiooutput' && d.deviceId === 'default' && /fxsound/i.test(d.label));
+    show();
+  }
+  bypass.addEventListener('click', () => { if (engine.state.masterEnabled) els.swMasterEnable.click(); });
+  navigator.mediaDevices?.addEventListener('devicechange', devices);
+  document.addEventListener('waveframe:language-changed', show);
+  window.waveframe.detectFxSound().then(v => { installed = v; show(); }).catch(() => {});
+  devices();
+})();
 // Switches are <button>s: expose them as role=switch and keep aria-checked in step with the 'active' class (whoever toggles it).
 function wireSwitch(btn, onChange, initial = false) {
   btn.setAttribute('role', 'switch');

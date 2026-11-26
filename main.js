@@ -302,6 +302,13 @@ function createWindow() {
   // and every argument is type-checked and size-limited here - the renderer is not trusted.
   const fromMain = (e) => e.sender === win.webContents;
   const fromApp = (e) => fromMain(e) || (!!helpWindow && !helpWindow.isDestroyed() && e.sender === helpWindow.webContents);
+  // Read-only detection of installed FxSound; never launch it or change system audio settings.
+  ipcMain.handle('fxsound:detect', async (e) => {
+    if (!fromMain(e) || e.senderFrame !== win.webContents.mainFrame || process.platform !== 'win32') return null;
+    const ps = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const script = "$ErrorActionPreference='Stop'; $p=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); if (Get-ItemProperty $p -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '^FxSound(?:\\s|$)' } | Select-Object -First 1) { 'yes' } else { 'no' }";
+    return new Promise(resolve => execFile(ps, ['-NoProfile','-NonInteractive','-Command',script], { windowsHide: true, timeout: 5000, maxBuffer: 4096 }, (err, stdout) => resolve(err ? null : stdout.trim() === 'yes' ? true : stdout.trim() === 'no' ? false : null)));
+  });
   const PNG_DATA_URL = /^data:image\/png;base64,[A-Za-z0-9+/=]{1,200000}$/;
 
   ipcMain.on('thumbbar:icons', (event, icons) => {

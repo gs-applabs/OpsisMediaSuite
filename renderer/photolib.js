@@ -9,10 +9,10 @@
   const RANGE = {
     exposure: [-2, 2], contrast: [-100, 100], saturation: [-100, 100], temperature: [-100, 100], tint: [-100, 100],
     highlights: [-100, 100], shadows: [-100, 100], sharpen: [0, 100], denoise: [0, 100],
-    black: [0, 254], white: [1, 255], gamma: [0.2, 5],
+    black: [0, 254], white: [1, 255], gamma: [0.2, 5], vibrance: [-100, 100], sepia: [0, 100], vignette: [0, 100],
   };
   function defaults() {
-    return { exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, sharpen: 0, denoise: 0, black: 0, white: 255, gamma: 1, rotate: 0, flipH: false, flipV: false, crop: null };
+    return { exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, sharpen: 0, denoise: 0, black: 0, white: 255, gamma: 1, vibrance: 0, sepia: 0, vignette: 0, rotate: 0, flipH: false, flipV: false, crop: null };
   }
   const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
   function clampParams(p) {
@@ -111,7 +111,7 @@
     if (!p.crop && !p.flipH && !p.flipV && !p.rotate) return img;
     let { data, width: w, height: h } = img;
     if (p.crop) {
-      const cx = Math.round(p.crop.x * w), cy = Math.round(p.crop.y * h), cw = Math.max(1, Math.min(w - cx, Math.round(p.crop.w * w))), ch = Math.max(1, Math.min(h - cy, Math.round(p.crop.h * h)));
+      const cx = Math.min(w - 1, Math.round(p.crop.x * w)), cy = Math.min(h - 1, Math.round(p.crop.y * h)), cw = Math.max(1, Math.min(w - cx, Math.round(p.crop.w * w))), ch = Math.max(1, Math.min(h - cy, Math.round(p.crop.h * h)));
       const o = new Uint8ClampedArray(cw * ch * 4);
       for (let y = 0; y < ch; y++) o.set(data.subarray(((cy + y) * w + cx) * 4, ((cy + y) * w + cx + cw) * 4), y * cw * 4);
       data = o; w = cw; h = ch;
@@ -128,6 +128,35 @@
     return { data: out, width: nw, height: nh };
   }
 
+  // Creative controls: adaptive saturation, sepia blend and radial vignette. Alpha is never changed.
+  function creative(img, p) {
+    if (!p.vibrance && !p.sepia && !p.vignette) return img;
+    const { data, width: w, height: h } = img;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      let r = data[i], g = data[i+1], b = data[i+2];
+      if (p.vibrance) {
+        const l = 0.2126*r + 0.7152*g + 0.0722*b;
+        const max = Math.max(r,g,b), min = Math.min(r,g,b);
+        const s = max ? (max-min)/max : 0;
+        const k = 1 + p.vibrance/100 * (p.vibrance > 0 ? 1-s : 1);
+        r = l+(r-l)*k; g = l+(g-l)*k; b = l+(b-l)*k;
+      }
+      if (p.sepia) {
+        const k = p.sepia/100, sr = Math.min(255, .393*r+.769*g+.189*b);
+        const sg = Math.min(255, .349*r+.686*g+.168*b), sb = Math.min(255, .272*r+.534*g+.131*b);
+        r += (sr-r)*k; g += (sg-g)*k; b += (sb-b)*k;
+      }
+      if (p.vignette) {
+        const nx = (2*(x+.5)/w-1), ny = (2*(y+.5)/h-1);
+        const k = 1-.85*p.vignette/100*smooth(.25,1,Math.hypot(nx,ny)/Math.SQRT2);
+        r*=k; g*=k; b*=k;
+      }
+      data[i]=r; data[i+1]=g; data[i+2]=b;
+    }
+    return img;
+  }
+
   // Whole pipeline. The source is never modified (a copy is made).
   function process(img, params) {
     const p = clampParams(params);
@@ -135,7 +164,7 @@
     if (cur.data === img.data) cur = { data: new Uint8ClampedArray(img.data), width: img.width, height: img.height };
     cur = denoise(cur, p.denoise);
     applyColor(cur.data, p);
-    return sharpen(cur, p.sharpen);
+    return sharpen(creative(cur, p), p.sharpen);
   }
 
   function histogram(data) {

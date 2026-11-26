@@ -9,11 +9,12 @@
   const SLIDERS = [
     ['exposure', -2, 2, 0.05], ['contrast', -100, 100, 1], ['highlights', -100, 100, 1], ['shadows', -100, 100, 1],
     ['saturation', -100, 100, 1], ['temperature', -100, 100, 1], ['tint', -100, 100, 1], ['sharpen', 0, 100, 1], ['denoise', 0, 100, 1],
-    ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01],
+    ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01], ['vibrance', -100, 100, 1], ['sepia', 0, 100, 1], ['vignette', 0, 100, 1],
   ];
   const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
+  let openGeneration = 0;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
   const info = (text) => { $('phInfo').textContent = text || ''; };
@@ -65,15 +66,21 @@
   }
 
   async function openPath(p) {
+    if (busy) return;
+    const generation = ++openGeneration;
     info(t('ph.loading'));
-    const r = await api.photoRead(p);
+    const r = await api.photoRead(p).catch(() => null);
+    if (generation !== openGeneration || busy) return;
     if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
-    await openBlob(new Blob([r.bytes]), r.name);
+    await openBlob(new Blob([r.bytes]), r.name, generation);
   }
 
-  async function openBlob(blob, nm) {
+  async function openBlob(blob, nm, generation = ++openGeneration) {
+    if (busy) return;
+    if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
     try {
       const b = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      if (generation !== openGeneration || busy) { b.close(); return; }
       if (b.width * b.height > P.LIMITS.maxPixels) { b.close(); info(t('ph.tooLarge')); return; }
       if (bmp) bmp.close();
       bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders();
@@ -86,7 +93,7 @@
       $('phDrop').classList.add('has-media');
       info(fmt(t('ph.opened'), { name, w: b.width, h: b.height, mp: (b.width * b.height / 1e6).toFixed(1) }));
       schedule();
-    } catch (_) { info(t('ph.cantOpen')); }
+    } catch (_) { if (generation === openGeneration && !busy) info(t('ph.cantOpen')); }
   }
 
   // Centered crop of the wanted aspect ratio, in the orientation of the ORIGINAL (rotation happens after the crop).
@@ -118,19 +125,20 @@
 
   async function save() {
     if (!bmp || busy) return;
-    busy = true; $('phSave').disabled = true; info(t('ph.processing'));
+    busy = true; ++openGeneration;
+    const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100;
+    $('phSave').disabled = true; info(t('ph.processing'));
     await new Promise((r) => setTimeout(r, 30)); // let the message paint before the heavy work
     try {
-      const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
-      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0);
+      const c = document.createElement('canvas'); c.width = source.width; c.height = source.height;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(source, 0, 0);
       const d = g.getImageData(0, 0, c.width, c.height);
-      const out = P.process({ data: d.data, width: d.width, height: d.height }, full());
+      const out = P.process({ data: d.data, width: d.width, height: d.height }, snapshot);
       const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
       oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-      const f = $('phFormat').value, q = Number($('phQuality').value) / 100;
       const blob = await new Promise((res) => oc.toBlob(res, P.OUT_FORMATS[f].mime, q));
       if (!blob) { info(t('ph.saveFailed')); return; }
-      const r = await api.photoSave({ format: f, name, bytes: await blob.arrayBuffer() });
+      const r = await api.photoSave({ format: f, name: sourceName, bytes: await blob.arrayBuffer() });
       info(r && r.ok ? fmt(t('ph.saved'), { w: out.width, h: out.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
     } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
   }
