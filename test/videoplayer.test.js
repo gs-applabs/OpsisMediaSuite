@@ -45,9 +45,9 @@ test('file kinds, titles and URLs', () => {
   assert.equal(V.kindOf('C:\\a\\b.MKV'), 'video'); assert.equal(V.kindOf('C:\\a\\b.flac'), 'audio'); assert.equal(V.kindOf('C:\\a\\b.txt'), '');
   assert.equal(V.kindOf('https://x.org/live'), 'video');
   assert.equal(V.titleOf('C:\\Films\\My.Movie.2020.mkv'), 'My.Movie.2020'); assert.equal(V.titleOf('https://x.org/a/b.mp4?token=1'), 'b');
-  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), 'wfmedia://f/C%3A%5CFilms%5Ca%20b.mp4');
+  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), null);
   assert.equal(V.mediaUrl('https://x.org/a.mp4'), 'https://x.org/a.mp4');
-  assert.equal(decodeURIComponent(new URL(V.mediaUrl('C:\\Films\\a b.mp4')).pathname.replace(/^\//, '')), 'C:\\Films\\a b.mp4', 'round-trips through the URL the main process parses');
+  assert.equal(V.mediaUrl('C:\\Films\\a b.mp4'), null, 'local media must obtain an opaque ticket from main');
   assert.equal(V.playable('C:\\x\\y.mp4'), true); assert.equal(V.playable('C:\\x\\y.exe'), false); assert.equal(V.playable('..\\y.mp4'), false); assert.equal(V.playable(5), false);
   assert.equal(V.playable('C:\\x\\y.mp4\n'), false); assert.equal(V.playable('C:\\x\\y\0.mp4'), false); assert.equal(V.playable('\\\\srv\\share\\y.mp4'), false);
 });
@@ -65,7 +65,7 @@ test('the main process side only serves media and subtitles, never other file ty
     const i = src.indexOf(`'${ch}'`); assert.ok(i > 0, ch);
     assert.ok(/trusted\(e\)/.test(src.slice(i, i + 220)), ch + ' checks the sender');
   }
-  assert.ok(!/\.sub|exe|bat|dll/.test(M.VIDEO_EXTS.join(',') + M.AUDIO_EXTS.join(',')) || true);
+  assert.ok(!/\.sub|exe|bat|dll/.test(M.VIDEO_EXTS.join(',') + M.AUDIO_EXTS.join(',')));
   assert.ok(![...M.VIDEO_EXTS, ...M.AUDIO_EXTS].some((e) => ['exe', 'bat', 'cmd', 'dll', 'js', 'ps1', 'json'].includes(e)));
 });
 
@@ -125,4 +125,41 @@ test('invalid subtitle seconds are not accepted as a shorter timestamp; VTT sett
   const r=V.srtToVtt('WEBVTT\n\n00:00:99.000 --> 00:01:00.000\ninvalid\n\n00:01.000 --> 00:02.000 line:10% align:start\nvalid',0);
   assert.equal(r.cues,1); assert.ok(r.vtt.includes('line:10% align:start'));
   assert.equal(V.playable('C:\\movie.mp4:stream.mp4'),false);
+});
+
+test('parsed subtitle entries provide explicit timing and Greek text',()=>{
+ const r=V.srtToVtt('1\n00:00:00,200 --> 00:00:01,500\nΚαλημέρα',0);
+ assert.deepEqual(r.entries,[{start:.2,end:1.5,text:'Καλημέρα',settings:''}]);
+});
+test('byte ranges reject invalid and multi ranges and clamp valid ends',()=>{
+ const {parseRange}=require('../media-stream');
+ assert.deepEqual(parseRange('bytes=2-99',10),{start:2,end:9,partial:true});
+ assert.deepEqual(parseRange('bytes=-3',10),{start:7,end:9,partial:true});
+ assert.deepEqual(parseRange('bytes=0-',10),{start:0,end:9,partial:true});
+ for(const r of ['bytes=10-','bytes=4-2','bytes=-0','bytes=0-1,4-5','bytes=999999999999999999999-'])assert.equal(parseRange(r,10),null);
+});
+test('media responses stream exact requested bytes with explicit MIME',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const {serveFile}=require('../media-stream');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'wf-range-'));
+ try{const p=path.join(dir,'sample.webm');fs.writeFileSync(p,Buffer.from([1,2,3,4,5]));
+ const r=await serveFile(p,'webm',new Request('https://localhost/',{headers:{range:'bytes=1-3'}}));
+ assert.equal(r.status,206);assert.equal(r.headers.get('content-type'),'video/webm');assert.equal(r.headers.get('content-range'),'bytes 1-3/5');assert.deepEqual([...new Uint8Array(await r.arrayBuffer())],[2,3,4]);
+ const h=await serveFile(p,'webm',new Request('https://localhost/',{method:'HEAD'}));assert.equal(h.headers.get('content-length'),'5');assert.equal(h.body,null);
+ const invalid=await serveFile(p,'webm',new Request('https://localhost/',{headers:{range:'bytes=9-'}}));assert.equal(invalid.status,416);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('engine candidates are ordered, deduplicated and exclude DirectShow for remote sources',()=>{
+ const {candidates}=require('../playback-core');assert.deepEqual(candidates({available:['chromium','directshow','libvlc'],preferred:'directshow',local:false}),['libvlc','chromium']);
+ assert.deepEqual(candidates({available:['chromium','directshow','libvlc'],preferred:'directshow'}),['directshow','libvlc','chromium']);
+});
+test('playback session falls back only once per adapter and disposes failures',async()=>{
+ const {PlaybackSession}=require('../playback-core');let closed=0;
+ const adapter=ok=>({open:async()=>({ok}),play:async()=>{},pause:async()=>{},seek:async()=>{},stop:async()=>{},dispose:async()=>{closed++;}});
+ const s=new PlaybackSession({libvlc:()=>adapter(false),chromium:()=>adapter(true)});
+ const r=await s.open('clip',{local:true});assert.equal(r.engine,'chromium');assert.equal(closed,1);assert.equal(await s.seek(Infinity),false);assert.equal(await s.play(),true);await s.stop();assert.equal(closed,2);
+});
+test('superseded engine opening cannot replace a newer session',async()=>{
+ const {PlaybackSession}=require('../playback-core');let release,closed=0,calls=0;
+ const s=new PlaybackSession({chromium:()=>{const first=++calls===1;return {open:()=>first?new Promise(r=>{release=r;}):Promise.resolve({ok:true}),play:async()=>{},pause:async()=>{},seek:async()=>{},stop:async()=>{},dispose:async()=>{closed++;}};}});
+ const old=s.open('first');await new Promise(r=>setImmediate(r));const newer=await s.open('second');release({ok:true});assert.equal((await old).code,'superseded');assert.equal(newer.ok,true);assert.equal(s.state,'ready');assert.equal(closed,1);await s.stop();
 });

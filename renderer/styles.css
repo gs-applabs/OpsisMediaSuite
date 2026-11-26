@@ -887,7 +887,7 @@ body.mini-mode #bgCanvas { display: none; }
 .vp-list li.current { outline: 1px solid var(--accent); }
 .vp-list .vp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; border: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; padding: 0; }
 .vp-list .vp-x { background: none; border: 0; color: inherit; cursor: pointer; opacity: 0.7; }
-.vp-video::cue { font-size: calc(var(--vp-sub-size, 16) * 1%); color: var(--vp-sub-color, #fff); }
+.vp-video::cue { font-size: calc(var(--vp-sub-size, 100) * 1%); color: var(--vp-sub-color, #fff); }
 .ph-canvas { max-width: 100%; max-height: 54vh; display: none; }
 .ph-drop.has-media .ph-canvas { display: block; }
 .ph-drop.drag, .vp-frame.drag { outline: 2px dashed var(--accent); }

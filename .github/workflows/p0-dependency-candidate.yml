@@ -29,11 +29,11 @@ jobs:
         with:
           name: dependency-candidate-manifests
           path: candidate/
-      - name: Dependency audit
+      - name: Dependency audit (high/critical gate)
         run: npm audit --audit-level=high
-        continue-on-error: true
       - name: FFmpeg for actual playback and conversion tests
         run: choco install ffmpeg --no-progress -y
+      # Retest explicit MIME/ranges, WebM, H.264 and active subtitle cues.
       - name: Tests against new runtime
         run: npm test
       - name: Electron real renderer self-test
