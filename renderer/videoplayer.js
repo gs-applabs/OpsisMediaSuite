@@ -412,6 +412,13 @@
     $('vpAB').addEventListener('click', toggleAB);
     $('vpSnap').addEventListener('click', snapshot);
     $('vpInfo').addEventListener('click', fileInfo);
+    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;}).catch(()=>{});
+    $('vpNative').addEventListener('click', async()=>{
+      const p=current(); if(!p||VP.isUrl(p))return;
+      saveResume();video.pause();
+      const r=await api.vpNativeOpen(p).catch(()=>null);
+      say(r?.ok?'LibVLC — native window launched / Άνοιγμα εγγενούς player':'LibVLC — '+(r?.code||'unavailable'));
+    });
     $('vpCodecs').addEventListener('click', async () => {
       const report=await api.vpCodecInventory().catch(()=>null);
       if(!report){await showAlertDialog('Codec Manager','Inventory unavailable / Μη διαθέσιμη ανίχνευση');return;}

@@ -27,3 +27,6 @@ Electron 45.5.0/builder 26.18.0 candidate run 45865645833 succeeded including re
 
 ## Pass 7 — verified dependency integration
 Candidate CI 45866698447: 168/168 unit tests, real renderer WebM/MP4/Greek subtitle and codec inventory passed, portable build succeeded; npm audit six moderate, zero high/critical. Candidate committed exact lockfile on a5158a6. Copied the verified package and lock blobs to PR #3 and made high/critical npm gate mandatory. Clean VM inventory: 66 Media Foundation registrations, no third-party packs; real K-Lite usage not verified.
+
+## Pass 8 — first actual LibVLC native host
+Added independent .NET 10 WinForms x64 native host, pinned LibVLCSharp 3.10.2 / non-GPL VideoLAN.LibVLC.Windows 3.0.24, local-only approval, explicit optional button, no automatic fallback. Separate native window supports transport, audio and subtitle selection, external subtitle and delay, volume. CI builds and tests real MKV clock, 2 audio streams and embedded subtitle with dummy outputs; hardware/UI rendering and licenses not yet certified. Host not bundled by ordinary portable installer yet. DirectShow graph and Media Foundation adapters remain unimplemented.

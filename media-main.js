@@ -10,6 +10,7 @@ const { localPath, allowedFile } = require('./local-media-policy.js');
 const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
+const { createNativeHost } = require('./native-host.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -61,6 +62,15 @@ function init({ getMainWin, resolveFfmpegPath }) {
   ipcMain.handle('vp:codec-inventory', e => trusted(e) ? inventory() : null);
   const approved = new Set(), tickets = new Map();
   const remember = p => { if (!p) return; if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
+  async function authorize(p) {
+    if(approved.has(p))return true;
+    const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Open / Άνοιγμα'],defaultId:0,cancelId:0,message:'Allow this local media file? / Να επιτραπεί η πρόσβαση στο αρχείο;',detail:p});
+    if(r.response!==1 || !allowedFile(p,PLAY_EXTS))return false;
+    remember(p);return true;
+  }
+  const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
+  ipcMain.handle('vp:native-status',e=>trusted(e)?{available:nativeHost.available()}:null);
+  ipcMain.handle('vp:native-open',async(e,p)=>trusted(e)?nativeHost.open(p):{ok:false,code:'denied'});
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
