@@ -163,3 +163,8 @@ test('superseded engine opening cannot replace a newer session',async()=>{
  const s=new PlaybackSession({chromium:()=>{const first=++calls===1;return {open:()=>first?new Promise(r=>{release=r;}):Promise.resolve({ok:true}),play:async()=>{},pause:async()=>{},seek:async()=>{},stop:async()=>{},dispose:async()=>{closed++;}};}});
  const old=s.open('first');await new Promise(r=>setImmediate(r));const newer=await s.open('second');release({ok:true});assert.equal((await old).code,'superseded');assert.equal(newer.ok,true);assert.equal(s.state,'ready');assert.equal(closed,1);await s.stop();
 });
+
+test('codec inventory accepts only bounded known metadata and deduplicates registry views',()=>{
+ const {normalize}=require('../codec-inventory');const report=normalize({packs:[{name:'K-Lite Codec Pack Mega',version:'19',view:'64'},{name:'K-Lite Codec Pack Mega',view:'64'},{name:'Unrelated tool',view:'64'}],filters:[{name:'LAV Video Decoder',view:'32'},{name:'arbitrary',view:'64'}],transforms:[{name:'AV1 Decoder',view:'64'}]},'x64');
+ assert.equal(report.packs.length,1);assert.equal(report.filters[0].name,'LAV Video Decoder');assert.equal(report.transforms.length,1);assert.equal(report.arch,'x64');
+});

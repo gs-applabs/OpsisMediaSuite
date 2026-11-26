@@ -794,7 +794,7 @@ function loadScripts(key, files) {
   lazyScripts[key] = files.reduce((p, f) => p.then(() => load(f)), Promise.resolve()).catch((e) => { delete lazyScripts[key]; throw e; });
   return lazyScripts[key];
 }
-function loadVideoPlayer() { return loadScripts('video', ['vplib.js', 'videoplayer.js']); }
+function loadVideoPlayer() { return loadScripts('video', ['../playback-core.js', 'vplib.js', 'videoplayer.js']); }
 function loadPhoto() { return loadScripts('photo', ['photolib.js', 'photo.js']); }
 function showTab(name) { const b = document.querySelector(`.tab-btn[data-tab="${name}"]`); if (b) b.click(); }
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it

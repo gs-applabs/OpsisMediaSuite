@@ -1,6 +1,7 @@
 'use strict';
 // Engine-neutral session contract for P1. Adapters are supplied by the host;
 // this module never loads external filters or launches untrusted processes.
+(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.OpsisPlayback=factory();})(typeof self!=='undefined'?self:this,function(){
 const ENGINES=Object.freeze(['libvlc','directshow','media-foundation','chromium']);
 const METHODS=['open','play','pause','seek','stop','dispose'];
 function candidates({available=[],preferred='auto',local=true}={}) {
@@ -40,4 +41,5 @@ class PlaybackSession {
   async seek(seconds){if(!this.active||!Number.isFinite(seconds)||seconds<0)return false;const a=this.active;await a.seek(seconds);return a===this.active;}
   async stop(){++this.generation;const a=this.active;this.active=null;this.state='idle';if(a){try{await a.stop();}finally{await this._dispose(a);}}}
 }
-module.exports={ENGINES,candidates,PlaybackSession};
+return {ENGINES,candidates,PlaybackSession};
+});

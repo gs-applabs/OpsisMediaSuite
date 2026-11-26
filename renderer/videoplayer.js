@@ -12,6 +12,7 @@
   const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage unavailable */ } };
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
+  let session = null, playbackEngine = null;
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
   let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null, nativeSubtitleTrack = null;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, saveTimer = 0, built = false, fx = null;
@@ -44,13 +45,28 @@
     list.splice(i, 1);
     renderList();
   }
+  function chromiumAdapter() {
+    const el=video;
+    let opening=null;
+    return {
+      open(source){return new Promise(resolve=>{
+        let timer; const finish=ok=>{clearTimeout(timer);el.removeEventListener('loadeddata',loaded);el.removeEventListener('error',failed);opening=null;resolve({ok});};
+        const loaded=()=>finish(true),failed=()=>finish(false);opening=failed;
+        el.addEventListener('loadeddata',loaded,{once:true});el.addEventListener('error',failed,{once:true});
+        timer=setTimeout(failed,15000);el.src=source;el.load();
+      });},
+      play:()=>el.play(),pause:()=>el.pause(),seek:seconds=>{if(Number.isFinite(el.duration))el.currentTime=Math.max(0,Math.min(el.duration,seconds));},
+      stop:()=>el.pause(),dispose:()=>{if(opening)opening();el.pause();el.removeAttribute('src');el.load();}
+    };
+  }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
-  function stop() { saveResume(); releaseTicket(); ++generation; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
+  function stop() { saveResume(); releaseTicket(); ++generation; if(session)session.stop().catch(()=>{}); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
 
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
     saveResume(); releaseTicket();
     const g = ++generation;
+    if(session)session.stop().catch(()=>{}); playbackEngine=null;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
     idx = i; const p = list[i];
     clearSubs();
@@ -63,7 +79,15 @@
     if (g !== generation) { if (source && !VP.isUrl(p)) api.vpReleaseSource(source).catch(() => {}); return; }
     if (!source) { $('vpFrame').classList.remove('has-media'); say(t('vp.cantPlay')); return; }
     if (!VP.isUrl(p)) { video.crossOrigin = 'anonymous'; activeTicket = source; }
-    video.src = source;
+    session = new window.OpsisPlayback.PlaybackSession({chromium: chromiumAdapter});
+    const opening=session.open(source,{local:!VP.isUrl(p)});
+    // The adapter sets the source synchronously on its first microtask. Wait
+    // for actual decoded data before declaring the engine ready.
+    if (!VP.isUrl(p)) loadSiblingSubs(p, g, subRevision);
+    const result=await opening;
+    if(g!==generation)return;
+    if(!result.ok){releaseTicket();say(t('vp.cantPlay'));return;}
+    playbackEngine=result.engine;
     if (restoreFx) toggleFx();
     $('vpFrame').classList.add('has-media');
     video.playbackRate = Number($('vpSpeed').value) || 1;
@@ -71,8 +95,7 @@
     put(K.recent, VP.pushRecent(get(K.recent, []), p)); fillRecent();
     say(fmt(t('vp.playing'), { name: VP.titleOf(p) }));
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
-    video.play().catch(err => { if (g === generation && err.name !== 'AbortError') say(t('vp.cantPlay') + ' (' + err.name + ')'); });
-    if (!VP.isUrl(p)) loadSiblingSubs(p, g, subRevision);
+    session.play().catch(err => { if (g === generation && err.name !== 'AbortError') say(t('vp.cantPlay') + ' (' + err.name + ')'); });
     refreshFx();
   }
   const next = (d) => { if (list.length) playAt((idx + d + list.length) % list.length); };
@@ -262,7 +285,8 @@
   async function fileInfo() {
     const it = current(); if (!it) return;
     const p = VP.isUrl(it) ? null : await api.vidProbe(it).catch(() => null);
-    const lines = [VP.titleOf(it)];
+    if (it !== current()) return;
+    const lines = [VP.titleOf(it), 'Playback engine: ' + (playbackEngine || '—')];
     if (video.videoWidth) lines.push(`${video.videoWidth}×${video.videoHeight} · ${VP.clock(video.duration * 1000)}`);
     if (p) {
       if (p.video) lines.push(`${p.video.codec} ${p.video.width}×${p.video.height}${p.video.fps ? ' · ' + p.video.fps + ' fps' : ''}`);
@@ -349,7 +373,7 @@
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
-    $('vpPlay').addEventListener('click', () => { if (!current() && list.length) playAt(0); else if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    $('vpPlay').addEventListener('click', () => { if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
     $('vpStop').addEventListener('click', () => { video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
@@ -387,6 +411,16 @@
     $('vpAB').addEventListener('click', toggleAB);
     $('vpSnap').addEventListener('click', snapshot);
     $('vpInfo').addEventListener('click', fileInfo);
+    $('vpCodecs').addEventListener('click', async () => {
+      const report=await api.vpCodecInventory().catch(()=>null);
+      if(!report){await showAlertDialog('Codec Manager','Inventory unavailable / Μη διαθέσιμη ανίχνευση');return;}
+      const lines=['Active engine / Ενεργός μηχανισμός: '+(playbackEngine||'—'), 'Architecture: '+report.arch, 'Inventory only / Μόνο ανίχνευση — not loaded / χωρίς φόρτωση'];
+      for(const row of report.packs)lines.push(row.name+' '+row.version+' ['+row.view+']');
+      for(const row of report.filters)lines.push(row.name+' ['+row.view+']');
+      for(const row of report.transforms)lines.push(row.name+' [Media Foundation '+row.view+']');
+      if(report.status!=='ok')lines.push('Scan status: '+report.status);
+      await showAlertDialog('Codec Manager',lines.join('\n'));
+    });
     const picIn = () => { pic.brightness = Number($('vpBright').value); pic.contrast = Number($('vpContrast').value); pic.saturation = Number($('vpSat').value); applyPicture(); };
     for (const id of ['vpBright', 'vpContrast', 'vpSat']) $(id).addEventListener('input', picIn);
     $('vpRot').addEventListener('click', () => { pic.rotate = (pic.rotate + 90) % 360; applyPicture(); });
