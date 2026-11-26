@@ -11,11 +11,13 @@ const L = require('./renderer/convlib.js');
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif', 'alac', 'ape', 'wv', 'mka', 'mp2', 'ac3', 'amr'];
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mpg', 'mpeg', '3gp'];
 
-function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress } = {}) {
-  let child = null, cancelled = false;
+function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 * 60 * 60 * 1000 } = {}) {
+  let child = null, cancelled = false, timedOut = false;
   const promise = new Promise((resolve, reject) => {
     let tail = '';
-    try { child = spawn(ffmpegPath, args, { windowsHide: true }); } catch (e) { return reject(e); }
+    try { child = spawn(ffmpegPath, ['-nostdin', ...args], { windowsHide: true, shell: false }); } catch (e) { return reject(e); }
+    const timer = setTimeout(() => { timedOut = true; try { child.kill(); } catch (_) {} }, timeoutMs);
+    timer.unref();
     let outTail = '';
     child.stdout.on('data', (c) => { outTail = (outTail + c.toString()).slice(-6000); });
     child.stderr.on('data', (c) => {
@@ -24,8 +26,10 @@ function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress } = {}) {
       const t = L.parseFfmpegTime(s);
       if (t != null && duration > 0 && onProgress) onProgress(Math.min(0.99, t / duration));
     });
-    child.on('error', reject);
+    child.on('error', e => { clearTimeout(timer); reject(e); });
     child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) return reject(Object.assign(new Error('ffmpeg-timeout'), {code:'timeout'}));
       if (cancelled) return reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }));
       resolve({ code, stderr: tail, stdout: outTail });
     });
@@ -34,13 +38,13 @@ function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress } = {}) {
 }
 
 async function probe(ffmpegPath, file) {
-  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-i', file]).promise; // exit code 1 is normal (no output file)
+  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-protocol_whitelist', 'file,pipe', '-i', file], {timeoutMs: 30000}).promise; // exit code 1 is normal (no output file)
   return L.parseProbe(r.stderr);
 }
 
 // Decodes the whole file to the null muxer: proves it is a valid, decodable stream and returns how long it really is.
 async function verifyDecodes(ffmpegPath, file) {
-  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-v', 'error', '-stats', '-i', file, '-f', 'null', '-']).promise;
+  const r = await runFfmpeg(ffmpegPath, ['-hide_banner', '-v', 'error', '-stats', '-protocol_whitelist','file,pipe','-i', file, '-f', 'null', '-']).promise;
   const decoded = L.parseFfmpegTime(r.stderr);
   const info = await probe(ffmpegPath, file);
   return { ok: r.code === 0 && !/error/i.test(r.stderr.replace(/time=.*/g, '')), decodedSeconds: decoded, ...info };
@@ -66,6 +70,7 @@ function finalize(tmp, input, options, outDir) {
 async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir }) {
   const { tmp } = planOutput(input, options, fs.existsSync, outDir);
   const args = L.buildFfmpegArgs({ input: source, output: tmp, options, mode });
+  args.splice(args.indexOf('-i'), 0, '-protocol_whitelist','file,pipe');
   const run = runFfmpeg(ffmpegPath, args, { duration, onProgress });
   const promise = run.promise.then((r) => {
     if (r.code !== 0 || !fs.existsSync(tmp)) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } throw new Error(r.stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(' ') || `ffmpeg exited with code ${r.code}`); }
@@ -101,12 +106,16 @@ async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress
 // ffmpeg decodes anything it knows to 32-bit float WAV when the renderer's own decoder cannot (WMA, AIFF, some video containers).
 async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
   const tmp = path.join(require('os').tmpdir(), `waveframe-pre-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
-  const args = ['-hide_banner', '-nostdin', '-y', '-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-f', 'wav', tmp];
-  const r = await runFfmpeg(ffmpegPath, args).promise;
-  if (r.code !== 0) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } throw new Error('predecode-failed'); }
-  const bytes = fs.readFileSync(tmp);
-  fs.unlinkSync(tmp);
-  return bytes;
+  const args = ['-hide_banner', '-nostdin', '-y', '-protocol_whitelist','file,pipe','-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-f', 'wav', tmp];
+  try {
+    const max = 600 * 1024 * 1024;
+    args.splice(args.length-1, 0, '-fs', String(max));
+    const r = await runFfmpeg(ffmpegPath, args).promise;
+    if (r.code !== 0) throw new Error('predecode-failed');
+    const size = fs.statSync(tmp).size;
+    if (size >= max - 65536) throw new Error('predecode-too-large');
+    return await fs.promises.readFile(tmp);
+  } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
 }
 
 module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, probe, verifyDecodes, planOutput, convertDirect, convertFromWav, predecodeToWav };

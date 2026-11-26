@@ -7,7 +7,7 @@ const MAX_LINES = 5000, MAX_PATH = 2048;
 function validRef(p) {
   if (typeof p !== 'string' || !p || p.length > MAX_PATH || /[\0\r\n]/.test(p)) return false;
   if (/^https?:\/\/[^\s]+$/i.test(p)) return true;
-  return /^[A-Za-z]:[\\/]/.test(p); // drive-letter paths only: UNC is refused (NTLM leak risk via a malicious .m3u)
+  return /^[A-Za-z]:[\\/]/.test(p) && !p.slice(2).includes(':'); // drive-letter paths only: UNC is refused (NTLM leak risk via a malicious .m3u)
 }
 const lines = (text) => String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 function parseM3u(text, baseDir) {

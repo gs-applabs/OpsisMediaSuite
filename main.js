@@ -300,8 +300,8 @@ function createWindow() {
 
   // IPC hardening: every channel is answered only to the main window (or, for the two read-only constants, the Help window)
   // and every argument is type-checked and size-limited here - the renderer is not trusted.
-  const fromMain = (e) => e.sender === win.webContents;
-  const fromApp = (e) => fromMain(e) || (!!helpWindow && !helpWindow.isDestroyed() && e.sender === helpWindow.webContents);
+  const fromMain = (e) => e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
+  const fromApp = (e) => fromMain(e) || (!!helpWindow && !helpWindow.isDestroyed() && e.sender === helpWindow.webContents && e.senderFrame === helpWindow.webContents.mainFrame);
   // Read-only detection of installed FxSound; never launch it or change system audio settings.
   ipcMain.handle('fxsound:detect', async (e) => {
     if (!fromMain(e) || e.senderFrame !== win.webContents.mainFrame || process.platform !== 'win32') return null;

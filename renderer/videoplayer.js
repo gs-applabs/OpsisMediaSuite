@@ -13,6 +13,7 @@
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
+  let generation = 0, subRevision = 0, resumePath = null, eventController = null;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, saveTimer = 0, built = false, fx = null;
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
@@ -38,19 +39,31 @@
     if (play && first < list.length) playAt(first);
   }
   function removeAt(i) {
+    if (i === idx) { stop(); idx = -1; }
+    else if (i < idx) idx--;
     list.splice(i, 1);
-    if (i < idx) idx--; else if (i === idx) { idx = -1; stop(); }
     renderList();
   }
-  function stop() { saveResume(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); }
+  function stop() { saveResume(); ++generation; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
 
-  function playAt(i) {
+  async function playAt(i) {
     if (i < 0 || i >= list.length) return;
     saveResume();
+    const g = ++generation;
+    resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
     idx = i; const p = list[i];
     clearSubs();
-    if (VP.isUrl(p)) video.removeAttribute('crossorigin'); else video.crossOrigin = 'anonymous';
-    video.src = VP.mediaUrl(p);
+    // A media element bound to Web Audio remains bound even after bypass. Replace
+    // it on source change, so non-CORS streams have a fresh native audio path.
+    const restoreFx = !VP.isUrl(p) && $('vpFx').getAttribute('aria-pressed') === 'true';
+    replaceVideo();
+    renderList(); renderBookmarks();
+    const source = VP.isUrl(p) ? p : await api.vpOpenSource(p).catch(() => null);
+    if (g !== generation) return;
+    if (!source) { $('vpFrame').classList.remove('has-media'); say(t('vp.cantPlay')); return; }
+    if (!VP.isUrl(p)) video.crossOrigin = 'anonymous';
+    video.src = source;
+    if (restoreFx) toggleFx();
     $('vpFrame').classList.add('has-media');
     video.playbackRate = Number($('vpSpeed').value) || 1;
     renderList(); renderBookmarks();
@@ -58,17 +71,17 @@
     say(fmt(t('vp.playing'), { name: VP.titleOf(p) }));
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     video.play().catch(() => { /* the error event reports unsupported media */ });
-    if (!VP.isUrl(p)) loadSiblingSubs(p);
+    if (!VP.isUrl(p)) loadSiblingSubs(p, g, subRevision);
     refreshFx();
   }
   const next = (d) => { if (list.length) playAt((idx + d + list.length) % list.length); };
 
   /* ---------------- resume ---------------- */
   function saveResume() {
-    const it = current(); if (!it || !video.duration) return;
+    const it = resumePath; if (!it || it !== current() || !Number.isFinite(video.duration) || video.duration <= 0) return;
     const pos = video.currentTime * 1000, act = VP.resumeAction(pos, video.duration * 1000);
     const map = get(K.resume, {});
-    if (act === 'save') map[it] = Math.round(pos); else if (act === 'clear') delete map[it]; else return;
+    if (act === 'save') { const value = Math.round(pos); if (map[it] === value) return; map[it] = value; } else if (act === 'clear') { if (!Object.hasOwn(map, it)) return; delete map[it]; } else return;
     put(K.resume, VP.limitResume(map));
   }
 
@@ -78,7 +91,7 @@
     const it = current(); if (!it) return;
     for (const b of VP.sortedBookmarks(get(K.bookmarks, []), it)) {
       const li = document.createElement('li');
-      const go = document.createElement('button'); go.className = 'vp-name'; go.textContent = VP.clock(b.ms); go.addEventListener('click', () => { video.currentTime = b.ms / 1000; });
+      const go = document.createElement('button'); go.className = 'vp-name'; go.textContent = VP.clock(b.ms); go.addEventListener('click', () => { seekTo(b.ms / 1000); });
       const x = document.createElement('button'); x.className = 'vp-x'; x.textContent = '✕'; x.setAttribute('aria-label', t('vp.remove'));
       x.addEventListener('click', () => { put(K.bookmarks, get(K.bookmarks, []).filter((m) => !(m.path === it && m.ms === b.ms))); renderBookmarks(); });
       li.append(go, x); ul.append(li);
@@ -91,7 +104,7 @@
   }
 
   /* ---------------- subtitles ---------------- */
-  function clearSubs() { subSrc = []; subSel = -1; subDelay = 0; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { ++subRevision; subSrc = []; subSel = -1; subDelay = 0; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -99,32 +112,44 @@
     sel.value = String(subSel);
   }
   function rebuildTrack() {
-    video.querySelectorAll('track').forEach((tr) => { if (tr.src.startsWith('blob:')) URL.revokeObjectURL(tr.src); tr.remove(); });
+    video.querySelectorAll('track').forEach((tr) => { tr.track.mode = 'disabled'; if (tr.src.startsWith('blob:')) URL.revokeObjectURL(tr.src); tr.remove(); });
     if (subSel < 0 || !subSrc[subSel]) return;
     const s = subSrc[subSel], r = VP.subtitleToVtt(s.text, s.ext, subDelay * 1000);
     if (!r.cues) { say(t('vp.subEmpty')); return; }
     const tr = document.createElement('track');
     tr.kind = 'subtitles'; tr.label = s.name; tr.default = true;
     tr.src = URL.createObjectURL(new Blob([r.vtt], { type: 'text/vtt' }));
-    video.append(tr);
-    tr.addEventListener('load', () => { if (video.textTracks[0]) video.textTracks[0].mode = 'showing'; });
-    if (video.textTracks[0]) video.textTracks[0].mode = 'showing';
+    const owner = video;
+    tr.addEventListener('load', () => { if (tr.parentNode === owner && owner === video) tr.track.mode = 'showing'; });
+    tr.addEventListener('error', () => { if (tr.parentNode === owner && owner === video) say(t('vp.subEmpty')); });
+    owner.append(tr);
+    tr.track.mode = 'showing';
   }
   function preferredIndex() {
-    const langs = (get(K.subs, {}).languages) || ['el', 'en'];
-    for (const l of langs) { const i = subSrc.findIndex((s) => new RegExp(`[._-]${l}([._-]|$)`, 'i').test(s.name.replace(/\.[^.]+$/, ''))); if (i >= 0) return i; }
+    const stored = get(K.subs, {}) || {};
+    const langs = Array.isArray(stored.languages) ? stored.languages.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/i.test(l)) : ['el','en'];
+    for (const l of langs) { const i = subSrc.findIndex(s => s.name.replace(/\.[^.]+$/, '').toLowerCase().split(/[._-]/).includes(l.toLowerCase())); if (i >= 0) return i; }
     return 0;
   }
-  async function loadSiblingSubs(p) {
+  async function loadSiblingSubs(p, g, revision) {
     const found = await api.vpSubsFor(p).catch(() => []);
-    if (current() !== p || !found.length) return;
-    subSrc = found; subSel = preferredIndex(); fillSubSelect(); rebuildTrack();
+    if (generation !== g || current() !== p || !Array.isArray(found) || !found.length) return;
+    const manual = subRevision !== revision;
+    for (const s of found) if (subSrc.length < 24 && !subSrc.some(x => x.name === s.name && x.text === s.text)) subSrc.push(s);
+    if (!manual) subSel = preferredIndex();
+    fillSubSelect(); if (!manual) rebuildTrack();
   }
   async function loadSubFile() {
-    const f = await api.vpPickSub(); if (!f) return;
-    subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; fillSubSelect(); rebuildTrack();
+    if (!current()) return;
+    const g = generation; ++subRevision;
+    const f = await api.vpPickSub().catch(() => null);
+    if (!f || g !== generation) return;
+    const old = subSrc.findIndex(s => s.name === f.name && s.text === f.text);
+    if (old >= 0) subSel = old;
+    else if (subSrc.length < 24) { subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
+    fillSubSelect(); rebuildTrack();
   }
-  function setDelay(d) { subDelay = Math.round(d * 10) / 10; $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; rebuildTrack(); }
+  function setDelay(d) { subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 10) / 10)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; rebuildTrack(); }
   function applySubStyle() {
     const s = get(K.subs, {});
     const size = Number($('vpSubSize').value) || 16, color = $('vpSubColor').value || '#ffffff';
@@ -198,7 +223,7 @@
     const n = VP.nextIndex($('vpRepeat').value, idx, list.length);
     if (n === idx && n >= 0) { video.currentTime = 0; video.play().catch(() => {}); } else if (n >= 0) playAt(n);
   }
-  function stepFrame(d) { video.pause(); video.currentTime = Math.max(0, video.currentTime + d / 25); }
+  function stepFrame(d) { if (!Number.isFinite(video.duration)) return; video.pause(); seekTo(video.currentTime + d / 25); }
   function toggleAB() {
     ab = VP.abStep(ab, video.currentTime);
     if (ab.stage === 'a') say(fmt(t('vp.abA'), { time: VP.clock(ab.a * 1000) }));
@@ -238,11 +263,13 @@
     const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
   }
   function syncTime() {
-    const d = video.duration || 0, c = video.currentTime || 0;
-    $('vpTime').textContent = VP.clock(c * 1000) + ' / ' + VP.clock(d * 1000);
-    if (!seeking && d > 0) $('vpSeek').value = String(Math.round(c / d * 1000));
+    const d = video.duration, c = video.currentTime || 0, finite = Number.isFinite(d) && d > 0;
+    $('vpTime').textContent = VP.clock(c * 1000) + ' / ' + (d === Infinity ? 'LIVE' : VP.clock(d * 1000));
+    $('vpSeek').disabled = !finite;
+    if (!seeking) $('vpSeek').value = finite ? String(Math.round(c / d * 1000)) : '0';
   }
   let seeking = false;
+  function seekTo(value) { if (Number.isFinite(value) && Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Math.max(0, Math.min(video.duration, value)); }
   function iconLabels() {
     for (const [id, key] of [['vpPrev', 'vp.prev'], ['vpNext', 'vp.next'], ['vpStop', 'vp.stop'], ['vpSnap', 'vp.snapshot'], ['vpFull', 'vp.fullscreen']]) { const b = $(id); b.title = t(key); b.setAttribute('aria-label', t(key)); }
     $('vpSeek').setAttribute('aria-label', t('vp.seek')); $('vpVolume').setAttribute('aria-label', t('vp.volume'));
@@ -251,10 +278,45 @@
   function aria() {
     iconLabels(); $('vpFramePrev').setAttribute('aria-label', t('vp.framePrev')); $('vpFramePrev').title = t('vp.framePrev'); $('vpFrameNext').setAttribute('aria-label', t('vp.frameNext')); $('vpFrameNext').title = t('vp.frameNext'); }
 
+  function bindVideoEvents() {
+    eventController = new AbortController();
+    const on = (name, handler) => video.addEventListener(name, handler, { signal: eventController.signal });
+    on('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
+    on('timeupdate', syncTime); video.addEventListener('durationchange', syncTime);
+    for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev, syncTransport);
+    on('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    on('dblclick', () => $('vpFull').click());
+    on('error', () => say(t('vp.cantPlay')));
+    on('ended', onEnded);
+    on('timeupdate', () => { if (ab.stage === 'loop' && video.currentTime >= ab.b) video.currentTime = ab.a; });
+    on('pause', saveResume);
+    on('play', () => window.dispatchEvent(new CustomEvent('waveframe:video-playing')));
+    on('loadedmetadata', () => {
+      ab = { stage: 'off', a: 0, b: 0 };
+      const it = current(); if (!it || !video.getAttribute('src')) return;
+      resumePath = it;
+      const pos = get(K.resume, {})[it];
+      if (Number.isFinite(video.duration) && pos > 0 && pos / 1000 < video.duration - 10) { seekTo(pos / 1000); say(fmt(t('vp.resumed'), { time: VP.clock(pos) })); }
+    });
+  }
+  function replaceVideo() {
+    const old = video, volume = old.volume, muted = old.muted;
+    if (eventController) eventController.abort();
+    old.pause(); old.removeAttribute('src'); old.load();
+    if (fx) { fx.ctx.close().catch(() => {}); fx = null; }
+    const fresh = old.cloneNode(false);
+    fresh.removeAttribute('crossorigin');
+    old.replaceWith(fresh); video = fresh;
+    video.volume = volume; video.muted = muted;
+    $('vpFx').setAttribute('aria-pressed','false'); $('vpFx').classList.remove('active');
+    bindVideoEvents(); applyPicture(); applySubStyle(); syncTime(); syncTransport();
+  }
+
   /* ---------------- build ---------------- */
   function build() {
     if (built) return; built = true;
     video = $('vpVideo');
+    bindVideoEvents();
     for (const s of VP.SPEEDS) { const o = document.createElement('option'); o.value = String(s); o.textContent = `${s}×`; $('vpSpeed').append(o); }
     $('vpSpeed').value = String(get(K.speed, 1)); if (!$('vpSpeed').value) $('vpSpeed').value = '1';
     const subs = get(K.subs, {});
@@ -270,42 +332,37 @@
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
     $('vpPlay').addEventListener('click', () => { if (!current() && list.length) playAt(0); else if (video.paused) video.play().catch(() => {}); else video.pause(); });
-    $('vpStop').addEventListener('click', () => { video.pause(); video.currentTime = 0; syncTime(); syncTransport(); });
+    $('vpStop').addEventListener('click', () => { video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
-    video.addEventListener('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
-    $('vpSeek').addEventListener('input', () => { seeking = true; if (video.duration) video.currentTime = Number($('vpSeek').value) / 1000 * video.duration; });
+
+    $('vpSeek').addEventListener('input', () => { seeking = true; seekTo(Number($('vpSeek').value) / 1000 * video.duration); });
     $('vpSeek').addEventListener('change', () => { seeking = false; });
-    video.addEventListener('timeupdate', syncTime); video.addEventListener('durationchange', syncTime);
-    for (const ev of ['play', 'pause', 'ended', 'emptied']) video.addEventListener(ev, syncTransport);
-    video.addEventListener('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
-    video.addEventListener('dblclick', () => $('vpFull').click());
+
+
+
+
     $('vpSpeed').addEventListener('change', () => { video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
     $('vpFx').addEventListener('click', toggleFx);
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
-    $('vpSubTrack').addEventListener('change', () => { subSel = Number($('vpSubTrack').value); rebuildTrack(); });
+    $('vpSubTrack').addEventListener('change', () => { ++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));
     $('vpSubPlus').addEventListener('click', () => setDelay(subDelay + 0.5));
     $('vpSubSize').addEventListener('input', applySubStyle);
     $('vpSubColor').addEventListener('input', applySubStyle);
     $('vpBookmark').addEventListener('click', addBookmark);
-    $('vpClear').addEventListener('click', () => { list = []; idx = -1; stop(); renderList(); renderBookmarks(); });
+    $('vpClear').addEventListener('click', () => { stop(); list = []; idx = -1; renderList(); renderBookmarks(); });
     $('vpSavePl').addEventListener('click', savePlaylist);
     $('vpImportM3u').addEventListener('click', importM3u);
-    $('vpPlLoad').addEventListener('click', () => { const l = get(K.playlists, {})[$('vpPlSelect').value]; if (l) { list = []; idx = -1; addPaths(l, true); } });
+    $('vpPlLoad').addEventListener('click', () => { const l = get(K.playlists, {})[$('vpPlSelect').value]; if (Array.isArray(l)) { stop(); list = []; idx = -1; addPaths(l, true); } });
     $('vpPlDelete').addEventListener('click', () => { const all = get(K.playlists, {}); delete all[$('vpPlSelect').value]; put(K.playlists, all); fillPlaylists(); });
     $('vpRecent').addEventListener('change', () => { const p = $('vpRecent').value; if (p) addPaths([p], true); $('vpRecent').value = ''; });
 
-    video.addEventListener('loadedmetadata', () => {
-      ab = { stage: 'off', a: 0, b: 0 };
-      const it = current(); if (!it) return;
-      const pos = get(K.resume, {})[it];
-      if (pos > 0 && pos / 1000 < video.duration - 10) { video.currentTime = pos / 1000; say(fmt(t('vp.resumed'), { time: VP.clock(pos) })); }
-    });
-    video.addEventListener('error', () => say(t('vp.cantPlay')));
-    video.addEventListener('ended', onEnded);
-    video.addEventListener('timeupdate', () => { if (ab.stage === 'loop' && video.currentTime >= ab.b) video.currentTime = ab.a; });
+
+
+
+
     $('vpStopAfter').addEventListener('change', () => { stopAfter = $('vpStopAfter').checked; });
     $('vpFramePrev').addEventListener('click', () => stepFrame(-1));
     $('vpFrameNext').addEventListener('click', () => stepFrame(1));
@@ -320,8 +377,8 @@
     $('vpPicReset').addEventListener('click', () => { pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }; $('vpBright').value = $('vpContrast').value = $('vpSat').value = '100'; applyPicture(); });
     $('vpRepeat').value = get('waveframe.video.repeat', 'off'); $('vpRepeat').addEventListener('change', () => put('waveframe.video.repeat', $('vpRepeat').value));
     aria(); document.addEventListener('waveframe:language-changed', aria);
-    video.addEventListener('pause', saveResume);
-    video.addEventListener('play', () => window.dispatchEvent(new CustomEvent('waveframe:video-playing')));
+
+
     saveTimer = setInterval(() => { if (!video.paused) saveResume(); }, 5000);
     window.addEventListener('beforeunload', saveResume);
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
@@ -341,9 +398,9 @@
     document.addEventListener('keydown', (e) => {
       if (!$('tab-video').classList.contains('active') || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.ctrlKey || e.altKey || e.metaKey) return;
       const k = e.key; let used = true;
-      if (k === ' ') { if (video.paused) video.play(); else video.pause(); }
-      else if (k === 'ArrowRight') video.currentTime += e.shiftKey ? 30 : 5;
-      else if (k === 'ArrowLeft') video.currentTime -= e.shiftKey ? 30 : 5;
+      if (k === ' ') { if (video.paused) video.play().catch(() => {}); else video.pause(); }
+      else if (k === 'ArrowRight') seekTo(video.currentTime + (e.shiftKey ? 30 : 5));
+      else if (k === 'ArrowLeft') seekTo(video.currentTime - (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowUp') video.volume = Math.min(1, video.volume + 0.05);
       else if (k === 'ArrowDown') video.volume = Math.max(0, video.volume - 0.05);
       else if (k === 'm' || k === 'M') video.muted = !video.muted;

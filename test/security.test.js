@@ -81,3 +81,13 @@ test('the update never runs a download that was not verified: hash is required a
   assert.match(sm, /buildUpdateScript/);
   assert.ok(!/execFile\([^)]*setupPath|spawn\([^)]*asset\.url/.test(sm));
 });
+
+test('media ticket and converter read are bounded and main-frame checked', () => {
+  const media=read('media-main.js'), conv=read('conv-main.js');
+  assert.match(media,/randomBytes\(32\)/);
+  assert.match(media,/tickets\.get\(key\)/);
+  assert.match(media,/senderFrame === w\.webContents\.mainFrame/);
+  assert.match(conv,/senderFrame === w\.webContents\.mainFrame/);
+  assert.match(conv,/!inputFile\(p\)/);
+  assert.match(conv,/req\.wav\.byteLength > MAX_READ/);
+});

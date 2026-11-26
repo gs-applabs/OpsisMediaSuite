@@ -7,10 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const M3U = require('./m3u.js');
+const { localPath, allowedFile } = require('./local-media-policy.js');
+const { randomBytes } = require('node:crypto');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
-const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub'];
+const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa'];
 const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
 const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS, ...SUB_EXTS]);
 const MAX_SUB_BYTES = 5 * 1024 * 1024;
@@ -19,7 +21,8 @@ const MAX_SAVE_BYTES = 256 * 1024 * 1024;
 const SAVE_FORMATS = { jpeg: ['jpg', 'jpeg'], png: ['png'], webp: ['webp'] };
 
 const extOf = (p) => path.extname(String(p || '')).slice(1).toLowerCase();
-const isFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
+const isFile = (p) => !!localPath(p);
+const PLAY_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS]);
 
 // Must run before the app is ready.
 function registerScheme() {
@@ -30,6 +33,7 @@ function registerScheme() {
 function decodeText(buf) {
   if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.slice(3).toString('utf8');
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.slice(2).toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder('utf-16be').decode(buf.subarray(2));
   try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (_) { /* not UTF-8 */ }
   try { return new TextDecoder('windows-1253').decode(buf); } catch (_) { return buf.toString('latin1'); }
 }
@@ -37,36 +41,54 @@ function decodeText(buf) {
 function siblingSubtitles(video) {
   const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase();
   let names = [];
-  try { names = fs.readdirSync(dir); } catch (_) { return []; }
+  try { names = fs.readdirSync(dir).sort((a,b) => a.localeCompare(b)); } catch (_) { return []; }
   const out = [];
   for (const n of names) {
     const e = extOf(n);
-    if (!SUB_EXTS.includes(e) || e === 'sub' || e === 'ssa') continue;
+    if (!SUB_EXTS.includes(e)) continue;
     const stem = path.basename(n, path.extname(n)).toLowerCase();
     if (stem !== base && !stem.startsWith(base + '.')) continue; // "movie.srt", "movie.el.srt"
     const f = path.join(dir, n);
-    try { const st = fs.statSync(f); if (st.isFile() && st.size <= MAX_SUB_BYTES) out.push({ name: n, ext: e, text: decodeText(fs.readFileSync(f)) }); } catch (_) { /* skip */ }
+    try { const st = fs.statSync(f); if (isFile(f) && st.isFile() && st.size <= MAX_SUB_BYTES) out.push({ name: n, ext: e, text: decodeText(fs.readFileSync(f)) }); } catch (_) { /* skip */ }
     if (out.length >= 8) break;
   }
   return out;
 }
 
 function init({ getMainWin, resolveFfmpegPath }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents; };
+  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
+  const approved = new Set(), tickets = new Map();
+  const remember = p => { if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
-  protocol.handle('wfmedia', (req) => {
+  protocol.handle('wfmedia', async (req) => {
     try {
-      const u = new URL(req.url);
-      const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
-      if (!isFile(p) || !SERVE_EXTS.has(extOf(p))) return new Response('not found', { status: 404 });
-      return net.fetch(pathToFileURL(p).toString(), { headers: req.headers, bypassCustomProtocolHandlers: true }).then((r) => {
-        // the page is file:// (another origin): CORS headers are needed so the equaliser can read the video's sound
-        const h = new Headers(r.headers); h.set('Access-Control-Allow-Origin', '*');
-        return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
-      });
+      const u = new URL(req.url), key = u.pathname.slice(1);
+      const ticket = u.hostname === 'f' && /^[a-f0-9]{64}$/.test(key) ? tickets.get(key) : null;
+      const origin = req.headers.get('origin');
+      if (!ticket || (origin && origin !== 'null') || !['GET','HEAD'].includes(req.method)) return new Response('not found', { status: 404 });
+      const p = allowedFile(ticket, PLAY_EXTS);
+      if (!p) return new Response('not found', { status: 404 });
+      const headers = new Headers();
+      const range = req.headers.get('range'); if (range) headers.set('range', range);
+      const r = await net.fetch(pathToFileURL(p).toString(), { headers, method: req.method, bypassCustomProtocolHandlers: true });
+      const h = new Headers(r.headers); h.set('Access-Control-Allow-Origin', 'null');
+      return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
     } catch (_) { return new Response('bad request', { status: 400 }); }
+  });
+  ipcMain.handle('vp:open-source', async (e, value) => {
+    if (!trusted(e)) return null;
+    const p = allowedFile(value, PLAY_EXTS); if (!p) return null;
+    if (!approved.has(p)) {
+      const r = await dialog.showMessageBox(getMainWin(), {type:'question', buttons:['Cancel / Ακύρωση','Open / Άνοιγμα'], defaultId:0, cancelId:0, message:'Allow this local media file? / Να επιτραπεί η πρόσβαση στο αρχείο;', detail:p});
+      if (r.response !== 1 || !trusted(e) || !allowedFile(p, PLAY_EXTS)) return null;
+      remember(p);
+    }
+    const key = randomBytes(32).toString('hex');
+    if (tickets.size >= 64) tickets.delete(tickets.keys().next().value);
+    tickets.set(key,p);
+    return 'wfmedia://f/' + key;
   });
 
   /* ---------------- video player ---------------- */
@@ -87,15 +109,15 @@ function init({ getMainWin, resolveFfmpegPath }) {
           if (out.length >= 2000) return;
         }
       })(r.filePaths[0], 0);
-      return out;
+      const files = out.map(p => allowedFile(p, PLAY_EXTS)).filter(Boolean); files.forEach(remember); return files;
     }
-    return r.filePaths.filter(isFile).slice(0, 2000);
+    const files = r.filePaths.map(p => allowedFile(p, PLAY_EXTS)).filter(Boolean).slice(0, 2000); files.forEach(remember); return files;
   });
-  ipcMain.handle('vp:subs-for', (e, p) => (trusted(e) && isFile(p) ? siblingSubtitles(p) : []));
+  ipcMain.handle('vp:subs-for', (e, p) => (trusted(e) && approved.has(allowedFile(p, PLAY_EXTS)) ? siblingSubtitles(p) : []));
   ipcMain.handle('vp:pick-sub', async (e) => {
     if (!trusted(e)) return null;
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Subtitles', extensions: SUB_EXTS }] });
-    if (r.canceled || !isFile(r.filePaths[0])) return null;
+    if (r.canceled || !allowedFile(r.filePaths[0], new Set(SUB_EXTS))) return null;
     const f = r.filePaths[0];
     try { const st = fs.statSync(f); if (st.size > MAX_SUB_BYTES) return null; return { name: path.basename(f), ext: extOf(f), text: decodeText(fs.readFileSync(f)) }; } catch (_) { return null; }
   });
@@ -146,6 +168,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         }
         const file = fs.existsSync(clip) ? clip : path.join(dir, 'clip.webm');
         if (fs.existsSync(file)) {
+          remember(allowedFile(file, PLAY_EXTS));
           fs.writeFileSync(path.join(dir, path.basename(file, path.extname(file)) + '.srt'), '1\r\n00:00:00,200 --> 00:00:01,500\r\nΚαλημέρα\r\n\r\n');
           await js("document.querySelector('.tab-btn[data-tab=\"video\"]').click(); loadVideoPlayer().then(() => 1)");
           await until("!!window.WaveframeVideoPlayer", 8000);
@@ -153,11 +176,15 @@ function init({ getMainWin, resolveFfmpegPath }) {
           const ok = await until("(() => { const v = document.getElementById('vpVideo'); return v && v.readyState >= 2 && v.videoWidth === 320; })()", 15000);
           const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.code, media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.querySelectorAll('track').length }); })()");
           check('video player plays a local clip through wfmedia: (320x180, ~2 s)', ok, info);
-          const subOk = await until("document.getElementById('vpVideo').querySelectorAll('track').length === 1", 6000);
-          check('video player finds and shows the subtitle next to the clip', subOk, await js("document.getElementById('vpSubTrack').options.length + ' options'"));
+          await js("(() => { const v = document.getElementById('vpVideo'); v.pause(); v.currentTime = 0.8; return 1; })()");
+          const subOk = await until("(() => { const v = document.getElementById('vpVideo'), tr = v.querySelector('track'); return !!tr && tr.track.mode === 'showing' && Array.from(tr.track.activeCues || []).some(c => c.text === 'Καλημέρα'); })()", 6000);
+          check('video player activates the correct Greek subtitle cue at 0.8 s', subOk, await js("document.getElementById('vpSubTrack').options.length + ' options'"));
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));
           check('equalizer on the video sound turns on (CORS-enabled wfmedia: source)', await js("document.getElementById('vpFx').getAttribute('aria-pressed') === 'true' && !/./.test(document.getElementById('vpStatus').textContent.match(/equalizer|ισοσταθμιστ/i) || '')"), await js("document.getElementById('vpStatus').textContent"));
+          const unapproved = path.join(dir,'unapproved.mp4'); fs.copyFileSync(file, unapproved);
+          const unauthorized = await js(`fetch('wfmedia://f/' + encodeURIComponent(${JSON.stringify(unapproved)})).then(r => r.status).catch(() => 'blocked')`);
+          check('wfmedia rejects an unapproved media path', unauthorized === 404 || unauthorized === 'blocked', String(unauthorized));
           const guard = await js("fetch('wfmedia://f/' + encodeURIComponent('C:\\Windows\\System32\\drivers\\etc\\hosts')).then((r) => r.status).catch(() => 'blocked')");
           check('wfmedia: refuses files that are not media / subtitles', guard === 404 || guard === 'blocked', String(guard));
         }

@@ -91,3 +91,32 @@ test('A-B loop goes none -> A -> loop -> none and ignores a B that is not after 
   s = V.abStep(s, 25); assert.deepEqual(s, { stage: 'loop', a: 10, b: 25 });
   assert.equal(V.abStep(s, 30).stage, 'off');
 });
+
+test('live duration and invalid clock are safe', () => {
+  assert.equal(V.resumeAction(10000, Infinity),'keep');
+  assert.equal(V.clock(Infinity),'0:00');
+});
+test('UTF-16 big endian Greek subtitles decode and SSA is recognized', () => {
+  const b = Buffer.from('Καλημέρα','utf16le').swap16();
+  assert.equal(M.decodeText(Buffer.concat([Buffer.from([0xfe,0xff]),b])), 'Καλημέρα');
+  assert.ok(M.SUB_EXTS.includes('ssa'));
+  assert.ok(!M.SUB_EXTS.includes('sub'));
+});
+test('subtitle blank-line whitespace and VTT NOTE blocks', () => {
+  const r = V.srtToVtt('WEBVTT\n\nNOTE ignore\n00:00:01.000 --> 00:00:02.000\nno\n\n00:00:01.000 --> 00:00:02.000\nyes\n \n00:00:02.000 --> 00:00:03.000\nnext',0);
+  assert.equal(r.cues,2); assert.ok(!r.vtt.includes('\nno\n'));
+});
+test('local file policy rejects nonmedia and symlink aliases', () => {
+  const fs=require('node:fs'), os=require('node:os'), path=require('node:path'), P=require('../local-media-policy.js');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'wf-policy-'));
+  try {
+    const file=path.join(dir,'a.mp4'), other=path.join(dir,'a.txt');
+    fs.writeFileSync(file,'x'); fs.writeFileSync(other,'x');
+    assert.ok(P.allowedFile(file,new Set(['mp4'])));
+    assert.equal(P.allowedFile(other,new Set(['mp4'])),null);
+    assert.equal(P.localPath('relative.mp4'),null);
+    const link=path.join(dir,'alias.mp4');
+    try { fs.symlinkSync(file,link,'file'); } catch(e) { if (!['EPERM','EACCES'].includes(e.code)) throw e; }
+    if(fs.existsSync(link)) assert.equal(P.localPath(link),null);
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+});

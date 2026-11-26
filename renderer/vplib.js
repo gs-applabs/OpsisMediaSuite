@@ -19,11 +19,11 @@
   function mediaUrl(p) { return isUrl(p) ? String(p) : 'wfmedia://f/' + encodeURIComponent(String(p)); }
 
   function clock(ms) {
-    const s = Math.max(0, Math.floor((Number(ms) || 0) / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    const s = Number.isFinite(Number(ms)) ? Math.max(0, Math.floor(Number(ms) / 1000)) : 0, h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
     return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(r).padStart(2, '0');
   }
 
-  const TS = /(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/;
+  const TS = /(?:^|\s)(\d{1,2}):([0-5]\d):([0-5]\d)[,.](\d{1,3})(?=\s|$)/;
   function toMs(h, m, s, f) { return ((+h * 60 + +m) * 60 + +s) * 1000 + +String(f).padEnd(3, '0'); }
   function vttTime(ms) {
     ms = Math.max(0, Math.round(ms));
@@ -34,11 +34,12 @@
 
   // SubRip (.srt) or WebVTT text -> WebVTT text, every cue moved by shiftMs (negative = earlier). Cues that would start before 0 are clamped.
   function srtToVtt(text, shiftMs) {
-    const shift = Number(shiftMs) || 0;
+    const shift = Number.isFinite(Number(shiftMs)) ? Math.max(-3600000, Math.min(3600000, Number(shiftMs))) : 0;
     const src = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/^WEBVTT[^\n]*\n/, '');
     const out = ['WEBVTT', ''];
     let cues = 0;
-    for (const block of src.split(/\n{2,}/)) {
+    for (const block of src.split(/\n[\t ]*\n+/)) {
+      if (/^(NOTE(?:\s|$)|STYLE(?:\s|$)|REGION(?:\s|$))/.test(block.trimStart())) continue;
       const lines = block.split('\n').filter((l, i, a) => !(i === 0 && /^\d+$/.test(l.trim()) && a.length > 1 && /-->/.test(a[1])));
       const k = lines.findIndex((l) => l.includes('-->'));
       if (k < 0) continue;
@@ -83,7 +84,7 @@
 
   // Resume position: remembered after the first 5 s, forgotten when the end is near (last 10 s or 95 %).
   function resumeAction(posMs, durMs) {
-    if (!(durMs > 0)) return 'keep';
+    if (!Number.isFinite(durMs) || !Number.isFinite(posMs) || !(durMs > 0) || posMs < 0) return 'keep';
     if (posMs < 5000) return 'clear';
     if (durMs - posMs < 10000 || posMs / durMs > 0.95) return 'clear';
     return 'save';

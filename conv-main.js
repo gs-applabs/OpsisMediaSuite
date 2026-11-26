@@ -9,15 +9,20 @@ const L = require('./renderer/convlib.js');
 const E = require('./conv-engine.js');
 const EV = require('./conv-video.js');
 const V = require('./renderer/vidlib.js');
+const { localPath, allowedFile } = require('./local-media-policy.js');
+const MEDIA_TYPES = new Set([...E.AUDIO_EXTS, ...E.VIDEO_EXTS]);
+const SUB_TYPES = new Set(['srt','ass','ssa','vtt','sub']);
 
 const MAX_READ = 600 * 1024 * 1024; // the renderer decodes the whole file in memory
 
 function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents; };
+  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
   const jobs = new Map(); // id -> { cancel }
-  const cancelledEarly = new Set(); // cancel requests that arrived while the job was still being prepared
+  const cancelledEarly = new Set();
+  const pending = new Set(); // cancel requests that arrived while the job was still being prepared
   const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
-  const okFile = (p) => { try { return typeof p === 'string' && path.isAbsolute(p) && fs.statSync(p).isFile(); } catch (_) { return false; } };
+  const okFile = p => !!localPath(p);
+  const inputFile = p => allowedFile(p, MEDIA_TYPES);
   const okId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
   const errorOf = (e) => ({ ok: false, code: e && e.code || 'failed', error: (e && e.message || String(e)).slice(0, 400) });
 
@@ -27,7 +32,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Audio / Video', extensions: [...E.AUDIO_EXTS, ...E.VIDEO_EXTS] }, { name: 'All files', extensions: ['*'] }],
     });
-    return r.canceled ? [] : r.filePaths.filter(okFile);
+    return r.canceled ? [] : r.filePaths.filter(inputFile).slice(0, 2000);
   });
 
   ipcMain.handle('conv:status', async (e) => (trusted(e) ? { ffmpeg: !!(await resolveFfmpegPath()) } : null));
@@ -43,19 +48,18 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   });
 
   ipcMain.handle('conv:probe', async (e, p) => {
-    if (!trusted(e) || !okFile(p)) return null;
+    if (!trusted(e) || !inputFile(p)) return null;
     const ff = await resolveFfmpegPath();
     return ff ? E.probe(ff, p) : null;
   });
 
   ipcMain.handle('conv:read', async (e, p) => {
-    if (!trusted(e) || !okFile(p)) return null;
-    if (fs.statSync(p).size > MAX_READ) return { tooLarge: true };
-    return { bytes: fs.readFileSync(p) };
+    if (!trusted(e) || !inputFile(p)) return null;
+    try { const h = await fs.promises.open(p, 'r'); try { const st = await h.stat(); if (st.size > MAX_READ) return { tooLarge: true }; const b = Buffer.alloc(st.size); let n=0; while(n < b.length) { const r = await h.read(b,n,b.length-n,n); if (!r.bytesRead) break; n+=r.bytesRead; } return { bytes: b.subarray(0,n) }; } finally { await h.close(); } } catch (_) { return null; }
   });
 
   ipcMain.handle('conv:predecode', async (e, p, sampleRate) => {
-    if (!trusted(e) || !okFile(p)) return null;
+    if (!trusted(e) || !inputFile(p)) return null;
     const ff = await resolveFfmpegPath();
     if (!ff) return null;
     try { return { bytes: await E.predecodeToWav({ ffmpegPath: ff, input: p, sampleRate: Number.isFinite(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate : 0 }) }; } catch (_) { return null; }
@@ -71,17 +75,19 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('conv:default-dir', (e) => (trusted(e) ? defaultOutDir() : null));
 
   async function track(id, make) {
+    if (pending.has(id) || pending.size >= 4) return {ok:false, code:'busy'};
+    pending.add(id);
     try {
       const job = await make();
       jobs.set(id, job);
       if (cancelledEarly.delete(id)) job.cancel();
       const r = await job.promise;
       return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
-    } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); }
+    } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); pending.delete(id); }
   }
 
   ipcMain.handle('conv:direct', async (e, req) => {
-    if (!trusted(e) || !req || !okId(req.id) || !okFile(req.path)) return { ok: false, code: 'bad-request' };
+    if (!trusted(e) || !req || !okId(req.id) || !inputFile(req.path)) return { ok: false, code: 'bad-request' };
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
     const ff = await resolveFfmpegPath();
@@ -90,9 +96,11 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   });
 
   ipcMain.handle('conv:encode', async (e, req) => {
-    const hasSource = !!req && okFile(req.path);
+    if (!trusted(e)) return {ok:false,code:'bad-request'};
+    const hasSource = !!req && !!inputFile(req.path);
     const hasName = !!req && typeof req.name === 'string' && req.name.length > 0 && req.name.length < 200;
     if (!trusted(e) || !req || !okId(req.id) || !(hasSource || hasName) || !(req.wav instanceof Uint8Array || req.wav instanceof ArrayBuffer)) return { ok: false, code: 'bad-request' };
+    if (req.wav.byteLength > MAX_READ) return {ok:false,code:'too-large'};
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
     const ff = v.options.format === 'wav' ? null : await resolveFfmpegPath();
@@ -106,7 +114,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   /* ---------- video (Opsis Media Suite, 2.1.0): same trust rules as the audio channels ---------- */
   const MEDIA_EXTS = new Set([...E.AUDIO_EXTS, ...E.VIDEO_EXTS].map((x) => '.' + x));
-  const okMedia = (p) => okFile(p) && MEDIA_EXTS.has(path.extname(p).toLowerCase());
+  const okMedia = (p) => !!inputFile(p) && MEDIA_EXTS.has(path.extname(p).toLowerCase());
   const KNOWN_ENCODERS = new Set(Object.values(V.CODECS).flatMap((c) => [...c.hw, ...c.sw]));
 
   ipcMain.handle('vid:default-dir', (e) => (trusted(e) ? defaultVideoOutDir() : null));
@@ -147,7 +155,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (!trusted(e) || !req || !okId(req.id) || !okMedia(req.path)) return { ok: false, code: 'bad-request' };
     const v = V.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    if (v.options.subtitleFile && !okFile(v.options.subtitleFile)) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
+    if (v.options.subtitleFile && !allowedFile(v.options.subtitleFile, SUB_TYPES)) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
     const ff = await resolveFfmpegPath();
     if (!ff) return { ok: false, code: 'no-ffmpeg' };
     const d = await EV.detectEncoders(ff);
@@ -157,7 +165,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.on('conv:cancel', (e, id) => {
     if (!trusted(e) || !okId(id)) return;
-    if (jobs.has(id)) jobs.get(id).cancel(); else cancelledEarly.add(id);
+    if (jobs.has(id)) jobs.get(id).cancel(); else if (pending.has(id)) cancelledEarly.add(id);
   });
   ipcMain.on('conv:reveal', (e, p) => { if (trusted(e) && okFile(p)) shell.showItemInFolder(p); });
 

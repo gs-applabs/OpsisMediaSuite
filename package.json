@@ -38,6 +38,7 @@
       "conv-main.js",
       "conv-video.js",
       "media-main.js",
+      "local-media-policy.js",
       "suite-apps.json",
       "icon.ico",
       "renderer/**/*",
