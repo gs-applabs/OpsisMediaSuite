@@ -120,3 +120,9 @@ test('local file policy rejects nonmedia and symlink aliases', () => {
     if(fs.existsSync(link)) assert.equal(P.localPath(link),null);
   } finally { fs.rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('invalid subtitle seconds are not accepted as a shorter timestamp; VTT settings survive', () => {
+  const r=V.srtToVtt('WEBVTT\n\n00:00:99.000 --> 00:01:00.000\ninvalid\n\n00:01.000 --> 00:02.000 line:10% align:start\nvalid',0);
+  assert.equal(r.cues,1); assert.ok(r.vtt.includes('line:10% align:start'));
+  assert.equal(V.playable('C:\\movie.mp4:stream.mp4'),false);
+});

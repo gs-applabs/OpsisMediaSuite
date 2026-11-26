@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const https = require('https');
 const { execFile, spawn } = require('child_process');
+const { localPath } = require('./local-media-policy.js');
 const AdmZip = require('adm-zip');
 const suite = require('./suite-main.js');
 const suiteLib = require('./suite.js');
@@ -38,26 +39,22 @@ const FORMATS = {
 function testFfmpeg(ffmpegPath) {
   return new Promise((resolve) => {
     if (!ffmpegPath || !fs.existsSync(ffmpegPath)) return resolve(false);
-    execFile(ffmpegPath, ['-version'], { timeout: 5000 }, (error) => resolve(!error));
+    execFile(ffmpegPath, ['-version'], { timeout: 5000, windowsHide: true, maxBuffer: 256 * 1024, cwd: path.dirname(ffmpegPath) }, (error, stdout) => resolve(!error && /^ffmpeg version /i.test(stdout)));
   });
 }
 
-function testSystemFfmpeg() {
-  return new Promise((resolve) => {
-    execFile('ffmpeg', ['-version'], { timeout: 5000 }, (error) => resolve(!error));
-  });
-}
-
-// Prefer an ffmpeg the user already has on their system PATH (e.g. from a
-// codec pack or a standalone install) over anything Waveframe itself bundles
-// or downloads — that way Waveframe never has to *distribute* the binary for
-// that user at all. See CLAUDE.md rule 11. Waveframe does not bundle any
-// ffmpeg binary itself; if none is found, the Settings > dependencies panel
-// offers to download the LGPL build on demand.
+// Search only explicit absolute PATH entries, never implicit working-directory
+// lookup. Return the exact executable validated, not a bare command name.
 async function resolveFfmpegPath() {
-  if (await testSystemFfmpeg()) return 'ffmpeg';
-  if (await testFfmpeg(FALLBACK_FFMPEG())) return FALLBACK_FFMPEG();
-  return null;
+  const name = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  for (const raw of String(process.env.PATH || '').split(path.delimiter).slice(0,256)) {
+    const dir = raw.trim().replace(/^"|"$/g,'');
+    if (!path.isAbsolute(dir)) continue;
+    const candidate = localPath(path.join(dir,name));
+    if (candidate && await testFfmpeg(candidate)) return candidate;
+  }
+  const fallback = localPath(FALLBACK_FFMPEG());
+  return fallback && await testFfmpeg(fallback) ? fallback : null;
 }
 
 // Source, size and SHA-256 of the LGPL ffmpeg build, straight from the GitHub release (asset digest, or the release's checksums.sha256).
@@ -85,7 +82,9 @@ async function installFfmpeg(onProgress, confirm) {
   if (confirm && !(await confirm(info))) { const e = new Error('cancelled'); e.code = 'cancelled'; throw e; }
   const dir = FALLBACK_DIR();
   fs.mkdirSync(dir, { recursive: true });
-  const zipPath = path.join(os.tmpdir(), `waveframe-ffmpeg-${Date.now()}.zip`);
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'waveframe-ffmpeg-'));
+  const zipPath = path.join(scratch,'download.zip');
+  try {
 
   onProgress({ phase: 'download', pct: 0 });
   try {
@@ -98,14 +97,18 @@ async function installFfmpeg(onProgress, confirm) {
   onProgress({ phase: 'extract', pct: 0 });
   const zip = new AdmZip(zipPath);
   const entry = zip.getEntries().find((e) => /(^|\/)bin\/ffmpeg\.exe$/i.test(e.entryName));
-  if (!entry) throw new Error('Το ffmpeg.exe δεν βρέθηκε μέσα στο πακέτο λήψης.');
-  fs.writeFileSync(FALLBACK_FFMPEG(), entry.getData());
-  fs.unlink(zipPath, () => {});
+  if (!entry || entry.header.size > 256 * 1024 * 1024) throw new Error('Invalid FFmpeg archive entry');
+  const tempExe = path.join(dir, 'ffmpeg-' + require('node:crypto').randomBytes(8).toString('hex') + '.exe');
+  try { fs.writeFileSync(tempExe, entry.getData(), { flag: 'wx' });
+    if (!(await testFfmpeg(tempExe))) throw new Error('Invalid FFmpeg executable');
+    fs.renameSync(tempExe, FALLBACK_FFMPEG());
+  } finally { try { fs.unlinkSync(tempExe); } catch (_) {} }
   onProgress({ phase: 'done', pct: 1 });
 
   const ok = await testFfmpeg(FALLBACK_FFMPEG());
   if (!ok) throw new Error('Η εγκατάσταση ολοκληρώθηκε αλλά το ffmpeg δεν εκτελείται σωστά.');
   return FALLBACK_FFMPEG();
+  } finally { try { fs.rmSync(scratch, {recursive:true,force:true}); } catch (_) {} }
 }
 
 async function confirmFfmpegDownload(win, info) {
@@ -147,7 +150,7 @@ function createHelpWindow(parent) {
   });
   helpWindow.setMenuBarVisibility(false);
   helpWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  helpWindow.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
+  helpWindow.webContents.on('will-navigate', e => e.preventDefault());
   helpWindow.loadFile(path.join(__dirname, 'renderer', 'help.html'), { search: `theme=${encodeURIComponent(currentTheme)}&lang=${encodeURIComponent(helpLang)}` });
   helpWindow.on('closed', () => { helpWindow = null; });
 }
@@ -232,9 +235,9 @@ function createWindow() {
   mainWin = win;
   // Hardening + stability: the app only ever shows its own local pages.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
+  win.webContents.on('will-navigate', e => e.preventDefault());
   // Only the microphone input (getUserMedia) is a legitimate permission here; everything else is denied.
-  win.webContents.session.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
+  win.webContents.session.setPermissionRequestHandler((wc, permission, cb, details) => cb(wc === win.webContents && permission === 'media' && details.isMainFrame === true && Array.isArray(details.mediaTypes) && details.mediaTypes.length === 1 && details.mediaTypes[0] === 'audio'));
   // A crashed/killed renderer (GPU driver reset, out of memory on low-RAM PCs) used to leave a blank window until restart.
   win.webContents.on('render-process-gone', (_e, details) => {
     if (details.reason === 'clean-exit' || win.isDestroyed()) return;

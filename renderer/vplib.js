@@ -23,7 +23,7 @@
     return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(r).padStart(2, '0');
   }
 
-  const TS = /(?:^|\s)(\d{1,2}):([0-5]\d):([0-5]\d)[,.](\d{1,3})(?=\s|$)/;
+  const TS = /^\s*(?:(\d{1,3}):)?([0-5]?\d):([0-5]\d)[,.](\d{1,3})(?=\s|$)/;
   function toMs(h, m, s, f) { return ((+h * 60 + +m) * 60 + +s) * 1000 + +String(f).padEnd(3, '0'); }
   function vttTime(ms) {
     ms = Math.max(0, Math.round(ms));
@@ -44,14 +44,14 @@
       const k = lines.findIndex((l) => l.includes('-->'));
       if (k < 0) continue;
       const parts = lines[k].split('-->');
-      const a = TS.exec(parts[0]) || /(\d{1,2}):(\d{2})[,.](\d{1,3})/.exec(parts[0]) && (() => { const q = /(\d{1,2}):(\d{2})[,.](\d{1,3})/.exec(parts[0]); return [0, 0, q[1], q[2], q[3]]; })();
-      const b = TS.exec(parts[1] || '') || /(\d{1,2}):(\d{2})[,.](\d{1,3})/.exec(parts[1] || '') && (() => { const q = /(\d{1,2}):(\d{2})[,.](\d{1,3})/.exec(parts[1]); return [0, 0, q[1], q[2], q[3]]; })();
+      const a = TS.exec(parts[0]), b = TS.exec(parts[1] || '');
       if (!a || !b) continue;
-      const s = toMs(a[1], a[2], a[3], a[4]) + shift, e = toMs(b[1], b[2], b[3], b[4]) + shift;
+      const s = toMs(a[1] || 0, a[2], a[3], a[4]) + shift, e = toMs(b[1] || 0, b[2], b[3], b[4]) + shift;
       if (e <= 0 || e <= s) continue;
       const body = cleanText(lines.slice(k + 1).join('\n'));
       if (!body) continue;
-      out.push(`${vttTime(s)} --> ${vttTime(e)}`, body, '');
+      const settings = parts[1].slice(b[0].length).trim().split(/\s+/).filter(x => /^(?:align|line|position|size|vertical):[-a-z0-9.,%]+$/i.test(x)).join(' ');
+      out.push(`${vttTime(s)} --> ${vttTime(e)}${settings ? ' ' + settings : ''}`, body, '');
       if (++cues >= LIMITS.cues) break;
     }
     return { vtt: out.join('\n'), cues };
@@ -107,7 +107,7 @@
     return Object.fromEntries(e.slice(Math.max(0, e.length - LIMITS.resume)));
   }
   // A path from storage is only offered for playback when it looks like something the main process would serve.
-  const playable = (p) => typeof p === 'string' && (isUrl(p) || (/^[A-Za-z]:[\\/]/.test(p) && kindOf(p) !== '')) && p.length < 2048 && !/[\0\r\n]/.test(p);
+  const playable = (p) => typeof p === 'string' && (isUrl(p) || (/^[A-Za-z]:[\\/]/.test(p) && !p.slice(2).includes(':') && kindOf(p) !== '')) && p.length < 2048 && !/[\0\r\n]/.test(p);
 
   // What plays after the current item. mode: off | list | file | shuffle. rnd: a number in [0,1) (injected for tests).
   function nextIndex(mode, idx, len, rnd) {

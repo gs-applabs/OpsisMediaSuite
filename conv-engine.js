@@ -98,7 +98,9 @@ async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress
   if (!ffmpegPath) throw Object.assign(new Error('no-ffmpeg'), { code: 'no-ffmpeg' });
   const wavTmp = path.join(require('os').tmpdir(), `waveframe-conv-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
   fs.writeFileSync(wavTmp, Buffer.from(wavBytes));
-  const job = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: wavTmp, duration, onProgress, outDir });
+  let job;
+  try { job = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: wavTmp, duration, onProgress, outDir }); }
+  catch (e) { try { fs.unlinkSync(wavTmp); } catch (_) {} throw e; }
   const cleanup = () => { try { fs.unlinkSync(wavTmp); } catch (_) { /* none */ } };
   return { promise: job.promise.finally(cleanup), cancel: job.cancel };
 }

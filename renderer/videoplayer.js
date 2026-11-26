@@ -13,7 +13,7 @@
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
-  let generation = 0, subRevision = 0, resumePath = null, eventController = null;
+  let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, saveTimer = 0, built = false, fx = null;
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
@@ -44,11 +44,12 @@
     list.splice(i, 1);
     renderList();
   }
-  function stop() { saveResume(); ++generation; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
+  function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
+  function stop() { saveResume(); releaseTicket(); ++generation; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
 
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
-    saveResume();
+    saveResume(); releaseTicket();
     const g = ++generation;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
     idx = i; const p = list[i];
@@ -59,9 +60,9 @@
     replaceVideo();
     renderList(); renderBookmarks();
     const source = VP.isUrl(p) ? p : await api.vpOpenSource(p).catch(() => null);
-    if (g !== generation) return;
+    if (g !== generation) { if (source && !VP.isUrl(p)) api.vpReleaseSource(source).catch(() => {}); return; }
     if (!source) { $('vpFrame').classList.remove('has-media'); say(t('vp.cantPlay')); return; }
-    if (!VP.isUrl(p)) video.crossOrigin = 'anonymous';
+    if (!VP.isUrl(p)) { video.crossOrigin = 'anonymous'; activeTicket = source; }
     video.src = source;
     if (restoreFx) toggleFx();
     $('vpFrame').classList.add('has-media');
@@ -70,7 +71,7 @@
     put(K.recent, VP.pushRecent(get(K.recent, []), p)); fillRecent();
     say(fmt(t('vp.playing'), { name: VP.titleOf(p) }));
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
-    video.play().catch(() => { /* the error event reports unsupported media */ });
+    video.play().catch(err => { if (g === generation && err.name !== 'AbortError') say(t('vp.cantPlay') + ' (' + err.name + ')'); });
     if (!VP.isUrl(p)) loadSiblingSubs(p, g, subRevision);
     refreshFx();
   }
@@ -167,6 +168,7 @@
     fx.bass.gain.value = on && typeof engine !== 'undefined' && engine.state ? Number(engine.state.bassBoost) || 0 : 0;
   }
   function toggleFx() {
+    if (!current() || !video.getAttribute('src')) return;
     const btn = $('vpFx'), on = btn.getAttribute('aria-pressed') !== 'true';
     if (on && VP.isUrl(current())) { say(t('vp.fxLocalOnly')); return; }
     if (!fx) {
@@ -180,7 +182,7 @@
       } catch (_) { say(t('vp.fxFailed')); return; }
     }
     btn.setAttribute('aria-pressed', String(on)); btn.classList.toggle('active', on);
-    if (fx.ctx.state === 'suspended') fx.ctx.resume();
+    if (fx.ctx.state === 'suspended') fx.ctx.resume().catch(() => say(t('vp.fxFailed')));
     refreshFx();
   }
 
@@ -282,7 +284,7 @@
     eventController = new AbortController();
     const on = (name, handler) => video.addEventListener(name, handler, { signal: eventController.signal });
     on('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
-    on('timeupdate', syncTime); video.addEventListener('durationchange', syncTime);
+    on('timeupdate', syncTime); on('durationchange', syncTime);
     for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev, syncTransport);
     on('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
     on('dblclick', () => $('vpFull').click());
@@ -302,7 +304,7 @@
   function replaceVideo() {
     const old = video, volume = old.volume, muted = old.muted;
     if (eventController) eventController.abort();
-    old.pause(); old.removeAttribute('src'); old.load();
+    old.pause(); old.removeAttribute('src'); old.load(); $('vpFrame').classList.remove('has-media');
     if (fx) { fx.ctx.close().catch(() => {}); fx = null; }
     const fresh = old.cloneNode(false);
     fresh.removeAttribute('crossorigin');
@@ -380,7 +382,7 @@
 
 
     saveTimer = setInterval(() => { if (!video.paused) saveResume(); }, 5000);
-    window.addEventListener('beforeunload', saveResume);
+    window.addEventListener('beforeunload', () => { saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
 

@@ -5,9 +5,17 @@ function localPath(value) {
   if (typeof value !== 'string' || value.length > 32767 || /[\0\r\n]/.test(value) || !path.isAbsolute(value)) return null;
   if (process.platform === 'win32' && (!/^[a-z]:[\\/]/i.test(value) || value.slice(2).includes(':'))) return null;
   try {
-    const normalized = path.resolve(value), real = fs.realpathSync.native(normalized);
-    const same = process.platform === 'win32' ? real.toLowerCase() === normalized.toLowerCase() : real === normalized;
-    return same && fs.statSync(real).isFile() ? real : null;
+    const normalized = path.resolve(value), root = path.parse(normalized).root;
+    // Inspect each component, not a string equality test: legitimate Windows
+    // short (8.3) aliases are not symbolic links and may be used for TEMP.
+    let cursor = root;
+    for (const component of normalized.slice(root.length).split(path.sep).filter(Boolean)) {
+      cursor = path.join(cursor, component);
+      if (fs.lstatSync(cursor).isSymbolicLink()) return null;
+    }
+    const real = fs.realpathSync.native(normalized);
+    if (process.platform === 'win32' && (!/^[a-z]:[\\/]/i.test(real) || real.slice(2).includes(':'))) return null;
+    return fs.statSync(real).isFile() ? real : null;
   } catch (_) { return null; }
 }
 function allowedFile(value, extensions) {

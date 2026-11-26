@@ -58,7 +58,7 @@ function siblingSubtitles(video) {
 function init({ getMainWin, resolveFfmpegPath }) {
   const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
   const approved = new Set(), tickets = new Map();
-  const remember = p => { if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
+  const remember = p => { if (!p) return; if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
@@ -89,6 +89,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
     if (tickets.size >= 64) tickets.delete(tickets.keys().next().value);
     tickets.set(key,p);
     return 'wfmedia://f/' + key;
+  });
+
+  ipcMain.handle('vp:release-source', (e, value) => {
+    if (!trusted(e) || typeof value !== 'string') return false;
+    const m = /^wfmedia:\/\/f\/([a-f0-9]{64})$/.exec(value);
+    return !!m && tickets.delete(m[1]);
   });
 
   /* ---------------- video player ---------------- */

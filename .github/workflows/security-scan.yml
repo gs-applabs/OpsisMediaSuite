@@ -38,6 +38,7 @@ jobs:
           Get-ChildItem assets | ForEach-Object { "{0}  {1:N1} MB" -f $_.Name, ($_.Length/1MB) }
 
       - name: Check the published SHA-256 files
+        if: always()
         shell: pwsh
         run: |
           $bad = 0
@@ -52,6 +53,7 @@ jobs:
           if ($bad) { throw "$bad checksum file(s) do not match" }
 
       - name: Microsoft Defender scan (fresh signatures)
+        if: always()
         shell: pwsh
         run: |
           # The hosted image does not always run the Defender service: try to start it, and report NOT VERIFIED (warning) instead of failing when it cannot scan.
@@ -73,6 +75,7 @@ jobs:
           if ($detected) { throw 'Defender reported a detection in the release files' }
           'Defender: no detection reported'
       - name: Trace scan inside the portable zips (personal data and build paths)
+        if: always()
         shell: pwsh
         run: |
           $patterns = @('C:\Users\','C:\w\','gstrj','LOGISTIRIO','giorstergiopoulos@gmail','/Users/','D:\a\')
@@ -94,6 +97,7 @@ jobs:
           'trace scan: clean'
 
       - name: Secrets scan of the repository (gitleaks)
+        if: always()
         shell: pwsh
         run: |
           $v = '8.21.2'
@@ -101,10 +105,20 @@ jobs:
           Expand-Archive gl.zip gl -Force
           ./gl/gitleaks.exe detect --source . --no-banner --redact -v --exit-code 1
 
+      - uses: actions/setup-dotnet@v4
+        if: always()
+        with:
+          dotnet-version: '11.0.x'
+          dotnet-quality: 'preview'
+
       - name: Known-vulnerable NuGet packages
+        if: always()
         shell: pwsh
         run: |
-          $sln = Get-ChildItem -Recurse -Include *.sln,*.slnx -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $sln) { 'no .NET solution'; exit 0 }
-          dotnet list $sln.FullName package --vulnerable --include-transitive 2>&1 | Tee-Object vuln.txt
-          if (Select-String -Path vuln.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet) { throw 'a package with a High/Critical vulnerability is referenced' }
+          $projects = Get-ChildItem opsis-plugin -Recurse -Filter *.csproj
+          if (-not $projects) { throw 'No plugin project found' }
+          foreach ($project in $projects) {
+            dotnet list $project.FullName package --vulnerable --include-transitive 2>&1 | Tee-Object vuln.txt
+            if ($LASTEXITCODE) { throw 'NuGet audit failed' }
+            if (Select-String -Path vuln.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet) { throw 'A High/Critical vulnerability is referenced' }
+          }

@@ -149,14 +149,16 @@ class AudioEngine {
 
     const splitter = ctx.createChannelSplitter(2);
     const merger = ctx.createChannelMerger(2);
-    this.volumeBoostNode.connect(splitter);
+    // Ensure mono inputs are duplicated before splitting rather than halved.
+    const stereo = ctx.createGain(); stereo.channelCount = 2; stereo.channelCountMode = 'explicit'; stereo.channelInterpretation = 'speakers';
+    this.volumeBoostNode.connect(stereo); stereo.connect(splitter);
 
     this.surroundInvert = ctx.createGain();
     this.surroundInvert.gain.value = -1;
     this.surroundMid = ctx.createGain();
     this.surroundMid.gain.value = 0.5;
     this.surroundSide = ctx.createGain();
-    this.surroundSide.gain.value = 0;
+    this.surroundSide.gain.value = 0.5; // neutral width preserves left/right stereo
 
     splitter.connect(this.surroundMid, 0);
     splitter.connect(this.surroundMid, 1);
@@ -428,7 +430,7 @@ class AudioEngine {
   }
   setSurround(pct) {
     this.state.surround = pct;
-    const w = (pct / 100) * 1.6;
+    const w = 1 + (Math.max(0,Math.min(100,Number(pct)||0)) / 100) * 0.6;
     this.surroundSide.gain.setTargetAtTime(0.5 * w, this.ctx.currentTime, 0.02);
   }
   setCompressor(on) {
@@ -462,7 +464,9 @@ class AudioEngine {
   async renderOffline(buffer, opts = {}) {
     const rate = opts.rate || buffer.sampleRate;
     const tempo = opts.tempo || this.state.tempo;
-    const offline = new OfflineAudioContext(2, Math.ceil(buffer.duration / tempo * rate) + rate, rate);
+    const frames = Math.ceil(buffer.duration / tempo * rate) + rate;
+    if (!Number.isSafeInteger(frames) || frames < 1 || frames * 8 > 600 * 1024 * 1024) throw new Error('offline-render-too-large');
+    const offline = new OfflineAudioContext(2, frames, rate);
 
     const src = offline.createBufferSource();
     src.buffer = buffer;
@@ -497,6 +501,14 @@ class AudioEngine {
     eqNodes[eqNodes.length - 1].connect(bassBoost);
     bassBoost.connect(volBoost);
 
+    if (this.state.surround > 0) {
+      const stereo = offline.createGain(); stereo.channelCount = 2; stereo.channelCountMode = 'explicit'; stereo.channelInterpretation = 'speakers';
+      const split = offline.createChannelSplitter(2), merge = offline.createChannelMerger(2);
+      const mid = offline.createGain(), side = offline.createGain(), invert = offline.createGain(), invertR = offline.createGain();
+      mid.gain.value=.5; side.gain.value=.5*(1+Math.max(0,Math.min(100,this.state.surround))/100*.6); invert.gain.value=-1; invertR.gain.value=-1;
+      chainEnd.connect(stereo); stereo.connect(split); split.connect(mid,0); split.connect(mid,1); split.connect(side,0); split.connect(invert,1); invert.connect(side);
+      mid.connect(merge,0,0); mid.connect(merge,0,1); side.connect(merge,0,0); side.connect(invertR); invertR.connect(merge,0,1); chainEnd=merge;
+    }
     if (this.state.compressor) {
       const comp = offline.createDynamicsCompressor();
       comp.threshold.value = -24; comp.knee.value = 30; comp.ratio.value = 8;

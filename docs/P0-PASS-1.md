@@ -7,3 +7,9 @@
 - CI production/development dependency audit added as visibility only, not a release gate yet. Electron and builder version upgrade and lockfile regeneration remain pending.
 - Tests: actual active Greek cue at seek time, unapproved media URL, local policy, UTF-16BE, VTT, live duration and source guards. Windows CI required; no release.
 - Known limits: no actual new LibVLC/DirectShow/Media Foundation engine yet; no true frame stepping; local approval prompt for previously saved or drag/drop/CLI paths; remaining converter/photo IPC capability tokens and network policy to implement. Full security scan still required.
+
+## Follow-up hardening
+- Tickets revoked on source switch/stop, local path handling permits legitimate short aliases while rejecting symbolic links, safer subtitle timestamps/settings, actual playback rejection diagnostics, renderer navigation/main-frame microphone guard.
+- Absolute PATH discovery of FFmpeg (not implicit cwd); bounded extraction and temporary cleanup; restricted video-converter input protocols and thumbnail timeout. Authenticity policy beyond PATH location still pending.
+- Fixed neutral stereo width (previously collapsed stereo to mono), duplicated mono before splitter, added offline surround approximation and offline memory budget. Exact DSP parity and measurement pending.
+- Security scan independent steps run even on prior failures, NuGet scans actual project files; .NET 11 setup added. Full release rebuild and scan pending.

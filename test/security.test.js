@@ -91,3 +91,11 @@ test('media ticket and converter read are bounded and main-frame checked', () =>
   assert.match(conv,/!inputFile\(p\)/);
   assert.match(conv,/req\.wav\.byteLength > MAX_READ/);
 });
+
+test('explicit executable paths and media ticket revocation', () => {
+  const main=read('main.js'), video=read('renderer/videoplayer.js'), media=read('media-main.js');
+  assert.match(main,/localPath\(path\.join\(dir,name\)\)/);
+  assert.doesNotMatch(main,/execFile\('ffmpeg'/);
+  assert.match(media,/tickets\.delete\(m\[1\]\)/);
+  assert.match(video,/vpReleaseSource/);
+});
