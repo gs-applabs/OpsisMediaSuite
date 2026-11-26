@@ -24,3 +24,6 @@ CI 45865622981 passed 166/166 and real WebM/MP4/Greek subtitle cue tests. Existi
 
 ## Pass 6 — pending session cancellation and CI inventory gate
 Electron 45.5.0/builder 26.18.0 candidate run 45865645833 succeeded including real renderer and portable packaging. Main branch still has old dependencies; tested manifests must be integrated after latest source checks. Added cancellation/disposal of in-flight adapters, idempotent disposal, explicit registry enum parsing, and a Windows registry inventory self-test. Real K-Lite installed-pack test remains outstanding.
+
+## Pass 7 — verified dependency integration
+Candidate CI 45866698447: 168/168 unit tests, real renderer WebM/MP4/Greek subtitle and codec inventory passed, portable build succeeded; npm audit six moderate, zero high/critical. Candidate committed exact lockfile on a5158a6. Copied the verified package and lock blobs to PR #3 and made high/critical npm gate mandatory. Clean VM inventory: 66 Media Foundation registrations, no third-party packs; real K-Lite usage not verified.
