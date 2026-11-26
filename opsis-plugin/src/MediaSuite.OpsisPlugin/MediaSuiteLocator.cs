@@ -58,7 +58,23 @@ public static class MediaSuiteLocator
             if (!full.Contains('%') && exists(full)) return full;
         }
         var reg = (registryPath ?? FromUninstallKey)();
-        return !string.IsNullOrWhiteSpace(reg) && exists(reg!) ? reg : null;
+        return !string.IsNullOrWhiteSpace(reg) && IsTrustedLocation(reg!) && exists(reg!) ? reg : null;
+    }
+
+    /// <summary>The registry (HKCU is user-writable) must not be able to point the launcher at an arbitrary program: only the real exe name under Program Files or LocalAppData\Programs.</summary>
+    public static bool IsTrustedLocation(string exePath)
+    {
+        try
+        {
+            var full = Path.GetFullPath(exePath);
+            if (full.StartsWith(@"\\")) return false;
+            if (!string.Equals(Path.GetFileName(full), "Opsis Media Suite.exe", StringComparison.OrdinalIgnoreCase)) return false;
+            var roots = new[] { Environment.GetEnvironmentVariable("ProgramFiles"), Environment.GetEnvironmentVariable("ProgramFiles(x86)"),
+                Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "", "Programs") }
+                .Where(r => !string.IsNullOrEmpty(r)).Select(r => Path.GetFullPath(r!).TrimEnd('\\') + "\\");
+            return roots.Any(r => full.StartsWith(r, StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return false; }
     }
 
     private static string? FromUninstallKey()

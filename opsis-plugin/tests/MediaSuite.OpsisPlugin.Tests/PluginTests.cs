@@ -86,7 +86,9 @@ public class PluginTests
     {
         Assert.Null(MediaSuiteLocator.Find(_ => false, () => null));
         Assert.NotNull(MediaSuiteLocator.Find(p => p.EndsWith(@"Programs\Opsis Media Suite\Opsis Media Suite.exe"), () => null));
-        Assert.Equal(@"C:\x\Opsis Media Suite.exe", MediaSuiteLocator.Find(p => p == @"C:\x\Opsis Media Suite.exe", () => @"C:\x\Opsis Media Suite.exe"));
+        var trusted = Path.Combine(Environment.GetEnvironmentVariable("ProgramFiles")!, "Opsis Media Suite", "Opsis Media Suite.exe");
+        Assert.Equal(trusted, MediaSuiteLocator.Find(p => p == trusted, () => trusted));
+        Assert.Null(MediaSuiteLocator.Find(p => p == @"C:\x\Opsis Media Suite.exe", () => @"C:\x\Opsis Media Suite.exe"));
     }
 
     [Fact]
@@ -98,6 +100,17 @@ public class PluginTests
         var d = Directory.CreateTempSubdirectory().FullName;
         try { Assert.False(MediaSuiteLocator.IsInstalled(new[] { d }, new string[0])); File.WriteAllText(Path.Combine(d, "x.exe"), ""); Assert.True(MediaSuiteLocator.IsInstalled(new[] { d }, new string[0])); }
         finally { Directory.Delete(d, true); }
+    }
+
+    [Fact]
+    public void RegistryPathMustBeTheRealExeUnderAnInstallRoot()
+    {
+        var pf = Environment.GetEnvironmentVariable("ProgramFiles")!;
+        Assert.True(MediaSuiteLocator.IsTrustedLocation(Path.Combine(pf, "Opsis Media Suite", "Opsis Media Suite.exe")));
+        Assert.False(MediaSuiteLocator.IsTrustedLocation(Path.Combine(pf, "Opsis Media Suite", "evil.exe")));
+        Assert.False(MediaSuiteLocator.IsTrustedLocation(@"C:UsersPublicOpsis Media Suite.exe"));
+        Assert.False(MediaSuiteLocator.IsTrustedLocation(@"\servershareOpsis Media Suite.exe"));
+        Assert.False(MediaSuiteLocator.IsTrustedLocation(Path.Combine(pf, "..", "Temp", "Opsis Media Suite.exe")));
     }
 
     [Fact]
