@@ -9,6 +9,7 @@ const M3U = require('./m3u.js');
 const { localPath, allowedFile } = require('./local-media-policy.js');
 const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
+const { inventory } = require('./codec-inventory.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -57,6 +58,7 @@ function siblingSubtitles(video) {
 
 function init({ getMainWin, resolveFfmpegPath }) {
   const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
+  ipcMain.handle('vp:codec-inventory', e => trusted(e) ? inventory() : null);
   const approved = new Set(), tickets = new Map();
   const remember = p => { if (!p) return; if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
   const bk = { dir: '' };
@@ -204,6 +206,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
           }
         }
       }
+      const codecReport = await inventory();
+      check('Windows codec inventory returns bounded registry metadata', process.platform !== 'win32' || (codecReport.status==='ok' && Array.isArray(codecReport.packs) && Array.isArray(codecReport.filters) && Array.isArray(codecReport.transforms)), JSON.stringify({status:codecReport.status,arch:codecReport.arch,packs:codecReport.packs.length,filters:codecReport.filters.length,transforms:codecReport.transforms.length}));
       /* photo editor */
       const { nativeImage } = require('electron');
       const W = 64, H = 48, buf = Buffer.alloc(W * H * 4);

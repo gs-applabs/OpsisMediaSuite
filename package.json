@@ -41,6 +41,7 @@
       "local-media-policy.js",
       "media-stream.js",
       "playback-core.js",
+      "codec-inventory.js",
       "suite-apps.json",
       "icon.ico",
       "renderer/**/*",
