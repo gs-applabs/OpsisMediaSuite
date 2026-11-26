@@ -2,13 +2,13 @@
 // IPC glue for the video player (file picker, subtitle discovery, a read-only "wfmedia" protocol with range support), the photo editor (open / save)
 // and M3U playlist import. Only the main window may call these channels; payloads are validated here.
 
-const { ipcMain, dialog, protocol, net, app } = require('electron');
+const { ipcMain, dialog, protocol, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { pathToFileURL } = require('url');
 const M3U = require('./m3u.js');
 const { localPath, allowedFile } = require('./local-media-policy.js');
 const { randomBytes } = require('node:crypto');
+const { serveFile } = require('./media-stream.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -26,7 +26,7 @@ const PLAY_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS]);
 
 // Must run before the app is ready.
 function registerScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, bypassCSP: false } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'wfmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false } }]);
 }
 
 // Subtitle bytes -> text: UTF-8 (with or without BOM), otherwise Windows-1253 (Greek) which is what old .srt files from Greek sites use.
@@ -70,11 +70,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       if (!ticket || (origin && origin !== 'null') || !['GET','HEAD'].includes(req.method)) return new Response('not found', { status: 404 });
       const p = allowedFile(ticket, PLAY_EXTS);
       if (!p) return new Response('not found', { status: 404 });
-      const headers = new Headers();
-      const range = req.headers.get('range'); if (range) headers.set('range', range);
-      const r = await net.fetch(pathToFileURL(p).toString(), { headers, method: req.method, bypassCustomProtocolHandlers: true });
-      const h = new Headers(r.headers); h.set('Access-Control-Allow-Origin', 'null');
-      return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
+      return await serveFile(p,extOf(p),req);
     } catch (_) { return new Response('bad request', { status: 400 }); }
   });
   ipcMain.handle('vp:open-source', async (e, value) => {
@@ -167,12 +163,9 @@ function init({ getMainWin, resolveFfmpegPath }) {
       /* video player */
       const ff = await resolveFfmpegPath();
       if (ff) {
-        const clip = path.join(dir, 'clip.mp4');
-        await new Promise((res) => require('child_process').execFile(ff, ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=25:duration=2', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clip], { timeout: 60000 }, () => res()));
-        if (!fs.existsSync(clip)) {
-          await new Promise((res) => require('child_process').execFile(ff, ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=25:duration=2', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'libvpx', '-c:a', 'libvorbis', '-shortest', path.join(dir, 'clip.webm')], { timeout: 60000 }, () => res()));
-        }
-        const file = fs.existsSync(clip) ? clip : path.join(dir, 'clip.webm');
+        const file = path.join(dir,'clip.webm');
+        const make = await new Promise(res => require('child_process').execFile(ff,['-hide_banner','-v','error','-y','-f','lavfi','-i','testsrc2=size=320x180:rate=25:duration=5','-f','lavfi','-i','sine=frequency=440:duration=5','-c:v','libvpx','-c:a','libvorbis','-shortest',file],{timeout:60000},err=>res(!err)));
+        check('WebM test fixture generated',make && fs.existsSync(file),'VP8/Vorbis');
         if (fs.existsSync(file)) {
           remember(allowedFile(file, PLAY_EXTS));
           fs.writeFileSync(path.join(dir, path.basename(file, path.extname(file)) + '.srt'), '1\r\n00:00:00,200 --> 00:00:01,500\r\nΚαλημέρα\r\n\r\n');
@@ -180,11 +173,16 @@ function init({ getMainWin, resolveFfmpegPath }) {
           await until("!!window.WaveframeVideoPlayer", 8000);
           await js(`window.WaveframeVideoPlayer.open(${JSON.stringify(file)}); 1`);
           const ok = await until("(() => { const v = document.getElementById('vpVideo'); return v && v.readyState >= 2 && v.videoWidth === 320; })()", 15000);
-          const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.code, media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.querySelectorAll('track').length }); })()");
-          check('video player plays a local clip through wfmedia: (320x180, ~2 s)', ok, info);
-          await js("(() => { const v = document.getElementById('vpVideo'); v.pause(); v.currentTime = 0.8; return 1; })()");
-          const subOk = await until("(() => { const v = document.getElementById('vpVideo'), tr = v.querySelector('track'); return !!tr && tr.track.mode === 'showing' && Array.from(tr.track.activeCues || []).some(c => c.text === 'Καλημέρα'); })()", 6000);
-          check('video player activates the correct Greek subtitle cue at 0.8 s', subOk, await js("document.getElementById('vpSubTrack').options.length + ' options'"));
+          const info = await js("(() => { const v = document.getElementById('vpVideo'); return JSON.stringify({ w: v.videoWidth, h: v.videoHeight, dur: Math.round(v.duration * 10) / 10, err: v.error && v.error.code, media: document.getElementById('vpFrame').classList.contains('has-media'), tracks: v.textTracks.length }); })()");
+          check('video player plays a local WebM clip through wfmedia (320x180)', ok, info);
+          const hasCues = await until("(() => {const v=document.getElementById('vpVideo');return Array.from(v.textTracks).some(tr=>tr.mode==='showing' && tr.cues && tr.cues.length===1);})()",6000);
+          await js("(() => { const v=document.getElementById('vpVideo'); v.pause(); if(Number.isFinite(v.duration)) v.currentTime=0.8; return 1; })()");
+          const subOk = await until("(() => { const v=document.getElementById('vpVideo'); return !v.seeking && Math.abs(v.currentTime-0.8)<0.2 && Array.from(v.textTracks).some(tr=>tr.mode==='showing' && Array.from(tr.activeCues || []).some(c=>c.text==='Καλημέρα')); })()",6000);
+          check('video player activates the correct Greek subtitle cue at 0.8 s', hasCues && subOk, await js("(() => {const v=document.getElementById('vpVideo');return JSON.stringify({time:v.currentTime,ready:v.readyState,seeking:v.seeking,tracks:Array.from(v.textTracks).map(tr=>({mode:tr.mode,cues:tr.cues?.length,active:Array.from(tr.activeCues||[]).map(c=>c.text)}))});})()"));
+          await js("document.getElementById('vpSubTrack').value='-1';document.getElementById('vpSubTrack').dispatchEvent(new Event('change'));1");
+          check('subtitle off clears active cues',await js("Array.from(document.getElementById('vpVideo').textTracks).every(tr=>tr.mode==='disabled')"),'off');
+          await js("document.getElementById('vpSubTrack').value='0';document.getElementById('vpSubTrack').dispatchEvent(new Event('change'));1");
+          check('subtitle selection restores one track and cue',await until("Array.from(document.getElementById('vpVideo').textTracks).filter(tr=>tr.mode==='showing' && tr.cues?.length===1).length===1",3000),'on');
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));
           check('equalizer on the video sound turns on (CORS-enabled wfmedia: source)', await js("document.getElementById('vpFx').getAttribute('aria-pressed') === 'true' && !/./.test(document.getElementById('vpStatus').textContent.match(/equalizer|ισοσταθμιστ/i) || '')"), await js("document.getElementById('vpStatus').textContent"));

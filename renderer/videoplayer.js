@@ -13,7 +13,7 @@
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
-  let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null;
+  let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null, nativeSubtitleTrack = null;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, saveTimer = 0, built = false, fx = null;
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
@@ -113,18 +113,34 @@
     sel.value = String(subSel);
   }
   function rebuildTrack() {
-    video.querySelectorAll('track').forEach((tr) => { tr.track.mode = 'disabled'; if (tr.src.startsWith('blob:')) URL.revokeObjectURL(tr.src); tr.remove(); });
+    // Programmatic WebVTT cues avoid the asynchronous blob: fetch and the
+    // file-origin/CORS differences between Electron releases.
+    if (nativeSubtitleTrack) {
+      nativeSubtitleTrack.mode = 'hidden';
+      for (const cue of Array.from(nativeSubtitleTrack.cues || [])) nativeSubtitleTrack.removeCue(cue);
+      nativeSubtitleTrack.mode = 'disabled';
+    }
     if (subSel < 0 || !subSrc[subSel]) return;
-    const s = subSrc[subSel], r = VP.subtitleToVtt(s.text, s.ext, subDelay * 1000);
+    const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000);
     if (!r.cues) { say(t('vp.subEmpty')); return; }
-    const tr = document.createElement('track');
-    tr.kind = 'subtitles'; tr.label = s.name; tr.default = true;
-    tr.src = URL.createObjectURL(new Blob([r.vtt], { type: 'text/vtt' }));
-    const owner = video;
-    tr.addEventListener('load', () => { if (tr.parentNode === owner && owner === video) tr.track.mode = 'showing'; });
-    tr.addEventListener('error', () => { if (tr.parentNode === owner && owner === video) say(t('vp.subEmpty')); });
-    owner.append(tr);
-    tr.track.mode = 'showing';
+    if (!nativeSubtitleTrack) nativeSubtitleTrack = video.addTextTrack('subtitles','OPSIS subtitles');
+    // Hidden mode allows cues to be populated before native rendering begins.
+    nativeSubtitleTrack.mode = 'hidden';
+    for (const entry of r.entries) {
+      const cue = new VTTCue(entry.start, entry.end, entry.text);
+      for (const item of entry.settings.split(/\s+/)) {
+        const [key,value] = item.split(':');
+        try {
+          if (key === 'align' && ['start','center','end','left','right'].includes(value)) cue.align=value;
+          if (key === 'vertical' && ['rl','lr'].includes(value)) cue.vertical=value;
+          if (key === 'size' && /^\d+(?:\.\d+)?%$/.test(value)) cue.size=parseFloat(value);
+          if (key === 'position' && /^\d+(?:\.\d+)?%$/.test(value)) cue.position=parseFloat(value);
+          if (key === 'line' && /^-?\d+(?:\.\d+)?%?$/.test(value)) { cue.snapToLines=!value.endsWith('%'); cue.line=parseFloat(value); }
+        } catch (_) { /* invalid optional cue setting */ }
+      }
+      nativeSubtitleTrack.addCue(cue);
+    }
+    nativeSubtitleTrack.mode = 'showing';
   }
   function preferredIndex() {
     const stored = get(K.subs, {}) || {};
@@ -308,7 +324,7 @@
     if (fx) { fx.ctx.close().catch(() => {}); fx = null; }
     const fresh = old.cloneNode(false);
     fresh.removeAttribute('crossorigin');
-    old.replaceWith(fresh); video = fresh;
+    old.replaceWith(fresh); video = fresh; nativeSubtitleTrack = null;
     video.volume = volume; video.muted = muted;
     $('vpFx').setAttribute('aria-pressed','false'); $('vpFx').classList.remove('active');
     bindVideoEvents(); applyPicture(); applySubStyle(); syncTime(); syncTransport();

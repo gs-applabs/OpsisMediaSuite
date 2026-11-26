@@ -37,7 +37,7 @@
     const shift = Number.isFinite(Number(shiftMs)) ? Math.max(-3600000, Math.min(3600000, Number(shiftMs))) : 0;
     const src = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/^WEBVTT[^\n]*\n/, '');
     const out = ['WEBVTT', ''];
-    let cues = 0;
+    let cues = 0; const entries = [];
     for (const block of src.split(/\n[\t ]*\n+/)) {
       if (/^(NOTE(?:\s|$)|STYLE(?:\s|$)|REGION(?:\s|$))/.test(block.trimStart())) continue;
       const lines = block.split('\n').filter((l, i, a) => !(i === 0 && /^\d+$/.test(l.trim()) && a.length > 1 && /-->/.test(a[1])));
@@ -52,9 +52,10 @@
       if (!body) continue;
       const settings = parts[1].slice(b[0].length).trim().split(/\s+/).filter(x => /^(?:align|line|position|size|vertical):[-a-z0-9.,%]+$/i.test(x)).join(' ');
       out.push(`${vttTime(s)} --> ${vttTime(e)}${settings ? ' ' + settings : ''}`, body, '');
+      entries.push({start: Math.max(0,s)/1000, end:e/1000, text:body, settings});
       if (++cues >= LIMITS.cues) break;
     }
-    return { vtt: out.join('\n'), cues };
+    return { vtt: out.join('\n') + '\n', cues, entries };
   }
 
   // Advanced SubStation (.ass / .ssa): dialogue lines only, styling is dropped.
