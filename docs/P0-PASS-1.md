@@ -39,3 +39,6 @@ Photo undo/redo (60 parameter snapshots, no full image copies), preserve geometr
 
 ## Pass 11 — DirectShow registration identity groundwork
 Read-only LAV CLSID inventory (splitter source/splitter/video/audio), per-user versus machine hive, expected DLL/AX basename and PE DLL architecture checks, no COM activation. Status explicitly requires identity review; no signed trust decision, no decoder graph yet. Uses published LAV CLSIDs. Native actual playback still needs CI and real installed pack test.
+
+## Pass 12 — DirectShow proof of concept
+Native CI 45868860734 confirmed LibVLC playback elapsed 524 ms, length 5023 ms, 2 audio tracks and 1 subtitle selected; no NuGet vulnerability reported. Added experimental explicit DirectShow LAV graph with local machine-only x64 registration, path/hash consent, direct COM class factory and explicit connections. No automatic fallback or packaging, no actual LAV test yet. Added built-in WAV graph self-test to native CI; compilation and runtime still pending. Adjacent DLL dependency trust and publisher validation pending, not an OS sandbox.

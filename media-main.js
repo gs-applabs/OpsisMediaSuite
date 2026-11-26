@@ -70,7 +70,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   ipcMain.handle('vp:native-status',e=>trusted(e)?{available:nativeHost.available()}:null);
-  ipcMain.handle('vp:native-open',async(e,p)=>trusted(e)?nativeHost.open(p):{ok:false,code:'denied'});
+  ipcMain.handle('vp:native-open',async(e,p,engine)=>trusted(e)?nativeHost.open(p,engine):{ok:false,code:'denied'});
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 

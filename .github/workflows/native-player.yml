@@ -39,6 +39,15 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'native timeout' }
           Get-Content native-result.json,native-error.log
           if ($p.ExitCode -ne 0) { throw "native test failed: $($p.ExitCode)" }
+      - name: Explicit DirectShow graph test (Windows built-in filters)
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i sine=frequency=440:duration=3 -c:a pcm_s16le fixture.wav
+          if ($LASTEXITCODE) { throw 'WAV fixture failed' }
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--directshow-selftest', ('"' + (Resolve-Path fixture.wav).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput directshow-result.json -RedirectStandardError directshow-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'DirectShow timeout' }
+          Get-Content directshow-result.json,directshow-error.log
+          if ($p.ExitCode -ne 0) { throw "DirectShow test failed: $($p.ExitCode)" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -47,3 +56,5 @@ jobs:
             audit.txt
             native-result.json
             native-error.log
+            directshow-result.json
+            directshow-error.log

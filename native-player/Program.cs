@@ -20,8 +20,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 2 || !SafeLocal(args[1], MediaExt) || (args[0] != "--open" && args[0] != "--selftest")) return 2;
+        if (args.Length != 2 || !SafeLocal(args[1], MediaExt) || (args[0] != "--open" && args[0] != "--selftest" && args[0] != "--directshow" && args[0] != "--directshow-selftest")) return 2;
         try {
+            if (args[0] == "--directshow-selftest") return DirectShowHost.SelfTest(args[1]);
+            if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1]); }
             Core.Initialize();
             bool selftest = args[0] == "--selftest";
             // No remote URL or caller-supplied VLC arguments. Separate process;

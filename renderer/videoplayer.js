@@ -409,7 +409,8 @@
     $('vpAB').addEventListener('click', toggleAB);
     $('vpSnap').addEventListener('click', snapshot);
     $('vpInfo').addEventListener('click', fileInfo);
-    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;}).catch(()=>{});
+    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;}).catch(()=>{});
+    $('vpDirectShow').addEventListener('click',async()=>{const p=current();if(!p||VP.isUrl(p))return;saveResume();video.pause();const r=await api.vpNativeOpen(p,'directshow').catch(()=>null);say(r?.ok?'DirectShow — experimental host launched':'DirectShow — '+(r?.code||'unavailable'));});
     $('vpNative').addEventListener('click', async()=>{
       const p=current(); if(!p||VP.isUrl(p))return;
       saveResume();video.pause();
