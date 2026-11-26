@@ -201,6 +201,8 @@
     const bands = (typeof engine !== 'undefined' && engine.state && engine.state.eqBands) || [];
     fx.filters.forEach((f, i) => { f.gain.value = on ? Number(bands[i]) || 0 : 0; });
     fx.bass.gain.value = on && typeof engine !== 'undefined' && engine.state ? Number(engine.state.bassBoost) || 0 : 0;
+    if(fx.presence)fx.presence.gain.value=on&&typeof engine!=='undefined'?WaveframeAudio.presenceParams(engine.state.presence).gain:0;
+    if(fx.balance)fx.balance.pan.value=on&&typeof engine!=='undefined'?WaveframeAudio.balanceValue(engine.state.balance):0;
   }
   function toggleFx() {
     if (!current() || !video.getAttribute('src')) return;
@@ -211,9 +213,11 @@
         const ctx = new AudioContext(), src = ctx.createMediaElementSource(video), freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
         const filters = freqs.map((f, i) => { const n = ctx.createBiquadFilter(); n.type = i === 0 ? 'lowshelf' : i === 9 ? 'highshelf' : 'peaking'; n.frequency.value = f; n.Q.value = 1; return n; });
         const bass = ctx.createBiquadFilter(); bass.type = 'lowshelf'; bass.frequency.value = 100;
-        let node = src; for (const f of [...filters, bass]) { node.connect(f); node = f; }
+        const presence=ctx.createBiquadFilter();presence.type='peaking';presence.frequency.value=2800;presence.Q.value=.85;
+        const balance=ctx.createStereoPanner();
+        let node = src; for (const f of [...filters, bass,presence,balance]) { node.connect(f); node = f; }
         node.connect(ctx.destination);
-        fx = { ctx, filters, bass };
+        fx = { ctx, filters, bass,presence,balance };
       } catch (_) { say(t('vp.fxFailed')); return; }
     }
     btn.setAttribute('aria-pressed', String(on)); btn.classList.toggle('active', on);

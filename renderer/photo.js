@@ -120,7 +120,8 @@
     c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
     drawHist(out.data);
     exportSize();
-    const o = P.resizeOutput(...Object.values(P.outputSize(bmp.width, bmp.height, full())),Number($('phResize').value));
+    const dimensions=P.outputSize(bmp.width,bmp.height,full());
+    const o=P.resizeOutput(dimensions.width,dimensions.height,Number($('phResize').value));
     $('phSave').title = fmt(t('ph.outputSize'), { w: o.width, h: o.height });
   }
   function drawHist(data) {

@@ -78,6 +78,8 @@ class AudioEngine {
     this.state = {
       eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       bassBoost: 0,
+      presence:0,
+      balance:0,
       volumeBoost: 0,
       surround: 0,
       compressor: false,
@@ -146,7 +148,8 @@ class AudioEngine {
 
     this.volumeBoostNode = ctx.createGain();
     this.volumeBoostNode.gain.value = 1;
-    this.bassBoostNode.connect(this.volumeBoostNode);
+    this.presenceNode=ctx.createBiquadFilter();this.presenceNode.type='peaking';this.presenceNode.frequency.value=2800;this.presenceNode.Q.value=.85;this.presenceNode.gain.value=0;
+    this.bassBoostNode.connect(this.presenceNode);this.presenceNode.connect(this.volumeBoostNode);
 
     const splitter = ctx.createChannelSplitter(2);
     const merger = ctx.createChannelMerger(2);
@@ -185,8 +188,9 @@ class AudioEngine {
     this.compWet = ctx.createGain();
     this.compWet.gain.value = 0;
     this.compDry.gain.value = 1;
-    merger.connect(this.compDry);
-    merger.connect(this.compressorNode);
+    this.balanceNode=ctx.createStereoPanner();this.balanceNode.pan.value=0;merger.connect(this.balanceNode);
+    this.balanceNode.connect(this.compDry);
+    this.balanceNode.connect(this.compressorNode);
     this.compressorNode.connect(this.compWet);
     this.compSum = ctx.createGain();
     this.compDry.connect(this.compSum);
@@ -432,6 +436,18 @@ class AudioEngine {
     const target = this.state.normalizationEnabled ? linearGain : 1;
     this.normGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.15);
   }
+  setPresence(value) {
+    const n=Math.max(0,Math.min(100,Number(value)||0));
+    this.state.presence=n;
+    this.presenceNode.gain.setTargetAtTime(WaveframeAudio.presenceParams(n).gain,this.ctx.currentTime,.03);
+    window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
+  }
+  setBalance(value) {
+    const n=Math.max(-100,Math.min(100,Number(value)||0));
+    this.state.balance=n;
+    this.balanceNode.pan.setTargetAtTime(WaveframeAudio.balanceValue(n),this.ctx.currentTime,.03);
+    window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
+  }
   setBassBoost(db) {
     this.state.bassBoost = db;
     this.bassBoostNode.gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
@@ -464,7 +480,7 @@ class AudioEngine {
     this.exciterDry.gain.setTargetAtTime(1, tt, 0.05);
   }
   resetEffects() {
-    this.setBassBoost(0);
+    this.setBassBoost(0);this.setPresence(0);this.setBalance(0);
     this.setVolumeBoostDb(0);
     this.setSurround(0);
     this.setCompressor(false);
@@ -511,7 +527,8 @@ class AudioEngine {
     let chainEnd = volBoost;
     src.connect(eqNodes[0]);
     eqNodes[eqNodes.length - 1].connect(bassBoost);
-    bassBoost.connect(volBoost);
+    const presence=offline.createBiquadFilter(), pp=WaveframeAudio.presenceParams(this.state.presence);presence.type='peaking';presence.frequency.value=pp.frequency;presence.Q.value=pp.q;presence.gain.value=pp.gain;
+    bassBoost.connect(presence);presence.connect(volBoost);
 
     if (this.state.surround > 0) {
       const stereo = offline.createGain(); stereo.channelCount = 2; stereo.channelCountMode = 'explicit'; stereo.channelInterpretation = 'speakers';
@@ -521,6 +538,7 @@ class AudioEngine {
       chainEnd.connect(stereo); stereo.connect(split); split.connect(mid,0); split.connect(mid,1); split.connect(side,0); split.connect(invert,1); invert.connect(side);
       mid.connect(merge,0,0); mid.connect(merge,0,1); side.connect(merge,0,0); side.connect(invertR); invertR.connect(merge,0,1); chainEnd=merge;
     }
+    if(this.state.balance){const balance=offline.createStereoPanner();balance.pan.value=WaveframeAudio.balanceValue(this.state.balance);chainEnd.connect(balance);chainEnd=balance;}
     if (this.state.compressor) {
       const comp = offline.createDynamicsCompressor();
       comp.threshold.value = -24; comp.knee.value = 30; comp.ratio.value = 8;
@@ -1038,6 +1056,7 @@ function renderUserPresets() {
 function applyUserPreset(p) {
   engine.applyEqBands(p.bands);
   setEqUi(p.bands);
+  engine.setPresence(p.presence??0);engine.setBalance(p.balance??0);syncProfessionalFx();
   if (typeof p.bassBoost === 'number') {
     engine.setBassBoost(p.bassBoost);
     els.bassBoost.value = String(p.bassBoost);
@@ -1071,6 +1090,7 @@ els.btnSavePreset.addEventListener('click', async () => {
     name,
     bands: [...engine.state.eqBands],
     bassBoost: engine.state.bassBoost,
+    presence:engine.state.presence,balance:engine.state.balance,
     volumeBoost: engine.state.volumeBoost,
     surround: engine.state.surround,
     compressor: engine.state.compressor,
@@ -1483,8 +1503,16 @@ els.volBoost.addEventListener('input', () => {
   els.volBoostVal.textContent = `${db.toFixed(1)} dB`;
   setKnobPct(els.knobVolBoost, db / 12);
 });
+function syncProfessionalFx(){
+  const p=document.getElementById('fxPresence'),b=document.getElementById('fxBalance');
+  p.value=String(engine.state.presence);b.value=String(engine.state.balance);
+  document.getElementById('fxPresenceValue').textContent=WaveframeAudio.presenceParams(engine.state.presence).gain.toFixed(1)+' dB';
+  document.getElementById('fxBalanceValue').textContent=String(engine.state.balance);
+}
+document.getElementById('fxPresence').addEventListener('input',e=>{engine.setPresence(e.target.value);syncProfessionalFx();});
+document.getElementById('fxBalance').addEventListener('input',e=>{engine.setBalance(e.target.value);syncProfessionalFx();});
 els.btnResetFx.addEventListener('click', () => {
-  engine.resetEffects();
+  engine.resetEffects();syncProfessionalFx();
   els.bassBoost.value = '0'; els.bassBoostVal.textContent = '0 dB'; setKnobPct(els.knobBassBoost, 0);
   els.surround.value = '0'; els.surroundVal.textContent = '0%'; setKnobPct(els.knobSurround, 0);
   els.volBoost.value = '0'; els.volBoostVal.textContent = '0 dB'; setKnobPct(els.knobVolBoost, 0);
@@ -2537,6 +2565,12 @@ window.__selfTest = async function () {
   const check = (name, ok, extra) => out.push({ name, ok: !!ok, extra: extra === undefined ? '' : String(extra) });
   try {
     check('audiolib loaded', typeof WaveframeAudio === 'object' && typeof WaveframeAudio.integratedLufs === 'function');
+    engine.setPresence(100);engine.setBalance(-50);syncProfessionalFx();
+    const response=new Float32Array(1),phase=new Float32Array(1);const testFilter=new OfflineAudioContext(2,480,48000).createBiquadFilter();
+    const pp=WaveframeAudio.presenceParams(engine.state.presence);testFilter.type='peaking';testFilter.frequency.value=pp.frequency;testFilter.Q.value=pp.q;testFilter.gain.value=pp.gain;testFilter.getFrequencyResponse(new Float32Array([2800]),response,phase);
+    check('presence filter boosts 2.8kHz by 6dB',Math.abs(20*Math.log10(response[0])-6)<.1);
+    check('stereo balance setting reaches engine',engine.state.balance===-50);
+    engine.setPresence(0);engine.setBalance(0);syncProfessionalFx();
     check('sleep button present', !!document.getElementById('btnSleep'));
     check('export button present', !!document.getElementById('btnExportApo'));
     check('loudness panel present', !!document.getElementById('loudnessInfo'));

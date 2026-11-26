@@ -130,6 +130,12 @@
     return remainingMs / fadeMs;
   }
 
+  // Independent presence and stereo balance; no external DSP implementation copied.
+  function presenceParams(amount) {
+    const n=Math.max(0,Math.min(100,Number(amount)||0))/100;
+    return {frequency:2800,q:.85,gain:6*n};
+  }
+  function balanceValue(amount) {return Math.max(-1,Math.min(1,(Number(amount)||0)/100));}
   function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
-  return { routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

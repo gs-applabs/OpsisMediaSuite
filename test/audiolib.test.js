@@ -119,3 +119,8 @@ test('FxSound policy bypasses only explicit external mode or confirmed auto outp
  assert.equal(lib.routeBypass('auto',null),false);
  assert.equal(lib.routeBypass('unknown',true),false);
 });
+
+test('presence and stereo balance are bounded and neutral by default',()=>{
+ assert.equal(lib.presenceParams(0).gain,0);assert.equal(lib.presenceParams(100).gain,6);assert.equal(lib.presenceParams(200).gain,6);assert.equal(lib.presenceParams(-10).gain,0);
+ assert.equal(lib.balanceValue(-200),-1);assert.equal(lib.balanceValue(25),.25);assert.equal(lib.balanceValue(NaN),0);
+});

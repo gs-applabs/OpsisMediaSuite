@@ -48,3 +48,6 @@ Read-only cached installed/running detector, status distinguishes default output
 
 ## Pass 14 — photo export worker and resizing
 Pass 13 CI 173/173, Electron self-test and native CI passed. Export pixel processing moves to dedicated transferable-buffer worker with 120s timeout; export long-edge choices, dimensions display, no upscale; conservative 768 MiB work estimate rejects expensive exports (including some previously permitted 80MP images). Decode still happens in renderer, not a fully tiled pipeline. Real worker/undo/redo checks added. Resize output still uses canvas and re-encodes metadata. No final packaging.
+
+## Pass 15 — audio presence and balance
+Independent 2.8 kHz peaking presence control (0–6 dB), stereo balance, live and offline graph and Chromium video EQ, presets and reset, bounded values, real frequency-response test. Native engines not yet using Web Audio DSP. New labels bilingual; full translation and layout verification pending. Equalizer APO export remains EQ/bass only, not full DSP settings.
