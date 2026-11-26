@@ -110,3 +110,12 @@ test('sleep fade: full volume until the last 10 s, then linear to silence', () =
   assert.equal(lib.sleepFadeGain(0), 0);
   assert.equal(lib.sleepFadeGain(-5), 0);
 });
+
+test('FxSound policy bypasses only explicit external mode or confirmed auto output',()=>{
+ assert.equal(lib.routeBypass('native',true),false);
+ assert.equal(lib.routeBypass('external',false),true);
+ assert.equal(lib.routeBypass('auto',true),true);
+ assert.equal(lib.routeBypass('auto',false),false);
+ assert.equal(lib.routeBypass('auto',null),false);
+ assert.equal(lib.routeBypass('unknown',true),false);
+});

@@ -306,12 +306,22 @@ function createWindow() {
   const fromMain = (e) => e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
   const fromApp = (e) => fromMain(e) || (!!helpWindow && !helpWindow.isDestroyed() && e.sender === helpWindow.webContents && e.senderFrame === helpWindow.webContents.mainFrame);
   // Read-only detection of installed FxSound; never launch it or change system audio settings.
-  ipcMain.handle('fxsound:detect', async (e) => {
-    if (!fromMain(e) || e.senderFrame !== win.webContents.mainFrame || process.platform !== 'win32') return null;
-    const ps = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const script = "$ErrorActionPreference='Stop'; $p=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); if (Get-ItemProperty $p -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '^FxSound(?:\\s|$)' } | Select-Object -First 1) { 'yes' } else { 'no' }";
-    return new Promise(resolve => execFile(ps, ['-NoProfile','-NonInteractive','-Command',script], { windowsHide: true, timeout: 5000, maxBuffer: 4096 }, (err, stdout) => resolve(err ? null : stdout.trim() === 'yes' ? true : stdout.trim() === 'no' ? false : null)));
-  });
+  let fxStatusCache=null,fxStatusAt=0,fxStatusPending=null;
+  function fxSoundStatus() {
+    if(process.platform!=='win32')return Promise.resolve({installed:null,running:null});
+    if(fxStatusCache&&Date.now()-fxStatusAt<30000)return Promise.resolve(fxStatusCache);
+    if(fxStatusPending)return fxStatusPending;
+    const ps=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+    const script="$ErrorActionPreference='Stop'; $p=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); $installed=[bool](Get-ItemProperty $p -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '^FxSound(?:\\s|$)' } | Select-Object -First 1); $running=[bool](Get-Process -Name FxSound -ErrorAction SilentlyContinue | Select-Object -First 1); @{installed=$installed;running=$running} | ConvertTo-Json -Compress";
+    fxStatusPending=new Promise(resolve=>execFile(ps,['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:5000,maxBuffer:4096},(err,out)=>{
+      let result={installed:null,running:null};
+      if(!err)try{const r=JSON.parse(out);result={installed:typeof r.installed==='boolean'?r.installed:null,running:typeof r.running==='boolean'?r.running:null};}catch{}
+      fxStatusCache=result;fxStatusAt=Date.now();resolve(result);
+    })).finally(()=>{fxStatusPending=null;});
+    return fxStatusPending;
+  }
+  ipcMain.handle('fxsound:detect',async(e)=>fromMain(e)?(await fxSoundStatus()).installed:null);
+  ipcMain.handle('fxsound:status',async(e)=>fromMain(e)?fxSoundStatus():null);
   const PNG_DATA_URL = /^data:image\/png;base64,[A-Za-z0-9+/=]{1,200000}$/;
 
   ipcMain.on('thumbbar:icons', (event, icons) => {

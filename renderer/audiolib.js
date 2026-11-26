@@ -130,5 +130,6 @@
     return remainingMs / fadeMs;
   }
 
-  return { EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
+  return { routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

@@ -89,6 +89,7 @@ class AudioEngine {
       muted: false,
       normalizationEnabled: true,
       masterEnabled: true,
+      routeBypass: false,
     };
 
     this._buildGraph();
@@ -346,10 +347,21 @@ class AudioEngine {
   }
 
   setMasterEnable(on) {
-    this.state.masterEnabled = on;
-    const tt = this.ctx.currentTime;
-    this.masterBypassWet.gain.setTargetAtTime(on ? 1 : 0, tt, 0.05);
-    this.masterBypassDry.gain.setTargetAtTime(on ? 0 : 1, tt, 0.05);
+    this.state.masterEnabled = !!on;
+    this.applyLiveBypass();
+  }
+
+  setRouteBypass(on) {
+    this.state.routeBypass=!!on;
+    this.applyLiveBypass();
+  }
+
+  applyLiveBypass() {
+    const on=this.state.masterEnabled&&!this.state.routeBypass;
+    const tt=this.ctx.currentTime;
+    this.masterBypassWet.gain.setTargetAtTime(on?1:0,tt,0.05);
+    this.masterBypassDry.gain.setTargetAtTime(on?0:1,tt,0.05);
+    window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
 
   setMuted(m) {
@@ -1480,31 +1492,39 @@ els.btnResetFx.addEventListener('click', () => {
   activePresetKey = null;
 });
 wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.masterEnabled);
-// Advisory only: OS-wide processing must not be changed without consent.
+// User-selected live DSP policy. Never switch OS devices or alter export settings.
 (() => {
-  const panel = document.getElementById('fxSoundNotice'), status = document.getElementById('fxSoundStatus'), bypass = document.getElementById('fxSoundBypass');
-  let installed = null, route = false, deviceSeen = false, revision = 0;
+  const panel=document.getElementById('fxSoundNotice'),status=document.getElementById('fxSoundStatus'),bypass=document.getElementById('fxSoundBypass'),select=document.getElementById('fxSoundMode');
+  let installed=null,running=null,route=false,deviceSeen=false,revision=0;
+  let mode='native';try{const saved=localStorage.getItem('waveframe.fxSoundMode');if(['native','external','auto'].includes(saved))mode=saved;}catch{}
+  select.value=mode;
   function show() {
-    panel.hidden = !(installed === true || route || deviceSeen);
-    const el = document.documentElement.lang === 'el';
-    status.textContent = route
-      ? (el ? 'Η προεπιλεγμένη έξοδος εμφανίζεται ως FxSound. Αποφύγετε διπλή ενίσχυση.' : 'The default output appears to be FxSound. Avoid double processing.')
-      : (el ? 'Εντοπίστηκε FxSound. Η ενεργή επεξεργασία δεν έχει επιβεβαιωθεί. Ελέγξτε την έξοδο των Windows.' : 'FxSound detected. Active processing is not confirmed. Check Windows output.');
-    bypass.textContent = el ? 'Απενεργοποίηση εφέ OPSIS' : 'Disable OPSIS effects';
+    const el=document.documentElement.lang==='el';
+    panel.hidden=!(installed===true||running===true||route||deviceSeen||mode!=='native');
+    engine.setRouteBypass(WaveframeAudio.routeBypass(mode,route));
+    const details=el?['Εγκατάσταση: '+(installed===true?'ναι':installed===false?'δεν εντοπίστηκε':'άγνωστη'),'Διεργασία: '+(running===true?'εντοπίστηκε':running===false?'δεν εντοπίστηκε':'άγνωστη'),'Προεπιλεγμένη έξοδος: '+(route?'FxSound (βάσει ονόματος)':'μη επιβεβαιωμένη')]:['Installed: '+(installed===true?'yes':installed===false?'not detected':'unknown'),'Process: '+(running===true?'detected':running===false?'not detected':'unknown'),'Default output: '+(route?'FxSound (label match)':'unconfirmed')];
+    details.push(engine.state.routeBypass?(el?'Τα ζωντανά εφέ OPSIS παρακάμπτονται.':'OPSIS live effects bypassed.'):(el?'Η ρύθμιση Master DSP διατηρείται.':'Master DSP preference retained.'));
+    details.push(el?'Δεν επιβεβαιώνεται ενεργή επεξεργασία FxSound. Η ένταση/limiter και οι ρυθμίσεις εξαγωγής δεν αλλάζουν.':'FxSound processing is not verified. Volume/limiter and export preferences are unchanged.');
+    status.textContent=details.join(' · ');
+    select.options[0].textContent=el?'Εφέ OPSIS':'OPSIS effects';
+    select.options[1].textContent=el?'Εξωτερική επεξεργασία — παράκαμψη':'External processing — bypass';
+    select.options[2].textContent=el?'Αυτόματη παράκαμψη για έξοδο FxSound':'Auto bypass for FxSound output';
+    bypass.textContent=el?'Παράκαμψη ζωντανών εφέ':'Bypass live effects';
   }
-  async function devices() {
-    const n = ++revision;
-    const list = await navigator.mediaDevices?.enumerateDevices().catch(() => []) || [];
-    if (n !== revision) return;
-    deviceSeen = list.some(d => d.kind === 'audiooutput' && /fxsound/i.test(d.label));
-    route = list.some(d => d.kind === 'audiooutput' && d.deviceId === 'default' && /fxsound/i.test(d.label));
-    show();
+  function change(){mode=select.value;try{localStorage.setItem('waveframe.fxSoundMode',mode);}catch{}show();}
+  async function devices(){
+    const n=++revision;const list=await navigator.mediaDevices?.enumerateDevices().catch(()=>[])||[];
+    if(n!==revision)return;
+    deviceSeen=list.some(d=>d.kind==='audiooutput'&&/fxsound/i.test(d.label));
+    route=list.some(d=>d.kind==='audiooutput'&&d.deviceId==='default'&&/fxsound/i.test(d.label));show();
   }
-  bypass.addEventListener('click', () => { if (engine.state.masterEnabled) els.swMasterEnable.click(); });
-  navigator.mediaDevices?.addEventListener('devicechange', devices);
-  document.addEventListener('waveframe:language-changed', show);
-  window.waveframe.detectFxSound().then(v => { installed = v; show(); }).catch(() => {});
-  devices();
+  async function detect(){const r=await window.waveframe.fxSoundStatus().catch(()=>null);installed=r?.installed??null;running=r?.running??null;show();}
+  select.addEventListener('change',change);
+  bypass.addEventListener('click',()=>{select.value='external';change();});
+  navigator.mediaDevices?.addEventListener('devicechange',()=>{devices();detect();});
+  window.addEventListener('focus',()=>{devices();detect();});
+  document.addEventListener('waveframe:language-changed',show);
+  detect();devices();
 })();
 // Switches are <button>s: expose them as role=switch and keep aria-checked in step with the 'active' class (whoever toggles it).
 function wireSwitch(btn, onChange, initial = false) {

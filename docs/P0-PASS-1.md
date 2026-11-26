@@ -42,3 +42,6 @@ Read-only LAV CLSID inventory (splitter source/splitter/video/audio), per-user v
 
 ## Pass 12 — DirectShow proof of concept
 Native CI 45868860734 confirmed LibVLC playback elapsed 524 ms, length 5023 ms, 2 audio tracks and 1 subtitle selected; no NuGet vulnerability reported. Added experimental explicit DirectShow LAV graph with local machine-only x64 registration, path/hash consent, direct COM class factory and explicit connections. No automatic fallback or packaging, no actual LAV test yet. Added built-in WAV graph self-test to native CI; compilation and runtime still pending. Adjacent DLL dependency trust and publisher validation pending, not an OS sandbox.
+
+## Pass 13 — FxSound coexistence policy
+Read-only cached installed/running detector, status distinguishes default output label from processing. User-selectable native/external/auto modes; only live EQ/FX bypass changes, not saved master/export preference or OS routing. Limiter/volume remain. Video EQ follows live bypass. Auto is opt-in and default output label must match FxSound; actual FxSound DSP engagement cannot be proven from label or process. Tests added; real installed FxSound hardware validation pending.

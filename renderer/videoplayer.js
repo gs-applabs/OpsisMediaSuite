@@ -197,7 +197,7 @@
   /* ---------------- sound: the Suite's equaliser on the video ---------------- */
   function refreshFx() {
     const btn = $('vpFx'); if (!fx || !btn) return;
-    const on = btn.getAttribute('aria-pressed') === 'true' && (typeof engine === 'undefined' || engine.state.masterEnabled);
+    const on = btn.getAttribute('aria-pressed') === 'true' && (typeof engine === 'undefined' || (engine.state.masterEnabled&&!engine.state.routeBypass));
     const bands = (typeof engine !== 'undefined' && engine.state && engine.state.eqBands) || [];
     fx.filters.forEach((f, i) => { f.gain.value = on ? Number(bands[i]) || 0 : 0; });
     fx.bass.gain.value = on && typeof engine !== 'undefined' && engine.state ? Number(engine.state.bassBoost) || 0 : 0;
@@ -442,6 +442,7 @@
     window.addEventListener('beforeunload', () => { saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
+    window.addEventListener('waveframe:dsp-route-changed',refreshFx);
 
     const frame = $('vpFrame');
     frame.addEventListener('dragover', (e) => { e.preventDefault(); frame.classList.add('drag'); });
