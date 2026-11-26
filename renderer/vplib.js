@@ -33,7 +33,8 @@
   const cleanText = (t) => t.replace(/\{\\[^}]*\}/g, '').replace(/\\N/g, '\n').replace(/\\n/g, '\n').replace(/\0/g, '').trim();
 
   // SubRip (.srt) or WebVTT text -> WebVTT text, every cue moved by shiftMs (negative = earlier). Cues that would start before 0 are clamped.
-  function srtToVtt(text, shiftMs) {
+  function srtToVtt(text, shiftMs, scale=1) {
+    scale=Number.isFinite(Number(scale))?Math.max(.5,Math.min(2,Number(scale))):1;
     const shift = Number.isFinite(Number(shiftMs)) ? Math.max(-3600000, Math.min(3600000, Number(shiftMs))) : 0;
     const src = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/^WEBVTT[^\n]*\n/, '');
     const out = ['WEBVTT', ''];
@@ -46,7 +47,7 @@
       const parts = lines[k].split('-->');
       const a = TS.exec(parts[0]), b = TS.exec(parts[1] || '');
       if (!a || !b) continue;
-      const s = toMs(a[1] || 0, a[2], a[3], a[4]) + shift, e = toMs(b[1] || 0, b[2], b[3], b[4]) + shift;
+      const s = toMs(a[1] || 0, a[2], a[3], a[4])*scale + shift, e = toMs(b[1] || 0, b[2], b[3], b[4])*scale + shift;
       if (e <= 0 || e <= s) continue;
       const body = cleanText(lines.slice(k + 1).join('\n'));
       if (!body) continue;
@@ -78,11 +79,17 @@
     return out.join('\n');
   }
 
-  function subtitleToVtt(text, ext, shiftMs) {
+  function subtitleToVtt(text, ext, shiftMs, scale=1) {
     const e = String(ext || '').toLowerCase();
-    return srtToVtt(e === 'ass' || e === 'ssa' ? assToSrt(text) : text, shiftMs);
+    return srtToVtt(e === 'ass' || e === 'ssa' ? assToSrt(text) : text, shiftMs, scale);
   }
 
+  function preferredSubtitle(sources,languages=['el','en']) {
+    const aliases={el:['el','ell','gre','gr','greek'],en:['en','eng','english'],fr:['fr','fra','fre','french'],de:['de','deu','ger','german'],it:['it','ita','italian'],es:['es','spa','spanish']};
+    const rows=Array.isArray(sources)?sources:[];
+    for(const l of (Array.isArray(languages)?languages:['el','en'])){if(typeof l!=='string')continue;const tokens=aliases[l.toLowerCase()]||[l.toLowerCase()];const i=rows.findIndex(s=>typeof s?.name==='string'&&s.name.replace(/\.[^.]+$/,'').toLowerCase().split(/[. _-]/).some(x=>tokens.includes(x)));if(i>=0)return i;}
+    return rows.length?0:-1;
+  }
   // Resume position: remembered after the first 5 s, forgotten when the end is near (last 10 s or 95 %).
   function resumeAction(posMs, durMs) {
     if (!Number.isFinite(durMs) || !Number.isFinite(posMs) || !(durMs > 0) || posMs < 0) return 'keep';
@@ -139,5 +146,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

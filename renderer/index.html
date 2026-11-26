@@ -314,6 +314,8 @@
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpSubMinus" aria-label="-0.5 s">−0,5″</button>
                   <span class="vp-delay" id="vpSubDelay" aria-live="polite">0 s</span>
+                  <button class="small-btn" id="vpSubReset" aria-label="Reset subtitle delay / Μηδενισμός καθυστέρησης">0 s</button>
+                  <label>FPS <select id="vpSubFps" aria-label="Subtitle frame rate conversion"><option value="1">1:1</option><option value="0.95904">23.976 → 25</option><option value="1.042709375">25 → 23.976</option><option value="0.96">24 → 25</option><option value="1.0416666667">25 → 24</option></select></label>
                   <button class="small-btn" id="vpSubPlus" aria-label="+0.5 s">+0,5″</button>
                 </div>
                 <div class="vp-field"><label for="vpSubSize" data-i18n="vp.subSize">Μέγεθος</label><input type="range" id="vpSubSize" min="8" max="48" step="1" value="16" /></div>
@@ -370,6 +372,8 @@
             <div class="vp-bar">
               <button class="small-btn" id="phOpen" data-i18n="ph.open">Άνοιγμα</button>
               <button class="small-btn" id="phAuto" data-i18n="ph.auto">Αυτόματη βελτίωση</button>
+              <button class="small-btn" id="phUndo" disabled aria-label="Undo / Αναίρεση">↶ Undo</button>
+              <button class="small-btn" id="phRedo" disabled aria-label="Redo / Επανάληψη">↷ Redo</button>
               <button class="small-btn" id="phReset" data-i18n="ph.reset">Επαναφορά</button>
               <button class="small-btn" id="phCompare" data-i18n="ph.compare">Πριν (κράτα πατημένο)</button>
               <button class="small-btn" id="phRotL" data-i18n="ph.rotL">↶ 90°</button>

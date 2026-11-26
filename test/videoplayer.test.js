@@ -174,3 +174,10 @@ test('stop disposes pending adapter and cancels an opening session',async()=>{
  const s=new PlaybackSession({chromium:()=>({open:()=>new Promise(r=>{finish=r;}),play:async()=>{},pause:async()=>{},seek:async()=>{},stop:async()=>{},dispose:async()=>{disposed++;finish({ok:false});}})});
  const p=s.open('clip');await new Promise(r=>setImmediate(r));await s.stop();assert.equal((await p).code,'superseded');assert.equal(disposed,1);assert.equal(s.state,'idle');
 });
+
+test('subtitle FPS correction scales timestamps before offset and supports Greek language aliases',()=>{
+ const r=V.subtitleToVtt('1\n00:00:10,000 --> 00:00:20,000\nGreek','srt',500,.96);
+ assert.equal(r.entries[0].start,10.1);assert.equal(r.entries[0].end,19.7);
+ assert.equal(V.preferredSubtitle([{name:'film.en.srt'},{name:'film.Greek.srt'}]),1);
+ assert.equal(V.preferredSubtitle([],['el']),-1);
+});

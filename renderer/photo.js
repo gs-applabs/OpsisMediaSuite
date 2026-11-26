@@ -17,6 +17,10 @@
   let openGeneration = 0;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
+  let history=P.createHistory({params,cropKey});
+  function updateHistory(){ $('phUndo').disabled=!history.canUndo();$('phRedo').disabled=!history.canRedo(); }
+  function checkpoint(){if(!orig)return;history.push({params,cropKey});updateHistory();}
+  function restore(snapshot){params=snapshot.params;cropKey=snapshot.cropKey;$('phCrop').value=cropKey;syncSliders();updateHistory();schedule();}
   const info = (text) => { $('phInfo').textContent = text || ''; };
 
   function build() {
@@ -28,21 +32,23 @@
       const input = document.createElement('input'); input.type = 'range'; input.id = `ph_${key}`; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(P.defaults()[key]);
       const out = document.createElement('output'); out.htmlFor = input.id; out.textContent = input.value;
       input.addEventListener('input', () => { params[key] = Number(input.value); out.textContent = key === 'exposure' || key === 'gamma' ? Number(input.value).toFixed(2) : input.value; schedule(); });
-      input.addEventListener('dblclick', () => { input.value = String(P.defaults()[key]); input.dispatchEvent(new Event('input')); });
+      input.addEventListener('change',checkpoint);
+      input.addEventListener('dblclick', () => { input.value = String(P.defaults()[key]); input.dispatchEvent(new Event('input')); checkpoint(); });
       row.append(label, input, out); box.append(row);
     }
     for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k; $('phCrop').append(o); }
     $('phOpen').addEventListener('click', async () => { const p = await api.photoPick(); if (p) openPath(p); });
-    $('phAuto').addEventListener('click', () => { if (!preview) return; params = { ...params, ...P.autoParams(preview) }; syncSliders(); schedule(); });
-    $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders(); schedule(); });
-    $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; schedule(); });
-    $('phRotR').addEventListener('click', () => { params.rotate = (params.rotate + 90) % 360; schedule(); });
-    $('phFlipH').addEventListener('click', () => { params.flipH = !params.flipH; schedule(); });
-    $('phFlipV').addEventListener('click', () => { params.flipV = !params.flipV; schedule(); });
-    $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value; schedule(); });
+    $('phAuto').addEventListener('click', () => { if (!preview) return; params = P.applyAuto(preview,params); syncSliders(); checkpoint(); schedule(); });
+    $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders(); checkpoint(); schedule(); });
+    $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; checkpoint(); schedule(); });
+    $('phRotR').addEventListener('click', () => { params.rotate = (params.rotate + 90) % 360; checkpoint(); schedule(); });
+    $('phFlipH').addEventListener('click', () => { params.flipH = !params.flipH; checkpoint(); schedule(); });
+    $('phFlipV').addEventListener('click', () => { params.flipV = !params.flipV; checkpoint(); schedule(); });
+    $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value; checkpoint(); schedule(); });
+    $('phUndo').addEventListener('click',()=>{if(orig)restore(history.undo());});$('phRedo').addEventListener('click',()=>{if(orig)restore(history.redo());});updateHistory();
     const cmp = $('phCompare');
     const down = () => { comparing = true; schedule(); }, up = () => { comparing = false; schedule(); };
-    cmp.addEventListener('pointerdown', down); cmp.addEventListener('pointerup', up); cmp.addEventListener('pointerleave', up);
+    cmp.addEventListener('pointerdown', down); cmp.addEventListener('pointerup', up); cmp.addEventListener('pointerleave', up); cmp.addEventListener('pointercancel',up);cmp.addEventListener('blur',up);window.addEventListener('blur',up);
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
     $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png'); });
     $('phSave').addEventListener('click', save);
@@ -89,7 +95,7 @@
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0, sz.width, sz.height);
       const d = g.getImageData(0, 0, sz.width, sz.height);
       orig = { data: d.data, width: d.width, height: d.height };
-      preview = orig;
+      preview = orig; history=P.createHistory({params,cropKey});comparing=false;updateHistory();
       $('phDrop').classList.add('has-media');
       info(fmt(t('ph.opened'), { name, w: b.width, h: b.height, mp: (b.width * b.height / 1e6).toFixed(1) }));
       schedule();

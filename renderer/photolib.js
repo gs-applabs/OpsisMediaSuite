@@ -186,6 +186,22 @@
     return clampParams({ ...defaults(), black: Math.min(black, 120), white: Math.max(white, 135), gamma: Math.round(gamma * 100) / 100, saturation: 8 });
   }
 
+  // Store parameter snapshots only, never full-resolution image copies.
+  function createHistory(initial,limit=60) {
+    const clone=v=>JSON.parse(JSON.stringify(v));
+    let items=[clone(initial)],index=0;
+    return {
+      current:()=>clone(items[index]),
+      canUndo:()=>index>0,canRedo:()=>index<items.length-1,
+      push(v){const next=clone(v);if(JSON.stringify(next)===JSON.stringify(items[index]))return false;items=items.slice(0,index+1);items.push(next);if(items.length>limit)items.shift();index=items.length-1;return true;},
+      undo(){if(index>0)index--;return clone(items[index]);},
+      redo(){if(index<items.length-1)index++;return clone(items[index]);}
+    };
+  }
+  function applyAuto(img,params) {
+    const a=autoParams(img);
+    return {...params,black:a.black,white:a.white,gamma:a.gamma,saturation:a.saturation};
+  }
   function previewSize(w, h, maxEdge) {
     const m = maxEdge || LIMITS.previewEdge, s = Math.min(1, m / Math.max(w, h));
     return { width: Math.max(1, Math.round(w * s)), height: Math.max(1, Math.round(h * s)), scale: s };
@@ -198,5 +214,5 @@
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

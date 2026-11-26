@@ -15,7 +15,7 @@
   let session = null, playbackEngine = null;
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
   let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null, nativeSubtitleTrack = null;
-  let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, saveTimer = 0, built = false, fx = null;
+  let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, subScale = 1, saveTimer = 0, built = false, fx = null;
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
   const current = () => (idx >= 0 ? list[idx] : null);
@@ -129,7 +129,7 @@
   }
 
   /* ---------------- subtitles ---------------- */
-  function clearSubs() { ++subRevision; subSrc = []; subSel = -1; subDelay = 0; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;$('vpSubFps').value='1'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -145,7 +145,7 @@
       nativeSubtitleTrack.mode = 'disabled';
     }
     if (subSel < 0 || !subSrc[subSel]) return;
-    const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000);
+    const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale);
     if (!r.cues) { say(t('vp.subEmpty')); return; }
     if (!nativeSubtitleTrack) nativeSubtitleTrack = video.addTextTrack('subtitles','OPSIS subtitles');
     // Hidden mode allows cues to be populated before native rendering begins.
@@ -166,12 +166,7 @@
     }
     nativeSubtitleTrack.mode = 'showing';
   }
-  function preferredIndex() {
-    const stored = get(K.subs, {}) || {};
-    const langs = Array.isArray(stored.languages) ? stored.languages.filter(l => typeof l === 'string' && /^[a-z]{2,3}$/i.test(l)) : ['el','en'];
-    for (const l of langs) { const i = subSrc.findIndex(s => s.name.replace(/\.[^.]+$/, '').toLowerCase().split(/[._-]/).includes(l.toLowerCase())); if (i >= 0) return i; }
-    return 0;
-  }
+  function preferredIndex() { return VP.preferredSubtitle(subSrc,(get(K.subs,{})||{}).languages); }
   async function loadSiblingSubs(p, g, revision) {
     const found = await api.vpSubsFor(p).catch(() => []);
     if (generation !== g || current() !== p || !Array.isArray(found) || !found.length) return;
@@ -390,6 +385,8 @@
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { ++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
+    $('vpSubReset').addEventListener('click',()=>setDelay(0));
+    $('vpSubFps').addEventListener('change',()=>{subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));
     $('vpSubPlus').addEventListener('click', () => setDelay(subDelay + 0.5));
     $('vpSubSize').addEventListener('input', applySubStyle);

@@ -119,3 +119,13 @@ test('creative photo controls preserve alpha, source and neutral output', () => 
   const v=P.process(uniform,{vignette:100});
   assert.ok(v.data[0]<v.data[(2*5+2)*4]); assert.equal(v.data[3],200);
 });
+
+test('parameter history is bounded, independent and clears redo after new edits',()=>{
+ const h=P.createHistory({x:0},3);h.push({x:1});h.push({x:2});h.push({x:3});
+ assert.equal(h.undo().x,2);assert.equal(h.undo().x,1);assert.equal(h.canUndo(),false);
+ const v=h.current();v.x=99;assert.equal(h.current().x,1);h.push({x:4});assert.equal(h.canRedo(),false);
+});
+test('auto enhance preserves geometry and creative adjustments',()=>{
+ const p=P.applyAuto(flat(8,8,90),{...P.defaults(),rotate:90,flipH:true,vignette:70});
+ assert.equal(p.rotate,90);assert.equal(p.flipH,true);assert.equal(p.vignette,70);
+});

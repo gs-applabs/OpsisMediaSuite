@@ -33,3 +33,6 @@ Added independent .NET 10 WinForms x64 native host, pinned LibVLCSharp 3.10.2 / 
 
 ## Pass 9 — fix actual CI regressions
 Integrated Electron checkpoint cadbb2ea passed. Native initial build failed CS0246 (TrackDescription namespace); now maps inferred LibVLC track values into host-owned TrackItem before passing to UI. Photo mock exposed missing app.on, fixed optional lifecycle subscription. Added frame, rate, chapter and fullscreen controls and actual selected-track verification. New CI pending.
+
+## Pass 10 — P2/P5 parallel improvements
+Photo undo/redo (60 parameter snapshots, no full image copies), preserve geometry/creative controls on auto enhance, clear compare on lost pointer/blur. Subtitle FPS correction for 23.976/24/25 and reset delay; language aliases Greek/English and common languages; unit coverage. New controls currently English/bilingual fallback, full 20-locale localisation pending. DirectShow execution not yet implemented.
