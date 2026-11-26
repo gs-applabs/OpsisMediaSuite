@@ -47,16 +47,17 @@
   }
   function chromiumAdapter() {
     const el=video;
-    let opening=null;
+    let opening=null,closed=false;
     return {
       open(source){return new Promise(resolve=>{
+        if(closed){resolve({ok:false});return;}
         let timer; const finish=ok=>{clearTimeout(timer);el.removeEventListener('loadeddata',loaded);el.removeEventListener('error',failed);opening=null;resolve({ok});};
         const loaded=()=>finish(true),failed=()=>finish(false);opening=failed;
         el.addEventListener('loadeddata',loaded,{once:true});el.addEventListener('error',failed,{once:true});
         timer=setTimeout(failed,15000);el.src=source;el.load();
       });},
       play:()=>el.play(),pause:()=>el.pause(),seek:seconds=>{if(Number.isFinite(el.duration))el.currentTime=Math.max(0,Math.min(el.duration,seconds));},
-      stop:()=>el.pause(),dispose:()=>{if(opening)opening();el.pause();el.removeAttribute('src');el.load();}
+      stop:()=>el.pause(),dispose:()=>{if(closed)return;closed=true;if(opening)opening();el.pause();el.removeAttribute('src');el.load();}
     };
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }

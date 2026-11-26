@@ -16,12 +16,13 @@ function normalize(raw,arch=process.arch){
 // no registry mutation, no renderer-controlled arguments. Registry metadata is not proof of compatibility.
 const SCRIPT = String.raw`
 $ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)
 $packs=@();$filters=@();$transforms=@()
 foreach($v in @('Registry64','Registry32')){
- $view=[Microsoft.Win32.RegistryView]::$v
+ $view=[Microsoft.Win32.RegistryView][Enum]::Parse([Microsoft.Win32.RegistryView],$v)
  $label=if($v -eq 'Registry64'){'64'}else{'32'}
  foreach($h in @('LocalMachine','CurrentUser')){
-  $root=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::$h,$view)
+  $root=[Microsoft.Win32.RegistryKey]::OpenBaseKey(([Microsoft.Win32.RegistryHive][Enum]::Parse([Microsoft.Win32.RegistryHive],$h)),$view)
   try {
    $u=$root.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')
    if($u){try{foreach($key in $u.GetSubKeyNames()){$k=$u.OpenSubKey($key);if($k){try{$n=[string]$k.GetValue('DisplayName');if($n -match '^(K-Lite Codec Pack|Shark007|ADVANCED Codecs|STANDARD Codecs|Combined Community Codec Pack|X Codec Pack|ffdshow|DivX|Xvid|LAV Filters|VLC media player)\b'){$packs+=@{name=$n;version=[string]$k.GetValue('DisplayVersion');view=$label}}}finally{$k.Dispose()}}}}finally{$u.Dispose()}}

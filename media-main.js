@@ -206,6 +206,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
           }
         }
       }
+      const codecReport = await inventory();
+      check('Windows codec inventory returns bounded registry metadata', process.platform !== 'win32' || (codecReport.status==='ok' && Array.isArray(codecReport.packs) && Array.isArray(codecReport.filters) && Array.isArray(codecReport.transforms)), JSON.stringify({status:codecReport.status,arch:codecReport.arch,packs:codecReport.packs.length,filters:codecReport.filters.length,transforms:codecReport.transforms.length}));
       /* photo editor */
       const { nativeImage } = require('electron');
       const W = 64, H = 48, buf = Buffer.alloc(W * H * 4);

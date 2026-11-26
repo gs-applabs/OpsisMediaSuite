@@ -21,3 +21,6 @@ MP4 H.264/AAC remains an explicit separate real-renderer gate (not replaced by W
 
 ## Pass 5 — P1/P3 integration
 CI 45865622981 passed 166/166 and real WebM/MP4/Greek subtitle cue tests. Existing Chromium player now opens via PlaybackSession, waits for decoded data and reports the active engine. Added fixed, cached read-only registry inventory for known installed codec packs, DirectShow registrations and Media Foundation transforms, with 32/64 views, Codec Manager UI and normalization test. This is inventory only, not filter loading or proof of decoding. Native adapters remain pending; new integration needs Windows CI.
+
+## Pass 6 — pending session cancellation and CI inventory gate
+Electron 45.5.0/builder 26.18.0 candidate run 45865645833 succeeded including real renderer and portable packaging. Main branch still has old dependencies; tested manifests must be integrated after latest source checks. Added cancellation/disposal of in-flight adapters, idempotent disposal, explicit registry enum parsing, and a Windows registry inventory self-test. Real K-Lite installed-pack test remains outstanding.
