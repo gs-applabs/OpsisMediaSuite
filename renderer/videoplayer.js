@@ -159,13 +159,15 @@
   let syncAnchor=null,autoSuggestion=null;
   function clearSuggestion(){autoSuggestion=null;$('vpSubApplySync').disabled=true;$('vpSubAutoStatus').textContent='';}
   function clearAnchors(){clearSuggestion();syncAnchor=null;$('vpSubAnchorStatus').textContent='';}
-  function clearSubs() { if(!$('vpSubAutoCancel').disabled)api.vpSubAutoCancel().catch(()=>{});clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { if(!$('vpSubAutoCancel').disabled)api.vpSubAutoCancel().catch(()=>{});clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1;editUndo=null;$('vpSubEditStatus').textContent=''; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
     subSrc.forEach((s, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = s.name; sel.append(o); });
     sel.value = String(subSel);
   }
+  let rawCues=[],editUndo=null;
+  function showCueEditor(){const c=rawCues[$('vpSubCue').selectedIndex];$('vpSubEditStart').value=c?String(c.start):'';$('vpSubEditEnd').value=c?String(c.end):'';$('vpSubEditText').value=c?c.text:'';$('vpSubEditApply').disabled=!c;$('vpSubEditUndo').disabled=!editUndo||editUndo.track!==subSrc[subSel];}
   function rebuildTrack() {
     // Programmatic WebVTT cues avoid the asynchronous blob: fetch and the
     // file-origin/CORS differences between Electron releases.
@@ -175,9 +177,13 @@
       nativeSubtitleTrack.mode = 'disabled';
     }
     const selectedCue=$('vpSubCue').selectedIndex;
-    $('vpSubCue').textContent='';
-    if (subSel < 0 || !subSrc[subSel]) return;
+    $('vpSubCue').textContent='';rawCues=[];
+    if (subSel < 0 || !subSrc[subSel]) {showCueEditor();return;}
     const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps);
+    rawCues=VP.subtitleToVtt(s.text,s.ext,0,1,subFps).entries;
+    for(const [i,c] of rawCues.slice(0,2000).entries()){const o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);$('vpSubCue').append(o);}
+    if(selectedCue>=0&&selectedCue<$('vpSubCue').options.length)$('vpSubCue').selectedIndex=selectedCue;
+    showCueEditor();
     if (!r.cues) { say(r.needsFps?'MicroDVD: choose source FPS / Επιλέξτε αρχικά FPS':t('vp.subEmpty')); return; }
     if (!nativeSubtitleTrack) nativeSubtitleTrack = video.addTextTrack('subtitles','OPSIS subtitles');
     // Hidden mode allows cues to be populated before native rendering begins.
@@ -197,8 +203,7 @@
       nativeSubtitleTrack.addCue(cue);
     }
     nativeSubtitleTrack.mode = 'showing';
-    const raw=VP.subtitleToVtt(s.text,s.ext,0,1,subFps);for(const [i,c] of raw.entries.slice(0,2000).entries()){const o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);$('vpSubCue').append(o);}
-    if(selectedCue>=0&&selectedCue<$('vpSubCue').options.length)$('vpSubCue').selectedIndex=selectedCue;
+
   }
   function preferredIndex() { return VP.preferredSubtitle(subSrc,(get(K.subs,{})||{}).languages); }
   async function loadSiblingSubs(p, g, revision) {
@@ -471,6 +476,23 @@
     });
     $('vpSubAutoCancel').addEventListener('click',()=>{api.vpSubAutoCancel().catch(()=>{});$('vpSubAutoCancel').disabled=true;});
     $('vpSubApplySync').addEventListener('click',()=>{if(!autoSuggestion)return;const r=autoSuggestion;clearAnchors();subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAutoStatus').textContent='Suggestion applied — verify dialogue / Ελέγξτε την ομιλία';});
+    $('vpSubCue').addEventListener('change',showCueEditor);
+    $('vpSubEditApply').addEventListener('click',()=>{
+      const original=subSrc[subSel],i=$('vpSubCue').selectedIndex;if(!original||handoff)return;
+      const start=$('vpSubEditStart').value,end=$('vpSubEditEnd').value;
+      const next=start!==''&&end!==''?VP.editCue(rawCues,i,{start:Number(start),end:Number(end),text:$('vpSubEditText').value}):null;
+      const text=next&&VP.exportSubtitles(next,'vtt');
+      if(!text||new TextEncoder().encode(text).length>5*1024*1024){$('vpSubEditStatus').textContent='Invalid cue or subtitle too large';return;}
+      let track=original;
+      if(!track.edited){if(subSrc.length>=24){$('vpSubEditStatus').textContent='Subtitle track limit reached';return;}track={name:original.name.replace(/\.[^.]+$/,'')+'-edited.vtt',ext:'vtt',text:original.text,edited:true};subSrc.push(track);subSel=subSrc.length-1;}
+      editUndo={track,text:track.text,original:original===track?null:original};track.text=text;++subRevision;clearAnchors();fillSubSelect();rebuildTrack();$('vpSubEditStatus').textContent='Edited copy updated / Ενημερώθηκε το αντίγραφο';
+    });
+    $('vpSubEditUndo').addEventListener('click',()=>{
+      if(!editUndo||editUndo.track!==subSrc[subSel])return;
+      const u=editUndo;editUndo=null;
+      if(u.original){subSrc.splice(subSel,1);subSel=subSrc.indexOf(u.original);}else u.track.text=u.text;
+      ++subRevision;clearAnchors();fillSubSelect();rebuildTrack();$('vpSubEditStatus').textContent='Last edit undone';
+    });
     $('vpSubAnchorReset').addEventListener('click',()=>{clearAnchors();subScale=1;$('vpSubFps').value='1';setDelay(0);});
     async function saveSubtitle(format){
       const s=subSrc[subSel];if(!s){say(t('vp.subEmpty'));return;}

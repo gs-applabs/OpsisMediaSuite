@@ -324,7 +324,11 @@ function init({ getMainWin, resolveFfmpegPath }) {
             await seek(3.1);
             await js("document.getElementById('vpSubCue').selectedIndex=1;document.getElementById('vpSubAnchorB').click();1");
             check('two-point subtitle correction adjusts drift and offset',await js("(()=>{const t=Array.from(document.getElementById('vpVideo').textTracks).find(t=>t.mode==='showing');return t?.cues?.length===2&&Math.abs(t.cues[0].startTime-.7)<.18&&Math.abs(t.cues[1].startTime-3.1)<.18;})()"));
-            await js("document.getElementById('vpSubAnchorReset').click();document.getElementById('vpSubOnlineToggle').click();1");
+            await js("document.getElementById('vpSubAnchorReset').click();document.getElementById('vpSubCue').selectedIndex=0;document.getElementById('vpSubCue').dispatchEvent(new Event('change'));document.getElementById('vpSubEditText').value='Διορθωμένη φράση';document.getElementById('vpSubEditStart').value='1.2';document.getElementById('vpSubEditApply').click();1");
+            check('subtitle editor creates corrected track with changed timing and text',await js("(()=>{const t=Array.from(document.getElementById('vpVideo').textTracks).find(t=>t.mode==='showing');return t?.cues?.[0]?.text==='Διορθωμένη φράση'&&Math.abs(t.cues[0].startTime-1.2)<.001;})()"));
+            await js("document.getElementById('vpSubEditUndo').click();1");
+            check('subtitle editor undo restores original downloaded cue',await js("(()=>{const t=Array.from(document.getElementById('vpVideo').textTracks).find(t=>t.mode==='showing');return t?.cues?.[0]?.text==='Δοκιμή υποτίτλων'&&Math.abs(t.cues[0].startTime-1)<.001;})()"));
+            await js("document.getElementById('vpSubOnlineToggle').click();1");
           }finally{subtitleProvider=savedProvider;server.closeAllConnections();await new Promise(r=>server.close(r));}
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));

@@ -113,6 +113,14 @@
     if(scale<.5||scale>2||Math.abs(delay)>3600)return null;
     return {scale,delay};
   }
+  function editCue(entries,index,patch){
+    if(!Array.isArray(entries)||!Number.isInteger(index)||index<0||index>=entries.length||!patch)return null;
+    const {start,end}=patch;
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||end>3599999||end-start<.05||typeof patch.text!=='string'||patch.text.length>4000)return null;
+    const text=patch.text.replace(/\r\n?/g,'\n').replace(/\0/g,'').replace(/\n[\t ]*\n+/g,'\n').trim();
+    if(!text||text.includes('-->'))return null;
+    return entries.map((c,i)=>i===index?{...c,start:Math.round(start*1000)/1000,end:Math.round(end*1000)/1000,text}:c);
+  }
   function exportSubtitles(entries,format='srt'){
     if(!['srt','vtt'].includes(format)||!Array.isArray(entries))return '';
     const out=format==='vtt'?['WEBVTT','']:[];
@@ -122,7 +130,8 @@
       const body=cue.text.replace(/\0/g,'').replace(/\r\n?/g,'\n').replace(/\n[\t ]*\n+/g,'\n').trim();if(!body)continue;
       const ts=n=>format==='srt'?vttTime(n*1000).replace('.',','):vttTime(n*1000);
       if(format==='srt')out.push(String(++count));else count++;
-      out.push(ts(cue.start)+' --> '+ts(cue.end),body,'');
+      const settings=format==='vtt'&&typeof cue.settings==='string'?cue.settings.split(/\s+/).filter(x=>/^(?:align|line|position|size|vertical):[-a-z0-9.,%]+$/i.test(x)).join(' '):'';
+      out.push(ts(cue.start)+' --> '+ts(cue.end)+(settings?' '+settings:''),body,'');
     }
     return count?out.join('\n')+'\n':'';
   }
@@ -188,5 +197,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

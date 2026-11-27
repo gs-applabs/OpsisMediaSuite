@@ -289,3 +289,13 @@ test('audio analysis rejects invalid audio stream and pre-aborted request before
  await assert.rejects(A.extractActivity('not-run','not-run',10,{audioIndex:64}),/bad-audio-index/);
  await assert.rejects(A.extractActivity('not-run','not-run',10,{signal:c.signal}),/cancelled/);
 });
+
+test('cue editing preserves original data and WebVTT settings, rejects invalid timing',()=>{
+ const original=V.subtitleToVtt('WEBVTT\n\n00:00:01.000 --> 00:00:02.000 align:start\nOriginal','vtt',0).entries;
+ const edited=V.editCue(original,0,{start:1.2,end:2.4,text:'Διορθωμένο'});
+ assert.equal(original[0].text,'Original');assert.equal(edited[0].start,1.2);
+ const round=V.subtitleToVtt(V.exportSubtitles(edited,'vtt'),'vtt',0).entries;
+ assert.equal(round[0].settings,'align:start');assert.equal(round[0].text,'Διορθωμένο');
+ assert.equal(V.editCue(original,0,{start:3,end:2,text:'x'}),null);
+ assert.equal(V.editCue(original,0,{start:1,end:2,text:'--> injected'}),null);
+});

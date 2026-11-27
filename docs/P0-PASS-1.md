@@ -111,3 +111,6 @@ Current selected corrected SRT is canonicalized and bounded in main, written to 
 
 ## Pass 35 — responsive cancellable offline audio analysis
 Pass 34 general CI 187/187 and native external SRT accepted/selected, plugin 12/12 passed. Move FFmpeg extraction and activity correlation off Electron main thread into dedicated worker; add explicit audio stream ordinal (1–64), cancel request and source-change cancellation. FFmpeg subprocess cancellation and timeout, no new filesystem grants. Existing real +1.7s and silence selftests now exercise worker through IPC. Worker cancellation during synchronous correlation is cooperative only after current computation; late result discarded. Latest CI pending.
+
+## Pass 36 — non-destructive cue editor
+Edit selected original cue text and start/end times; create a separate in-memory WebVTT track, leave the original intact; one-step undo; preserve allowed VTT positioning settings, export existing corrected SRT/VTT, validate timing and bound size. First 2,000 cues accessible in selector (parser supports 20,000). Real renderer edit/undo fixture added. CI pending.
