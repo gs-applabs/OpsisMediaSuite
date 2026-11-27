@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.5 / 20C.4
+- 20B.4 measured idle CPU 0.60% vs 8.56% on separate Windows runners; 275 unit/real-conversion tests passed, eight specialist workflows passed. Real soak playback time advanced 14/20 despite 20/20 source switches. Await direct play promise (including rejection and supersession), explicitly reload replacement media, and require confirmed current source in soak. Log per-cycle diagnostics for remaining stalls. Defer convolution impulse and exciter curve until first enable. New CI pending; do not treat playback failure as resolved.
+
 ## Unreleased — Ultra Mega Pass 20B.4 / 20C.3
 - Event-driven audio visualizer and equalizer background: render a static idle frame, resume with audio; no recurring hue timer for idle equalizer, hidden or disabled backgrounds. Decorative backgrounds keep their animation. Cache theme colors, avoid unchanged canvas reallocations and duplicate now-playing IPC. Explicit audio resume on microphone/test tone. Add idle frame scheduling regression to resource soak. Measured improvement pending.
 

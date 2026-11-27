@@ -200,7 +200,7 @@ class AudioEngine {
     this.compWet.connect(this.compSum);
 
     this.reverbNode = ctx.createConvolver();
-    this.reverbNode.buffer = this._makeImpulseResponse(2.2, 2.0);
+    // Allocate the convolution impulse only when reverb is first enabled.
     this.reverbDry = ctx.createGain();
     this.reverbWet = ctx.createGain();
     this.reverbWet.gain.value = 0;
@@ -213,8 +213,7 @@ class AudioEngine {
     this.reverbWet.connect(this.reverbSum);
 
     this.exciterNode = ctx.createWaveShaper();
-    this.exciterNode.curve = this._makeSaturationCurve();
-    this.exciterNode.oversample = '4x';
+    // Keep the disabled exciter unconfigured until first use.
     this.exciterDry = ctx.createGain();
     this.exciterWet = ctx.createGain();
     this.exciterWet.gain.value = 0;
@@ -484,8 +483,16 @@ class AudioEngine {
     nextSlot.el.playbackRate=this.state.tempo;
     nextSlot.el.preservesPitch=this.state.preservePitch;
     if(nextSlotIndex===prevSlotIndex){
-      nextSlot.el.play().catch(()=>{});
-      if(onReady)onReady(nextSlot,true);
+      this.pendingTransition={onReady};
+      Promise.resolve(nextSlot.el.play()).then(()=>{
+        if(epoch!==this.transitionEpoch)return;
+        this.pendingTransition=null;
+        if(onReady)onReady(nextSlot,true);
+      },()=>{
+        if(epoch!==this.transitionEpoch)return;
+        this.pendingTransition=null;
+        if(onReady)onReady(nextSlot,false);
+      });
       return;
     }
     this.pendingTransition={onReady};
@@ -577,6 +584,7 @@ class AudioEngine {
     if(kind==='reverb')this.setReverb(this.state.reverb);else this.setExciter(this.state.exciter);
   }
   setReverb(on) {
+    if(on&&!this.reverbNode.buffer)this.reverbNode.buffer=this._makeImpulseResponse(2.2,2.0);
     this.state.reverb = on;
     const tt = this.ctx.currentTime;
     this.reverbWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.reverbAmount,.28) : 0, tt, 0.05);
@@ -584,6 +592,7 @@ class AudioEngine {
     this.syncWorkletSettings();
   }
   setExciter(on) {
+    if(on&&!this.exciterNode.curve){this.exciterNode.curve=this._makeSaturationCurve();this.exciterNode.oversample='4x';}
     this.state.exciter = on;
     const tt = this.ctx.currentTime;
     this.exciterWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.exciterAmount,.35) : 0, tt, 0.05);
@@ -1352,8 +1361,9 @@ if ('mediaSession' in navigator) {
 engine.slots.forEach((s) => {
   s.el.addEventListener('loadedmetadata',()=>{if(s===engine.slots[engine.activeSlot])requestLoudness(s.item);});
   s.el.addEventListener('play', syncPlayButton);
+  s.el.addEventListener('playing', syncPlayButton);
   s.el.addEventListener('pause', syncPlayButton);
-  s.el.addEventListener('ended', () => { if (engine.activeSlot === engine.slots.indexOf(s)) onTrackEnded(); });
+  s.el.addEventListener('ended', () => { syncPlayButton();if (engine.activeSlot === engine.slots.indexOf(s)) onTrackEnded(); });
   s.el.addEventListener('error', () => {
     if (!s.el.src || engine.activeSlot !== engine.slots.indexOf(s)) return;
     showAlertDialog(t('player.loadErrorTitle'), t('player.loadErrorMsg'));
@@ -1428,8 +1438,10 @@ function playTrackAt(index) {
   const item = playlist[index];
   engine.switchTrack((slotIndex) => {
     const slot=engine.slots[slotIndex],old=slot.objectUrl;
+    slot.el.pause();
     slot.objectUrl=item.file?URL.createObjectURL(item.file):null;
     slot.el.src=slot.objectUrl||item.url;
+    slot.el.load();
     if(old)URL.revokeObjectURL(old);
     slot.item=item;slot.name=item.name;
   },(slot,ok)=>{
@@ -2930,6 +2942,18 @@ window.__selfTest = async function () {
     check('successful crossfade commits only once',fake.activeSlot===1&&committed===1&&fake.transitionTimer!==null);
     fake.pauseActive();
     check('pause cancels crossfade timer and both slots',fake.transitionTimer===null&&fake.slots.every(s=>s.el.paused));
+    fake.crossfadeSeconds=0;let direct=[];
+    fake.switchTrack(()=>{},(_,ok)=>direct.push(ok));
+    check('direct playback waits for play promise',direct.length===0&&!!fake.pendingTransition);
+    fake.slots[fake.activeSlot].el.reject();await Promise.resolve();
+    check('direct playback reports rejected play',direct.length===1&&direct[0]===false&&!fake.pendingTransition);
+    fake.switchTrack(()=>{},(_,ok)=>direct.push(ok));const staleDirect=fake.slots[fake.activeSlot].el.resolve;
+    fake.switchTrack(()=>{},(_,ok)=>direct.push(ok));staleDirect();await Promise.resolve();
+    check('superseded direct playback cannot commit',direct.length===1);
+    fake.slots[fake.activeSlot].el.resolve();await Promise.resolve();
+    check('confirmed direct playback commits once',direct.length===2&&direct[1]===true&&!fake.pendingTransition);
+    fake.pauseActive();
+    check('disabled effects defer heavy initialization',!engine.reverbNode.buffer&&!engine.exciterNode.curve);
     check('audiolib loaded', typeof WaveframeAudio === 'object' && typeof WaveframeAudio.integratedLufs === 'function');
     engine.setPresence(100);engine.setBalance(-50);syncProfessionalFx();
     const response=new Float32Array(1),phase=new Float32Array(1);const testFilter=new OfflineAudioContext(2,480,48000).createBiquadFilter();
@@ -2977,8 +3001,10 @@ window.__selfTest = async function () {
     els.swReverb.click();
     await new Promise((r) => setTimeout(r, 0)); // MutationObserver callbacks run as microtasks
     check('aria-checked follows a click', els.swReverb.getAttribute('aria-checked') === 'true' && engine.state.reverb === true);
+    check('enabling reverb allocates impulse on demand',!!engine.reverbNode.buffer);
     // #8: "reset effects" also closes compressor / reverb / exciter
     els.swCompressor.click(); els.swExciter.click();
+    check('enabling exciter initializes curve on demand',!!engine.exciterNode.curve&&engine.exciterNode.oversample==='4x');
     els.btnResetFx.click();
     await new Promise((r) => setTimeout(r, 0));
     check('reset effects turns compressor, reverb and exciter off (engine and UI)', !engine.state.compressor && !engine.state.reverb && !engine.state.exciter && [els.swCompressor, els.swReverb, els.swExciter].every((b) => !b.classList.contains('active') && b.getAttribute('aria-checked') === 'false'));
@@ -3001,10 +3027,11 @@ window.__resourceSoak=async function(){
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const until=async(fn,ms=2000)=>{const end=performance.now()+ms;while(performance.now()<end){if(fn())return true;await wait(50);}return !!fn();};
   const old={list:playlist,index:currentTrackIndex,crossfade:engine.crossfadeSeconds,normalize:engine.state.normalizationEnabled,muted:engine.state.muted,mediaMuted:engine.slots.map(s=>s.el.muted)};
-  let completed=0,advancing=0,removed=0,transitions=0;
+  let completed=0,advancing=0,removed=0,transitions=0;const failures=[];
   try{
     window.WaveframeVideoPlayer?.pause();
     engine.pauseActive();engine.stopAlternateSources();engine.setMuted(true);engine.slots.forEach(s=>s.el.muted=true);
+    setSleepStep(0);engine.setTempo(1);
     engine.setNormalizationEnabled(false);engine.setNormalizationGain(1);engine.crossfadeSeconds=.15;
     const rate=22050,n=rate*10;
     const samples=new Float32Array(n);for(let i=0;i<n;i++)samples[i]=.02*Math.sin(2*Math.PI*440*i/rate);
@@ -3018,11 +3045,14 @@ window.__resourceSoak=async function(){
       renderPlaylist(false);
       const index=i%playlist.length,item=playlist[index];
       playTrackAt(index);
-      if(await until(()=>engine.slots[engine.activeSlot].item===item&&!engine.activeEl.paused&&engine.activeEl.readyState>=2)){
+      const confirmed=()=>{const slot=engine.slots[engine.activeSlot];return !engine.pendingTransition&&slot.item===item&&slot.objectUrl&&slot.el.currentSrc===slot.objectUrl&&!slot.el.paused&&slot.el.readyState>=2;};
+      let before=null;
+      if(await until(confirmed,3000)){
         transitions++;
-        const before=engine.activeEl.currentTime;
-        if(await until(()=>engine.slots[engine.activeSlot].item===item&&engine.activeEl.currentTime>before+.04,1500))advancing++;
-      }
+        before=engine.activeEl.currentTime;
+        if(await until(()=>confirmed()&&engine.activeEl.currentTime>before+.04,2500))advancing++;
+        else failures.push({cycle:i+1,before,after:engine.activeEl.currentTime,paused:engine.activeEl.paused,ready:engine.activeEl.readyState,network:engine.activeEl.networkState,ended:engine.activeEl.ended,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
+      }else failures.push({cycle:i+1,reason:'not-confirmed',paused:engine.activeEl.paused,ready:engine.activeEl.readyState,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
       showTab(i%2?'enhance':'settings');await wait(100);showTab('player');
       if(i%4===3){
         const idx=playlist.indexOf(item),button=els.playlist.children[idx]?.querySelector('.remove-track');
@@ -3033,7 +3063,7 @@ window.__resourceSoak=async function(){
     }
     check('60-second audio/tab soak completed',completed===20,completed+' cycles');
     check('real audio transitions settle on requested track',transitions===20,transitions+'/20');
-    check('real playback time advances',advancing===20,advancing+'/20');
+    check('real playback time advances',advancing===20,advancing+'/20'+(failures.length?' '+JSON.stringify(failures):''));
     check('removed audio sources release all slot references',removed===5,removed+'/5');
   }catch(e){check('audio soak threw',false,e?.stack||e);}
   finally{
