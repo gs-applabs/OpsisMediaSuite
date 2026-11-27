@@ -338,7 +338,7 @@
   }
   function preferredIndex() { return VP.preferredSubtitle(subSrc,(get(K.subs,{})||{}).languages); }
   async function loadSiblingSubs(p, g, revision) {
-    const found = await api.vpSubsFor(p).catch(() => []);
+    const found = await api.vpSubsFor(p,VP.subtitleLanguages(get(K.subs,{})?.languages)).catch(() => []);
     if (generation !== g || current() !== p || !Array.isArray(found) || !found.length) return;
     const manual = subRevision !== revision;
     for (const s of found) if (subSrc.length < 24 && !subSrc.some(x => x.name === s.name && x.text === s.text)) subSrc.push(s);
@@ -359,7 +359,7 @@
     else { if(subSrc.length>=24){subSrc.shift();}subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
     fillSubSelect(); rebuildTrack();
   }
-  function setDelay(d) { if(!Number.isFinite(d))return;clearSuggestion();subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 1000) / 1000)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; $('vpSubDelayExact').value=String(subDelay);rebuildTrack(); }
+  function setDelay(d) { if(!Number.isFinite(d))return;++subRevision;clearSuggestion();subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 1000) / 1000)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; $('vpSubDelayExact').value=String(subDelay);rebuildTrack(); }
   function applySubStyle() {
     const s = get(K.subs, {}) || {};
     const size = Number($('vpSubSize').value) || 16, color = $('vpSubColor').value || '#ffffff';
@@ -539,6 +539,7 @@
     for (const s of VP.SPEEDS) { const o = document.createElement('option'); o.value = String(s); o.textContent = `${s}×`; $('vpSpeed').append(o); }
     $('vpSpeed').value = String(get(K.speed, 1)); if (!$('vpSpeed').value) $('vpSpeed').value = '1';
     const subs = get(K.subs, {});
+    $('vpSubLanguage').value=VP.subtitleLanguages(subs.languages)[0]||'el';
     if (subs.fontSize) $('vpSubSize').value = String(subs.fontSize);
     if (subs.color) $('vpSubColor').value = subs.color;
     applySubStyle();
@@ -568,6 +569,7 @@
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { clearAnchors();++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
+    $('vpSubLanguage').addEventListener('change',()=>{const lang=$('vpSubLanguage').value;put(K.subs,{...get(K.subs,{}),languages:VP.subtitleLanguages([lang,'el','en'])});});
     let searchGeneration=0,resultsProvider=null;
     $('vpSubProvider').addEventListener('change',()=>{
       ++searchGeneration;resultsProvider=null;
@@ -732,7 +734,7 @@
         $('vpSubAutoStatus').textContent='Suggested '+r.delay.toFixed(3)+' s · scale '+r.scale.toFixed(6)+' · activity score '+r.score.toFixed(3)+' (verify dialogue manually)';
       }catch{$('vpSubAutoStatus').textContent='Audio analysis unavailable';}finally{$('vpSubAutoSync').disabled=false;$('vpSubAutoCancel').disabled=true;}
     });
-    $('vpSubAutoCancel').addEventListener('click',()=>{api.vpSubAutoCancel().catch(()=>{});$('vpSubAutoCancel').disabled=true;});
+    $('vpSubAutoCancel').addEventListener('click',()=>{++subRevision;clearSuggestion();api.vpSubAutoCancel().catch(()=>{});$('vpSubAutoCancel').disabled=true;});
     $('vpSubApplySync').addEventListener('click',()=>{if(!autoSuggestion)return;const r=autoSuggestion;clearAnchors();subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAutoStatus').textContent='Suggestion applied — verify dialogue / Ελέγξτε την ομιλία';});
     $('vpSubCuePage').addEventListener('change',()=>fillCuePage(Number($('vpSubCuePage').value)*CUE_PAGE));
     $('vpSubCue').addEventListener('change',showCueEditor);
@@ -774,8 +776,8 @@
     $('vpSubSaveSrt').addEventListener('click',()=>saveSubtitle('srt'));
     $('vpSubSaveVtt').addEventListener('click',()=>saveSubtitle('vtt'));
     $('vpSubReset').addEventListener('click',()=>setDelay(0));
-    $('vpSubFps').addEventListener('change',()=>{if($('vpSubFps').value==='custom')return;clearAnchors();subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
-    $('vpMicroFps').addEventListener('change',()=>{clearAnchors();subFps=Number($('vpMicroFps').value)||0;rebuildTrack();});
+    $('vpSubFps').addEventListener('change',()=>{if($('vpSubFps').value==='custom')return;++subRevision;clearAnchors();subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
+    $('vpMicroFps').addEventListener('change',()=>{++subRevision;clearAnchors();subFps=Number($('vpMicroFps').value)||0;rebuildTrack();});
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));
     $('vpSubPlus').addEventListener('click', () => setDelay(subDelay + 0.5));
     $('vpSubSize').addEventListener('input', applySubStyle);

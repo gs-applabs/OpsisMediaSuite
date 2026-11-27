@@ -195,10 +195,11 @@
     if(a.group&&b.group&&a.group===b.group)score+=25;
     return score;
   }
+  function subtitleLanguages(value){const supported=['el','en','fr','de','it','es'];return Array.isArray(value)?[...new Set(value.filter(x=>supported.includes(x)))].slice(0,6):['el','en'];}
   function preferredSubtitle(sources,languages=['el','en']) {
     const aliases={el:['el','ell','gre','gr','greek'],en:['en','eng','english'],fr:['fr','fra','fre','french'],de:['de','deu','ger','german'],it:['it','ita','italian'],es:['es','spa','spanish']};
     const rows=Array.isArray(sources)?sources:[];
-    for(const l of (Array.isArray(languages)?languages:['el','en'])){if(typeof l!=='string')continue;const tokens=aliases[l.toLowerCase()]||[l.toLowerCase()];const i=rows.findIndex(s=>typeof s?.name==='string'&&s.name.replace(/\.[^.]+$/,'').toLowerCase().split(/[. _-]/).some(x=>tokens.includes(x)));if(i>=0)return i;}
+    for(const l of subtitleLanguages(languages)){if(typeof l!=='string')continue;const tokens=aliases[l.toLowerCase()]||[l.toLowerCase()];const i=rows.findIndex(s=>typeof s?.name==='string'&&s.name.replace(/\.[^.]+$/,'').toLowerCase().split(/[. _-]/).some(x=>tokens.includes(x)));if(i>=0)return i;}
     return rows.length?0:-1;
   }
   // Resume position: remembered after the first 5 s, forgotten when the end is near (last 10 s or 95 %).
@@ -268,5 +269,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

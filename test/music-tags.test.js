@@ -114,3 +114,13 @@ test('M4A faststart layout is rejected without modifying source',async(t)=>{
  const file=path.join(dir,'fast.m4a');execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=duration=1','-c:a','aac','-movflags','+faststart',file]);
  const before=await fs.readFile(file);await assert.rejects(require('../music-tags').complete(file,{title:'new'}),/moov-last/);assert.deepEqual(await fs.readFile(file),before);
 });
+
+
+test('music folder scan is bounded, recursive and never writes or follows symlinks',async(t)=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-library-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ await fs.mkdir(path.join(dir,'album'));await fs.writeFile(path.join(dir,'album','a.mp3'),'fixture');await fs.writeFile(path.join(dir,'b.flac'),'fixture');await fs.writeFile(path.join(dir,'readme.txt'),'ignore');
+ const {scanFolder}=require('../music-library');const result=await scanFolder(dir);
+ assert.equal(result.files.length,2);assert.equal(result.truncated,false);assert.equal((await scanFolder(dir,{maxFiles:1})).files.length,1);assert.equal((await scanFolder(dir,{maxEntries:1})).truncated,true);assert.equal((await scanFolder(dir,{cancelled:()=>true})).files.length,0);
+ assert.equal(await fs.readFile(path.join(dir,'album','a.mp3'),'utf8'),'fixture');
+});

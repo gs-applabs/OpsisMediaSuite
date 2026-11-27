@@ -118,7 +118,7 @@
           </div>
           <div class="playlist-drawer-header metadata-tools"><button class="small-btn" id="metadataAuto">Auto tags / Αυτόματα tags (MP3 / FLAC / WAV / M4A / OGG / OPUS*)</button><button class="small-btn" id="metadataManual">Edit tags / Συμπλήρωση tags (MP3 / FLAC / WAV / M4A / OGG / OPUS*)</button><button class="small-btn" id="metadataOnline">MusicBrainz</button><button class="small-btn" id="metadataFingerprint">AcoustID / Αποτύπωμα</button><button class="small-btn" id="metadataCover">Add cover / Εξώφυλλο</button><button class="small-btn" id="metadataCancel" hidden>Cancel / Ακύρωση</button></div>
           <div class="playlist-drawer-header"><label><input id="metadataInferDisplay" type="checkbox"> Filename suggestions / Προτάσεις από όνομα (display only / μόνο προβολή)</label><span id="metadataProgress" role="status" aria-live="polite"></span></div>
-          <div class="playlist-drawer-header metadata-tools"><label for="playlistSearch">Search / Αναζήτηση</label><input id="playlistSearch" type="search" maxlength="160" placeholder="Artist, title, album / Καλλιτέχνης, τίτλος, άλμπουμ"><button class="small-btn" id="playlistSearchClear">Clear / Καθαρισμός</button><span id="playlistSearchCount" role="status" aria-live="polite"></span></div>
+          <div class="playlist-drawer-header metadata-tools"><label for="playlistSearch">Search / Αναζήτηση</label><input id="playlistSearch" type="search" maxlength="160" placeholder="Artist, title, album / Καλλιτέχνης, τίτλος, άλμπουμ"><button class="small-btn" id="playlistSearchClear">Clear / Καθαρισμός</button><button class="small-btn" id="playlistFolder">Folder / Φάκελος</button><label><input id="playlistDuplicates" type="checkbox"> Duplicate paths / Διπλές διαδρομές</label><span id="playlistSearchCount" role="status" aria-live="polite"></span></div>
           <ul id="playlist" class="playlist"></ul>
           <p class="empty-hint" id="playlistEmptyHint" data-i18n="player.playlistEmpty">Η playlist είναι άδεια. Πρόσθεσε αρχεία ή σύρε τα εδώ.</p>
           <div class="playlist-resize-handle" id="playlistResizeHandle" title="Σύρε για αλλαγή μεγέθους">⋯</div>
@@ -320,7 +320,7 @@
                 <h3 id="vpGSub" data-i18n="vp.subtitles">Υπότιτλοι</h3>
                 <div class="vp-bar vp-row">
                   <label class="vp-inline"><span data-i18n="vp.subtitles">Υπότιτλοι</span>
-                    <select id="vpSubTrack"></select></label>
+                    <select id="vpSubTrack"></select></label><label>Preferred / Προτίμηση <select id="vpSubLanguage" aria-label="Preferred subtitle language"><option value="el">Ελληνικά</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="es">Español</option></select></label>
                   <button class="small-btn" id="vpSubLoad" data-i18n="vp.subLoad">Φόρτωση αρχείου…</button>
                   <button class="small-btn" id="vpSubOnlineToggle" data-i18n="vp.onlineSubs">Λήψη υποτίτλων</button>
                   <button class="small-btn" id="vpSubSaveSyncedBeside" data-i18n="vp.saveSynced">Αποθήκευση δίπλα στο βίντεο</button><button class="small-btn" id="vpSubSaveSrt" data-i18n="vp.saveSrt">Συγχρονισμένο SRT</button><button class="small-btn" id="vpSubSaveVtt" data-i18n="vp.saveVtt">Συγχρονισμένο VTT</button>

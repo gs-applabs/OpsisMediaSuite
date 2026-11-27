@@ -1879,14 +1879,36 @@ els.btnTestTone.addEventListener('click', () => {
 });
 
 const playlistSearch=document.getElementById('playlistSearch');
+const playlistFolder=document.getElementById('playlistFolder');
+playlistFolder.addEventListener('click',async()=>{
+ if(playlistFolder.disabled)return;playlistFolder.disabled=true;
+ try{
+  const result=await window.waveframe.importMusicFolder();
+  if(result?.cancelled)return;
+  if(!result||result.error){await showAlertDialog('Music library',result?.error||'Import unavailable');return;}
+  const existing=new Set(playlist.map(x=>OpsisFeatureGuide.musicPathKey(x.path)).filter(Boolean));
+  let added=0,duplicates=0;
+  for(const p of result.files||[]){
+   const key=OpsisFeatureGuide.musicPathKey(p);if(!key)continue;
+   if(existing.has(key)){duplicates++;continue;}existing.add(key);
+   playlist.push({path:p,url:pathToFileUrl(p),name:p.split(/[\\/]/).pop().replace(/\.[^/.]+$/,'')});added++;
+  }
+  renderPlaylist();if(added)scheduleMetadataScan();
+  await showAlertDialog('Music library / Βιβλιοθήκη',added+' added / προστέθηκαν · '+duplicates+' duplicates skipped / διπλότυπα παραλείφθηκαν'+(result.truncated?' · Scan limit reached / Όριο σάρωσης':'')+(result.skipped?' · '+result.skipped+' inaccessible/skipped entries':''));
+ }catch{await showAlertDialog('Music library','Import failed / Αποτυχία εισαγωγής');}
+ finally{playlistFolder.disabled=false;}
+});
+const playlistDuplicates=document.getElementById('playlistDuplicates');
+playlistDuplicates.addEventListener('change',()=>renderPlaylist(false));
 playlistSearch.addEventListener('input',()=>renderPlaylist(false));
 document.getElementById('playlistSearchClear').addEventListener('click',()=>{playlistSearch.value='';renderPlaylist(false);playlistSearch.focus();});
 function renderPlaylist(persist=true) {
   els.playlist.innerHTML = '';
   const query=playlistSearch.value;let visible=0;
+  const duplicates=playlistDuplicates.checked?OpsisFeatureGuide.duplicateMusicPaths(playlist):null;
   els.playlistEmptyHint.style.display = playlist.length ? 'none' : 'block';
   playlist.forEach((item, idx) => {
-    if(!OpsisFeatureGuide.trackMatches(item,query))return;
+    if(!OpsisFeatureGuide.trackMatches(item,query)||(duplicates&&!duplicates.has(OpsisFeatureGuide.musicPathKey(item.path))))return;
     visible++;
     const li = document.createElement('li');
     li.className = idx === currentTrackIndex ? 'active' : '';
@@ -1924,7 +1946,7 @@ function renderPlaylist(persist=true) {
     li.appendChild(rm);
     els.playlist.appendChild(li);
   });
-  document.getElementById('playlistSearchCount').textContent=query.trim()?visible+' / '+playlist.length:'';
+  document.getElementById('playlistSearchCount').textContent=query.trim()||duplicates?visible+' / '+playlist.length:'';
   if(persist)savePlaylist();
 }
 

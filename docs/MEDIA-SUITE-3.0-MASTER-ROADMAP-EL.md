@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 2D — bounded folder library, duplicate review and subtitle preference (2026-11-27)
+
+- Prior 2B general CI 46070110308 PASS; 2C seven specialist workflows PASS, general/installer still in progress at inspection. No full 2C certification.
+- On-demand explicit local folder scan (2000 files, 20000 examined entries, eight directory levels), no watcher, no automatic playback, no file mutation, skip symlinks and duplicate paths on import. Existing playlist/serial metadata scan reused. Duplicate path filter is review-only; no destructive deduplication. Added guide entries (96 total), package inclusion and bounded scanner fixture.
+- Preferred sidecar language selector (next media open) shared by renderer and admission ranking; default Greek/English, optional French/German/Italian/Spanish. Revision guards invalidate delayed automatic sync result after manual delay/FPS/cancel. No second subtitle pipeline.
+- New CI pending. WMA writing, broader unsupported container layouts, real online credentials, native codec/audio parity and full library smart collections remain open. No merge or release.
+
 ## ULTRA 2C — conservative M4A, Ogg Vorbis and Opus metadata (2026-11-27)
 
 - Prior 2B CI still running; no new green aggregate claim. RAR and DSP specialist runs passed at inspection.

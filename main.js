@@ -566,6 +566,16 @@ function createWindow() {
     }catch(err){return {error:String(err.message).slice(0,250)};}
     finally{metadataBusy=false;}
   });
+  let musicFolderBusy=false;
+  ipcMain.handle('music:import-folder',async e=>{
+    if(!fromMain(e)||musicFolderBusy||win.isDestroyed())return {error:'busy or denied'};
+    musicFolderBusy=true;
+    try{
+      const picked=await dialog.showOpenDialog(win,{title:'Import music folder / Εισαγωγή φακέλου μουσικής',properties:['openDirectory']});
+      if(picked.canceled||win.isDestroyed())return {cancelled:true};
+      return await require('./music-library').scanFolder(picked.filePaths[0],{cancelled:()=>win.isDestroyed()});
+    }catch{return {error:'Music folder could not be read'};}finally{musicFolderBusy=false;}
+  });
   let metadataReadBusy=false;
   ipcMain.handle('metadata:read', async (event, filePath) => {
     if(metadataReadBusy)return null;

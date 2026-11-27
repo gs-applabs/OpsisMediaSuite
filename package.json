@@ -63,6 +63,7 @@
       "!renderer/dsp-dev/**/*",
       "m3u.js",
       "music-tags.js",
+      "music-library.js",
       "music-lookup.js"
     ],
     "asarUnpack": [

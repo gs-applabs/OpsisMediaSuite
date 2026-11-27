@@ -63,12 +63,14 @@ function readSubtitle(file){
   if(ext==='sub'&&(!/^\s*\{\d{1,9}\}\{\d{1,9}\}/m.test(text)||text.includes('\0')))return null;
   return {name:path.basename(file),ext,text};
 }
-function siblingSubtitles(video) {
+function siblingSubtitles(video,languages=['el','en']) {
   const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase(), shortBase=sidecarStem(video).toLowerCase();
   let names = [];
   try { names = fs.readdirSync(dir).sort((a,b) => a.localeCompare(b)); } catch (_) { return []; }
   // Prefer default subtitle languages before the existing eight-file cap.
-  const languageRank=n=>{const tokens=path.basename(n,path.extname(n)).toLowerCase().split(/[. _-]/);return tokens.some(x=>['el','ell','gre','gr','greek'].includes(x))?0:tokens.some(x=>['en','eng','english'].includes(x))?1:2;};
+  const prefs=VP.subtitleLanguages(languages);
+  const aliases={el:['el','ell','gre','gr','greek'],en:['en','eng','english'],fr:['fr','fra','fre','french'],de:['de','deu','ger','german'],it:['it','ita','italian'],es:['es','spa','spanish']};
+  const languageRank=n=>{const tokens=path.basename(n,path.extname(n)).toLowerCase().split(/[. _-]/);const index=prefs.findIndex(l=>tokens.some(x=>aliases[l].includes(x)));return index<0?prefs.length:index;};
   names.sort((a,b)=>languageRank(a)-languageRank(b));
   const out = [];
   for (const n of names) {
@@ -217,7 +219,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }
     const files = r.filePaths.map(p => allowedFile(p, PLAY_EXTS)).filter(Boolean).slice(0, 2000); files.forEach(remember); return files;
   });
-  ipcMain.handle('vp:subs-for', (e, p) => (trusted(e) && approved.has(allowedFile(p, PLAY_EXTS)) ? siblingSubtitles(p) : []));
+  ipcMain.handle('vp:subs-for', (e, p,languages) => (trusted(e) && approved.has(allowedFile(p, PLAY_EXTS)) ? siblingSubtitles(p,languages) : []));
   ipcMain.handle('vp:pick-sub', async (e) => {
     if (!trusted(e)) return null;
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Subtitles', extensions: SUB_EXTS }] });

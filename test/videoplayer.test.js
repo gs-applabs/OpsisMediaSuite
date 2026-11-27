@@ -698,3 +698,5 @@ test('resource trend requires enough samples and uses robust window medians',()=
  assert.deepEqual(resourceTrend([1,2,100,4,5,6,7,8,9,10,11,1000].map(x=>({x})), 'x'),{samples:12,early:2,late:11,delta:9});
  assert.equal(resourceTrend(Array.from({length:12},()=>({x:null})), 'x').samples,0);
 });
+
+test('subtitle language preferences validate and preserve requested priority',()=>{assert.deepEqual(V.subtitleLanguages(['fr','el','fr','invalid']),['fr','el']);assert.deepEqual(V.subtitleLanguages(null),['el','en']);assert.equal(V.preferredSubtitle([{name:'film.el.srt'},{name:'film.fr.srt'}],['fr','el']),1);});
