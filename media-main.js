@@ -239,6 +239,51 @@ function init({ getMainWin, resolveFfmpegPath }) {
           check('subtitle off clears active cues',await js("Array.from(document.getElementById('vpVideo').textTracks).every(tr=>tr.mode==='disabled')"),'off');
           await js("document.getElementById('vpSubTrack').value='0';document.getElementById('vpSubTrack').dispatchEvent(new Event('change'));1");
           check('subtitle selection restores one track and cue',await until("Array.from(document.getElementById('vpVideo').textTracks).filter(tr=>tr.mode==='showing' && tr.cues?.length===1).length===1",3000),'on');
+          // Real HTTP transfer through the same provider client and real IPC/UI.
+          // Only the self-test injects a fixture transport; production uses fixed HTTPS origins.
+          const http=require('node:http'),requests=[];
+          const server=http.createServer((req,res)=>{
+            requests.push(req.url);
+            if(req.url.startsWith('/subtitles?')){res.setHeader('content-type','application/json');res.end(JSON.stringify({data:[{attributes:{language:'el',files:[{file_id:123,file_name:'fixture.el.srt'}],release:'OPSIS generated test'}}]}));}
+            else if(req.url==='/download'){res.setHeader('content-type','application/json');res.end(JSON.stringify({link:'https://dl.opensubtitles.com/download/fixture',remaining:1}));}
+            else if(req.url==='/download/fixture'){res.setHeader('content-type','text/plain; charset=utf-8');res.end('1\n00:00:01,000 --> 00:00:02,000\nΔοκιμή υποτίτλων\n\n2\n00:00:03,000 --> 00:00:04,000\nΔεύτερη φράση\n');}
+            else{res.statusCode=404;res.end();}
+          });
+          await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+          const savedProvider=subtitleProvider;
+          try{
+            subtitleProvider=createProvider({decode:decodeText,fetchImpl:(url,opts)=>{const u=new URL(url);const route=u.hostname==='api.opensubtitles.com'?u.pathname.replace('/api/v1','')+u.search:u.pathname;return fetch('http://127.0.0.1:'+server.address().port+route,opts);}});
+            await js("document.getElementById('vpSubOnlineToggle').click();document.getElementById('vpSubKey').value='fixture-key';document.getElementById('vpSubQuery').value='OPSIS generated test';document.getElementById('vpSubLanguage').value='el';document.getElementById('vpSubSearch').click();1");
+            const found=await until("document.getElementById('vpSubResults').options.length===1&&!document.getElementById('vpSubDownload').disabled",5000);
+            await new Promise(r=>setTimeout(r,800));
+            await js("document.getElementById('vpSubDownload').click();1");
+            const loaded=await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>t.mode==='showing'&&t.cues?.length===2)",5000);
+            check('online subtitle real HTTP fixture search and download attaches two Greek cues',found&&loaded&&requests.length===3,JSON.stringify(requests));
+            const seek=async t=>{await js("(()=>{const v=document.getElementById('vpVideo');v.pause();v.currentTime="+t+";return 1})()");return until("!document.getElementById('vpVideo').seeking&&Math.abs(document.getElementById('vpVideo').currentTime-"+t+")<.15",4000);};
+            const active=()=>js("Array.from(document.getElementById('vpVideo').textTracks).flatMap(t=>t.mode==='showing'?Array.from(t.activeCues||[]).map(c=>c.text):[])");
+            await seek(0.5);check('downloaded subtitle not active before start',(await active()).length===0);
+            await seek(1.3);check('downloaded Greek subtitle active at 1.3s',await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==='Δοκιμή υποτίτλων'))",3000));
+            // Compare the same paused video frame with captions on/off in the compositor.
+            // Report difference independently from timing; a cue event alone does not prove pixels.
+            const rect=await js("(()=>{const r=document.getElementById('vpVideo').getBoundingClientRect();return {x:Math.max(0,Math.floor(r.x)),y:Math.max(0,Math.floor(r.y)),width:Math.floor(Math.min(r.right,innerWidth)-Math.max(0,r.left)),height:Math.floor(Math.min(r.bottom,innerHeight)-Math.max(0,r.top))}})()");
+            if(rect.width>0&&rect.height>0){
+              await new Promise(r=>setTimeout(r,250));const on=(await win.webContents.capturePage(rect)).toBitmap();
+              const selected=await js("document.getElementById('vpSubTrack').value");
+              await js("document.getElementById('vpSubTrack').value='-1';document.getElementById('vpSubTrack').dispatchEvent(new Event('change'));1");
+              await new Promise(r=>setTimeout(r,250));const off=(await win.webContents.capturePage(rect)).toBitmap();
+              let changed=0;if(on.length===off.length)for(let k=0;k<on.length;k+=4)if(Math.abs(on[k]-off[k])+Math.abs(on[k+1]-off[k+1])+Math.abs(on[k+2]-off[k+2])>30)changed++;
+              check('downloaded subtitle changes actual captured video pixels',changed>20,'changed pixels='+changed);
+              await js("document.getElementById('vpSubTrack').value="+JSON.stringify(selected)+";document.getElementById('vpSubTrack').dispatchEvent(new Event('change'));1");
+            }else check('downloaded subtitle changes actual captured video pixels',false,'video outside viewport');
+            await js("document.getElementById('vpSubDelayExact').value='1';document.getElementById('vpSubDelayExact').dispatchEvent(new Event('change'));1");
+            await seek(1.3);check('positive delay removes old active cue',(await active()).length===0);
+            await seek(2.3);check('positive 1s delay activates downloaded Greek cue at 2.3s',await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==='Δοκιμή υποτίτλων'))",3000));
+            await seek(0.7);
+            await js("document.getElementById('vpSubCue').selectedIndex=0;document.getElementById('vpSubSyncHere').click();1");
+            check('align selected cue computes exact negative offset',await js("Math.abs(Number(document.getElementById('vpSubDelayExact').value)+0.3)<.15"));
+            await seek(0.9);check('aligned cue active at corrected time',await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==='Δοκιμή υποτίτλων'))",3000));
+            await js("document.getElementById('vpSubOnlineToggle').click();1");
+          }finally{subtitleProvider=savedProvider;server.closeAllConnections();await new Promise(r=>server.close(r));}
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));
           check('equalizer on the video sound turns on (CORS-enabled wfmedia: source)', await js("document.getElementById('vpFx').getAttribute('aria-pressed') === 'true' && !/./.test(document.getElementById('vpStatus').textContent.match(/equalizer|ισοσταθμιστ/i) || '')"), await js("document.getElementById('vpStatus').textContent"));

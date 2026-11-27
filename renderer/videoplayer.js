@@ -212,7 +212,7 @@
   function attachSubtitle(f){
     const old = subSrc.findIndex(s => s.name === f.name && s.text === f.text);
     if (old >= 0) subSel = old;
-    else if (subSrc.length < 24) { subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
+    else { if(subSrc.length>=24){subSrc.shift();}subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
     fillSubSelect(); rebuildTrack();
   }
   function setDelay(d) { if(!Number.isFinite(d))return;subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 1000) / 1000)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; $('vpSubDelayExact').value=String(subDelay);rebuildTrack(); }

@@ -87,3 +87,6 @@ Pass 23 native CI failed because DirectShowLib enum lacks AbsolutePosition. Use 
 
 ## Pass 27 — online subtitle search/download and cue alignment
 OpenSubtitles.com REST session client (user API key, optional login, in-memory only), explicit title/language search, bounded result IDs, chosen download, HTTPS allowlist, no redirects or auth forwarding to file link, bounded body/time, validation and direct subtitle selection. Fine millisecond delay and align chosen cue to current video time, existing FPS and export. Unit fixture tests; real provider authenticated access requires user credentials and is not certified. New UI labels bilingual/English until locale round. Prior native seek CI passed, plugin 12/12 passed.
+
+## Pass 28 — real renderer online subtitle integration test
+A self-test-only loopback HTTP fixture drives production provider request parsing, IPC, UI search/download, actual Greek cue timing, 1s delay and cue alignment. Captured compositor video pixels compared with captions on/off at the same paused frame. No external credentials or fake provider success claimed; this checks actual transport/UI with a controlled provider. Public service authentication remains unverified. CI pending.
