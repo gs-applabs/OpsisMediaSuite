@@ -137,67 +137,27 @@ class AudioEngine {
     this.toneGain.gain.value = 0;
     this.toneGain.connect(this.mixSum);
 
-    this.eqNodes = EQ_FREQS.map((freq, i) => {
-      const f = ctx.createBiquadFilter();
-      if (i === 0) f.type = 'lowshelf';
-      else if (i === EQ_FREQS.length - 1) f.type = 'highshelf';
-      else f.type = 'peaking';
-      f.frequency.value = freq;
-      f.Q.value = 1.4;
-      f.gain.value = 0;
-      return f;
-    });
-    for (let i = 0; i < this.eqNodes.length - 1; i++) {
-      this.eqNodes[i].connect(this.eqNodes[i + 1]);
-    }
-    // Loudness-normalization trim, applied before any EQ/FX coloring so
-    // boosts behave consistently regardless of the source track's own level.
-    this.normGain = ctx.createGain();
-    this.normGain.gain.value = 1;
+    // Normalization feeds both the ordinary Web Audio and optional worklet paths.
+    this.normGain=ctx.createGain();this.normGain.gain.value=1;
     this.mixSum.connect(this.normGain);
-    this.normGain.connect(this.eqNodes[0]);
-    const eqOut = this.eqNodes[this.eqNodes.length - 1];
+    this.toneStages={};
+    const optional=(key,input)=>{
+      const dry=ctx.createGain(),wet=ctx.createGain(),sum=ctx.createGain();
+      dry.gain.value=1;wet.gain.value=0;input.connect(dry);dry.connect(sum);wet.connect(sum);
+      this.toneStages[key]={input,dry,wet,sum,branch:null,target:false,timer:0};
+      return sum;
+    };
+    const eqOut=optional('eq',this.normGain);
+    const bassOut=optional('bass',eqOut);
+    const presenceOut=optional('presence',bassOut);
+    this.volumeBoostNode=ctx.createGain();this.volumeBoostNode.gain.value=1;
+    presenceOut.connect(this.volumeBoostNode);
+    // Retain the former speaker downmix/mono duplication even when width is neutral.
+    const stereo=ctx.createGain();stereo.channelCount=2;stereo.channelCountMode='explicit';stereo.channelInterpretation='speakers';
+    this.volumeBoostNode.connect(stereo);
+    const surroundOut=optional('surround',stereo);
+    this.balanceNode=ctx.createStereoPanner();this.balanceNode.pan.value=0;surroundOut.connect(this.balanceNode);
 
-    this.bassBoostNode = ctx.createBiquadFilter();
-    this.bassBoostNode.type = 'lowshelf';
-    this.bassBoostNode.frequency.value = 90;
-    this.bassBoostNode.gain.value = 0;
-    eqOut.connect(this.bassBoostNode);
-
-    this.volumeBoostNode = ctx.createGain();
-    this.volumeBoostNode.gain.value = 1;
-    this.presenceNode=ctx.createBiquadFilter();this.presenceNode.type='peaking';this.presenceNode.frequency.value=2800;this.presenceNode.Q.value=.85;this.presenceNode.gain.value=0;
-    this.bassBoostNode.connect(this.presenceNode);this.presenceNode.connect(this.volumeBoostNode);
-
-    const splitter = ctx.createChannelSplitter(2);
-    const merger = ctx.createChannelMerger(2);
-    // Ensure mono inputs are duplicated before splitting rather than halved.
-    const stereo = ctx.createGain(); stereo.channelCount = 2; stereo.channelCountMode = 'explicit'; stereo.channelInterpretation = 'speakers';
-    this.volumeBoostNode.connect(stereo); stereo.connect(splitter);
-
-    this.surroundInvert = ctx.createGain();
-    this.surroundInvert.gain.value = -1;
-    this.surroundMid = ctx.createGain();
-    this.surroundMid.gain.value = 0.5;
-    this.surroundSide = ctx.createGain();
-    this.surroundSide.gain.value = 0.5; // neutral width preserves left/right stereo
-
-    splitter.connect(this.surroundMid, 0);
-    splitter.connect(this.surroundMid, 1);
-    splitter.connect(this.surroundSide, 0);
-    splitter.connect(this.surroundInvert, 1);
-    this.surroundInvert.connect(this.surroundSide);
-
-    this.surroundMid.connect(merger, 0, 0);
-    this.surroundMid.connect(merger, 0, 1);
-    this.surroundSide.connect(merger, 0, 0);
-    const sideInvertR = ctx.createGain();
-    sideInvertR.gain.value = -1;
-    this.surroundSide.connect(sideInvertR);
-    sideInvertR.connect(merger, 0, 1);
-
-    // Lightweight through paths only; heavy processors are created on demand.
-    this.balanceNode=ctx.createStereoPanner();this.balanceNode.pan.value=0;merger.connect(this.balanceNode);
     this.liveEffects={};
     const stage=(kind,input,property)=>{
       const dry=ctx.createGain(),wet=ctx.createGain(),sum=ctx.createGain();
@@ -428,9 +388,9 @@ class AudioEngine {
   applyLiveBypass(immediate=false) {
     const route=OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:this.workletPreference,workletReady:this.workletReady});
     // Prepare the selected web branch before fading it in.
-    if(route==='web')this.syncLiveEffects();
+    if(route==='web'){this.syncToneStages();this.syncLiveEffects();}
     if(this.dspRouteGate)this.dspRouteGate.select(route,immediate);
-    if(route!=='web')this.syncLiveEffects();
+    if(route!=='web'){this.syncToneStages();this.syncLiveEffects();}
     this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
@@ -520,10 +480,13 @@ class AudioEngine {
   setEqBand(index, db) {
     this.state.eqBands[index] = db;
     if(!this.ctx)return;
-    this.eqNodes[index].gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
+    this.syncToneStage('eq');
     this.syncWorkletSettings();
   }
-  applyEqBands(bands) { bands.forEach((db, i) => this.setEqBand(i, db)); }
+  applyEqBands(bands) {
+    bands.slice(0,EQ_FREQS.length).forEach((db,i)=>{this.state.eqBands[i]=db;});
+    if(this.ctx){this.syncToneStage('eq');this.syncWorkletSettings();}
+  }
 
   setNormalizationEnabled(on) {
     this.state.normalizationEnabled = on;
@@ -538,7 +501,7 @@ class AudioEngine {
     const n=Math.max(0,Math.min(100,Number(value)||0));
     this.state.presence=n;
     if(!this.ctx){window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));return;}
-    this.presenceNode.gain.setTargetAtTime(WaveframeAudio.presenceParams(n).gain,this.ctx.currentTime,.03);
+    this.syncToneStage('presence');
     this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
@@ -553,7 +516,7 @@ class AudioEngine {
   setBassBoost(db) {
     this.state.bassBoost = db;
     if(!this.ctx)return;
-    this.bassBoostNode.gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
+    this.syncToneStage('bass');
     this.syncWorkletSettings();
   }
   setVolumeBoostDb(db) {
@@ -565,9 +528,61 @@ class AudioEngine {
   setSurround(pct) {
     this.state.surround = pct;
     if(!this.ctx)return;
-    const w = 1 + (Math.max(0,Math.min(100,Number(pct)||0)) / 100) * 0.6;
-    this.surroundSide.gain.setTargetAtTime(0.5 * w, this.ctx.currentTime, 0.02);
+    this.syncToneStage('surround');
     this.syncWorkletSettings();
+  }
+  syncToneStages(){for(const key of ['eq','bass','presence','surround'])this.syncToneStage(key);}
+  syncToneStage(key){
+    const stage=this.toneStages?.[key],ctx=this.ctx,s=this.state;
+    if(!stage||!ctx)return;
+    const requested=key==='eq'?s.eqBands.some(v=>Number(v)!==0):Number(s[key==='bass'?'bassBoost':key])!==0;
+    const target=this.webEffectsSelected()&&requested;
+    const at=ctx.currentTime;
+    const adjust=(param,value)=>{if(ctx.state==='running')param.setTargetAtTime(value,at,.02);else param.setValueAtTime(value,at);};
+    if(target){
+      clearTimeout(stage.timer);stage.timer=0;
+      if(!stage.branch){
+        let nodes=[],first,last,update;
+        if(key==='eq'){
+          nodes=EQ_FREQS.map((freq,i)=>{const n=ctx.createBiquadFilter();n.type=i===0?'lowshelf':i===EQ_FREQS.length-1?'highshelf':'peaking';n.frequency.value=freq;n.Q.value=1.4;n.gain.value=Number(s.eqBands[i])||0;return n;});
+          for(let i=1;i<nodes.length;i++)nodes[i-1].connect(nodes[i]);
+          first=nodes[0];last=nodes[nodes.length-1];
+          update=()=>nodes.forEach((n,i)=>adjust(n.gain,Number(s.eqBands[i])||0));
+        }else if(key==='bass'||key==='presence'){
+          const n=ctx.createBiquadFilter(),pp=WaveframeAudio.presenceParams(s.presence);
+          n.type=key==='bass'?'lowshelf':'peaking';n.frequency.value=key==='bass'?90:pp.frequency;if(key==='presence')n.Q.value=pp.q;
+          const gain=()=>key==='bass'?Number(s.bassBoost)||0:WaveframeAudio.presenceParams(s.presence).gain;
+          n.gain.value=gain();nodes=[n];first=last=n;update=()=>adjust(n.gain,gain());
+        }else{
+          const split=ctx.createChannelSplitter(2),merge=ctx.createChannelMerger(2),inv=ctx.createGain(),mid=ctx.createGain(),side=ctx.createGain(),right=ctx.createGain();
+          const width=()=>.5*(1+Math.max(0,Math.min(100,Number(s.surround)||0))*.006);
+          inv.gain.value=-1;mid.gain.value=.5;side.gain.value=width();right.gain.value=-1;
+          split.connect(mid,0);split.connect(mid,1);split.connect(side,0);split.connect(inv,1);inv.connect(side);
+          mid.connect(merge,0,0);mid.connect(merge,0,1);side.connect(merge,0,0);side.connect(right);right.connect(merge,0,1);
+          nodes=[split,merge,inv,mid,side,right];first=split;last=merge;update=()=>adjust(side.gain,width());
+        }
+        stage.input.connect(first);last.connect(stage.wet);stage.branch={first,nodes,update};
+      }
+      stage.branch.update();
+    }
+    if(stage.target!==target){
+      stage.target=target;
+      for(const [param,value] of [[stage.dry.gain,target?0:1],[stage.wet.gain,target?1:0]]){
+        param.cancelScheduledValues(at);adjust(param,value);
+      }
+    }
+    if(!target&&stage.branch&&!stage.timer){
+      const branch=stage.branch;
+      const release=()=>{
+        stage.timer=0;if(stage.target||stage.branch!==branch)return;
+        const now=ctx.currentTime;
+        for(const [param,value] of [[stage.dry.gain,1],[stage.wet.gain,0]]){param.cancelScheduledValues(now);param.setValueAtTime(value,now);}
+        try{stage.input.disconnect(branch.first);}catch{}
+        for(const node of branch.nodes)try{node.disconnect();}catch{}
+        stage.branch=null;
+      };
+      if(ctx.state==='running')stage.timer=setTimeout(release,180);else release();
+    }
   }
   webEffectsSelected(){
     return this.state.masterEnabled&&!this.state.routeBypass&&!(this.workletPreference&&this.workletReady);
@@ -3048,6 +3063,21 @@ window.__selfTest = async function () {
     check('confirmed direct playback commits once',direct.length===2&&direct[1]===true&&!fake.pendingTransition);
     fake.pauseActive();
     check('disabled effects allocate no heavy processor',!engine.compressorNode&&!engine.reverbNode&&!engine.exciterNode);
+    await new Promise(r=>setTimeout(r,200));
+    const tone=engine.toneStages;
+    check('neutral tone and width allocate no processing branches',Object.values(tone).every(x=>!x.branch));
+    engine.setEqBand(3,4);engine.setSurround(50);
+    check('EQ and surround activate independently',!!tone.eq.branch&&!!tone.surround.branch&&!tone.bass.branch&&!tone.presence.branch);
+    engine.setBassBoost(4);engine.setPresence(20);
+    check('bass and presence allocate only when selected',!!tone.bass.branch&&!!tone.presence.branch);
+    engine.setMasterEnable(false);
+    await new Promise(r=>setTimeout(r,200));
+    check('master bypass releases all tone branches',Object.values(tone).every(x=>!x.branch)&&engine.state.eqBands[3]===4&&engine.state.surround===50);
+    engine.setMasterEnable(true);
+    check('selected tone settings restored on re-enable',Object.values(tone).every(x=>!!x.branch));
+    engine.setEqBand(3,0);engine.setSurround(0);engine.setBassBoost(0);engine.setPresence(0);
+    await new Promise(r=>setTimeout(r,200));
+    check('returning to neutral releases all tone branches',Object.values(tone).every(x=>!x.branch));
     check('audiolib loaded', typeof WaveframeAudio === 'object' && typeof WaveframeAudio.integratedLufs === 'function');
     engine.setPresence(100);engine.setBalance(-50);syncProfessionalFx();
     const response=new Float32Array(1),phase=new Float32Array(1);const testFilter=new OfflineAudioContext(2,480,48000).createBiquadFilter();

@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.14
+- EQ bank, bass shelf, presence and stereo-width matrix use independent on-demand live branches. Neutral values and bypass release their processing nodes after a short crossfade; selected settings are preserved. Keep neutral stereo speaker conversion, output limiter, offline render and video EQ unchanged. Six real renderer assertions cover selective activation, bypass, restore and release. New Windows verification pending; the EQ bank still uses all ten bands when any is nonzero.
+
 ## Unreleased — Ultra Mega Pass 20B.13
 - Allocate real-time compressor, convolution and waveshaper processors only for selected nonzero effects in the active Web Audio route. Release disconnected processors after a short wet-path fade; cancel stale release on re-enable, preserve preferences during master/external/worklet bypass. Offline export and output safety limiter unchanged. Real renderer assertions for rapid toggles, bypass, restore, reset and zero mix. Prior demand-driven startup CI passed 282/282; startup idle CPU 0.13%. Latest results pending.
 

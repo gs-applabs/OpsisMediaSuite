@@ -146,3 +146,6 @@ Music parks video resources without losing selected item/subtitle edits; explici
 
 ## 20B.13 — Selective DSP
 Optional compressor/reverb/exciter heavy processors created only for selected web effects, disconnect after 350 ms fade (immediate when suspended), restore on re-enable, zero wet and bypass release. Preserve output limiter and offline conversion. Prior 20B.11 CI 282/282, idle CPU 0.13%, mean Electron working set 534761.6 KiB. New CI pending; remaining neutral EQ/surround branches and hardware measurement not certified.
+
+## 20B.14 — Selective tone and width
+Independent live EQ bank / bass / presence / stereo-width branches, created only for non-neutral web-route settings and released after 180 ms transition (immediate on suspended context). Retain stereo downmix and safety limiter; offline and video DSP unchanged. Whole ten-band bank active if any EQ band nonzero. Six real renderer assertions added; latest Windows CI pending, no measured saving claimed.
