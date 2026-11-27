@@ -159,7 +159,7 @@
   let syncAnchor=null,autoSuggestion=null;
   function clearSuggestion(){autoSuggestion=null;$('vpSubApplySync').disabled=true;$('vpSubAutoStatus').textContent='';}
   function clearAnchors(){clearSuggestion();syncAnchor=null;$('vpSubAnchorStatus').textContent='';}
-  function clearSubs() { clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { if(!$('vpSubAutoCancel').disabled)api.vpSubAutoCancel().catch(()=>{});clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -459,15 +459,17 @@
     $('vpSubAutoSync').addEventListener('click',async()=>{
       const s=subSrc[subSel],p=current();if(!s||!p||VP.isUrl(p)||handoff)return;
       const g=generation,rev=subRevision,selected=subSel,sourceFps=subFps,original=VP.subtitleToVtt(s.text,s.ext,0,1,subFps);
-      clearSuggestion();$('vpSubAutoSync').disabled=true;$('vpSubAutoStatus').textContent='Analyzing local audio (up to 30 min of media)…';
+      clearSuggestion();$('vpSubAutoSync').disabled=true;$('vpSubAutoCancel').disabled=false;$('vpSubAutoStatus').textContent='Analyzing local audio (up to 30 min of media)…';
       try{
-        const r=await api.vpSubAutoSync({path:p,cues:original.entries.map(c=>({start:c.start,end:c.end}))});
+        const audioIndex=Math.max(0,Math.min(63,Math.floor(Number($('vpSubAudioIndex').value)||1)-1));
+        const r=await api.vpSubAutoSync({path:p,audioIndex,cues:original.entries.map(c=>({start:c.start,end:c.end}))});
         if(g!==generation||rev!==subRevision||selected!==subSel||sourceFps!==subFps)return;
         if(!r?.ok){$('vpSubAutoStatus').textContent='No reliable suggestion: '+(r?.code||'unavailable');return;}
         autoSuggestion=r;$('vpSubApplySync').disabled=false;
         $('vpSubAutoStatus').textContent='Suggested '+r.delay.toFixed(3)+' s · scale '+r.scale.toFixed(6)+' · activity score '+r.score.toFixed(3)+' (verify dialogue manually)';
-      }catch{$('vpSubAutoStatus').textContent='Audio analysis unavailable';}finally{$('vpSubAutoSync').disabled=false;}
+      }catch{$('vpSubAutoStatus').textContent='Audio analysis unavailable';}finally{$('vpSubAutoSync').disabled=false;$('vpSubAutoCancel').disabled=true;}
     });
+    $('vpSubAutoCancel').addEventListener('click',()=>{api.vpSubAutoCancel().catch(()=>{});$('vpSubAutoCancel').disabled=true;});
     $('vpSubApplySync').addEventListener('click',()=>{if(!autoSuggestion)return;const r=autoSuggestion;clearAnchors();subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAutoStatus').textContent='Suggestion applied — verify dialogue / Ελέγξτε την ομιλία';});
     $('vpSubAnchorReset').addEventListener('click',()=>{clearAnchors();subScale=1;$('vpSubFps').value='1';setDelay(0);});
     async function saveSubtitle(format){

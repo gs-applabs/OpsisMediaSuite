@@ -283,3 +283,9 @@ test('native subtitle handoff canonicalizes synchronized SRT and rejects invalid
  assert.equal(prepareSubtitle('not a subtitle'),null);
  assert.equal(prepareSubtitle('x'.repeat(5*1024*1024+1)),null);
 });
+
+test('audio analysis rejects invalid audio stream and pre-aborted request before spawning',async()=>{
+ const A=require('../subtitle-autosync'),c=new AbortController();c.abort();
+ await assert.rejects(A.extractActivity('not-run','not-run',10,{audioIndex:64}),/bad-audio-index/);
+ await assert.rejects(A.extractActivity('not-run','not-run',10,{signal:c.signal}),/cancelled/);
+});

@@ -108,3 +108,6 @@ Added generated 65s WAV with eight irregular activity regions offset by exactly 
 
 ## Pass 34 — LibVLC synchronized external subtitle handoff
 Current selected corrected SRT is canonicalized and bounded in main, written to unique temporary sidecar, passed only to LibVLC via fixed argv, deleted on child close/error. Native host reports AddSlave acceptance; dedicated native selftest loads/selects a synchronized external Greek SRT on an MKV without embedded subtitles. DirectShow subtitle handoff not supported. Acceptance is not visual/timing verification. CI pending. Prior two-point sync 183/183 and renderer self-test passed.
+
+## Pass 35 — responsive cancellable offline audio analysis
+Pass 34 general CI 187/187 and native external SRT accepted/selected, plugin 12/12 passed. Move FFmpeg extraction and activity correlation off Electron main thread into dedicated worker; add explicit audio stream ordinal (1–64), cancel request and source-change cancellation. FFmpeg subprocess cancellation and timeout, no new filesystem grants. Existing real +1.7s and silence selftests now exercise worker through IPC. Worker cancellation during synchronous correlation is cooperative only after current computation; late result discarded. Latest CI pending.

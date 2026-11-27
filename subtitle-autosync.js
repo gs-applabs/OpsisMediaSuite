@@ -48,14 +48,18 @@ function estimate(activity,cues,{maxShift=30,step=STEP}={}){
  if(margin<.035)return {ok:false,code:'ambiguous-match'};
  return {ok:true,scale:best.scale,delay:Math.round(best.delay*1000)/1000,score:Math.round(best.score*1000)/1000,margin:Math.round(margin*1000)/1000,analyzedSeconds:n*step,method:'audio-activity'};
 }
-function extractActivity(ffmpeg,file,seconds=MAX_SECONDS){
+function extractActivity(ffmpeg,file,seconds=MAX_SECONDS,{audioIndex=0,signal}={}){
+ if(!Number.isInteger(audioIndex)||audioIndex<0||audioIndex>63)return Promise.reject(Error('bad-audio-index'));
+ if(signal?.aborted)return Promise.reject(Error('cancelled'));
  seconds=Math.max(10,Math.min(MAX_SECONDS,Number(seconds)||MAX_SECONDS));
  return new Promise((resolve,reject)=>{
-  const args=['-nostdin','-hide_banner','-v','error','-protocol_whitelist','file,pipe','-i',file,'-map','0:a:0','-vn','-sn','-dn','-t',String(seconds),'-ac','1','-ar',String(RATE),'-f','s16le','pipe:1'];
+  const args=['-nostdin','-hide_banner','-v','error','-protocol_whitelist','file,pipe','-i',file,'-map','0:a:'+audioIndex,'-vn','-sn','-dn','-t',String(seconds),'-ac','1','-ar',String(RATE),'-f','s16le','pipe:1'];
   const p=spawn(ffmpeg,args,{shell:false,windowsHide:true,stdio:['ignore','pipe','ignore']});
   let total=0,chunks=[],settled=false;
-  const done=(err,val)=>{if(settled)return;settled=true;clearTimeout(timer);err?reject(err):resolve(val);};
+  const done=(err,val)=>{if(settled)return;settled=true;clearTimeout(timer);signal?.removeEventListener('abort',cancel);err?reject(err):resolve(val);};
+  const cancel=()=>{try{p.kill();}catch{}done(Error('cancelled'));};
   const timer=setTimeout(()=>{p.kill();done(Error('audio-timeout'));},120000);
+  signal?.addEventListener('abort',cancel,{once:true});
   p.stdout.on('data',b=>{if(settled)return;total+=b.length;if(total>seconds*RATE*2+1600){p.kill();done(Error('audio-limit'));return;}chunks.push(b);});
   p.once('error',()=>done(Error('audio-unavailable')));
   p.once('close',code=>{if(settled)return;if(code!==0)return done(Error('audio-decode'));try{done(null,activityFromPcm(Buffer.concat(chunks,total)));}catch(e){done(e);}});

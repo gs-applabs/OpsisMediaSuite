@@ -161,18 +161,28 @@ function init({ getMainWin, resolveFfmpegPath }) {
   });
   ipcMain.handle('vp:sub-download',async(e,id)=>trusted(e)?subtitleProvider.download(id):{ok:false,code:'denied'});
   ipcMain.handle('vp:sub-disconnect',e=>trusted(e)?subtitleProvider.clear():false);
-  let autoSyncBusy=false;
+  let autoSyncBusy=false,autoSyncWorker=null,autoSyncCancelled=false;
+  ipcMain.handle('vp:sub-autosync-cancel',e=>{if(!trusted(e)||!autoSyncBusy)return false;autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');return true;});
   ipcMain.handle('vp:sub-autosync',async(e,req)=>{
     if(!trusted(e)||autoSyncBusy||!req||!Array.isArray(req.cues)||req.cues.length>20000)return {ok:false,code:'denied-or-busy'};
     const p=allowedFile(req.path,PLAY_EXTS);
     if(!p||!approved.has(p))return {ok:false,code:'denied'};
-    autoSyncBusy=true;
+    const audioIndex=req.audioIndex??0;if(!Number.isInteger(audioIndex)||audioIndex<0||audioIndex>63)return {ok:false,code:'bad-audio-index'};
+    autoSyncBusy=true;autoSyncCancelled=false;
     try{
       const ff=await resolveFfmpegPath();
       if(!ff||!trusted(e))return {ok:false,code:'no-ffmpeg'};
-      const activity=await AutoSync.extractActivity(ff,p);
-      return AutoSync.estimate(activity,req.cues);
-    }catch{return {ok:false,code:'audio-analysis-failed'};}finally{autoSyncBusy=false;}
+      if(autoSyncCancelled)return {ok:false,code:'cancelled'};
+      const cues=req.cues.map(c=>({start:c?.start,end:c?.end})).filter(c=>Number.isFinite(c.start)&&Number.isFinite(c.end));
+      const {Worker}=require('node:worker_threads');
+      return await new Promise(resolve=>{
+        const worker=new Worker(path.join(__dirname,'subtitle-sync-worker.js'),{workerData:{ffmpeg:ff,file:p,cues,audioIndex,seconds:1800}});autoSyncWorker=worker;
+        let result=null,finished=false;
+        const finish=r=>{if(finished)return;finished=true;clearTimeout(timer);autoSyncWorker=null;resolve(autoSyncCancelled?{ok:false,code:'cancelled'}:r);};
+        const timer=setTimeout(()=>{worker.postMessage('cancel');},125000);
+        worker.once('message',r=>{result=r;});worker.once('error',()=>finish({ok:false,code:'worker-error'}));worker.once('exit',()=>finish(result||{ok:false,code:'worker-exited'}));
+      });
+    }catch{return {ok:false,code:'audio-analysis-failed'};}finally{autoSyncBusy=false;autoSyncWorker=null;}
   });
   let subtitleSaveBusy=false;
   ipcMain.handle('vp:save-sub',async(e,req)=>{
