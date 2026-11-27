@@ -277,7 +277,8 @@ function createWindow() {
           results.push(...await mediaApi.selfTest());
           await sample('post-selftest');
           if(profile&&process.env.OPSIS_RESOURCE_SOAK==='1'){
-            results.push(...await win.webContents.executeJavaScript('window.__resourceSoak()'));
+            const cycles=Math.max(20,Math.min(1200,Number.parseInt(process.env.OPSIS_SOAK_CYCLES,10)||20));
+            results.push(...await win.webContents.executeJavaScript('window.__resourceSoak('+cycles+')'));
             await sample('post-soak');
           }
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
@@ -539,7 +540,10 @@ function createWindow() {
     }catch(err){return {error:String(err.message).slice(0,250)};}
     finally{metadataBusy=false;}
   });
+  let metadataReadBusy=false;
   ipcMain.handle('metadata:read', async (event, filePath) => {
+    if(metadataReadBusy)return null;
+    metadataReadBusy=true;
     try {
       // tags are only read from absolute paths of real audio files
       if (!fromMain(event) || typeof filePath !== 'string' || !path.isAbsolute(filePath) || !AUDIO_FILE_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) || !fs.statSync(filePath).isFile()) return null;
@@ -561,14 +565,14 @@ function createWindow() {
         }
       }
       return {
-        title: common.title || null,
-        artist: common.artist || null,
-        album: common.album || null,
+        title: typeof common.title==='string'?common.title.slice(0,4096):null,
+        artist: typeof common.artist==='string'?common.artist.slice(0,4096):null,
+        album: typeof common.album==='string'?common.album.slice(0,4096):null,
         picture,
       };
     } catch {
       return null;
-    }
+    }finally{metadataReadBusy=false;}
   });
 
   ipcMain.handle('settings:export', async (event, data) => {

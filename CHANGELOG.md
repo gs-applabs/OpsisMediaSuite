@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.7 anti-pile-up
+- One metadata scan with revision coalescing, a bounded 64-key serial queue, deduplicated active requests and cancellation of removed tracks. Remember missing covers, bound returned tag text, prevent concurrent main metadata reads. Manual Windows CI soak choice 20/120/1200 cycles; bounded test stdout and failure diagnostics. Prior 20B.5 Windows CI 275/275 and 20/20 real playback advancement, idle CPU 0.29%; current changes and extended soak not yet verified.
+
 ## Unreleased — Ultra Mega Pass 20B.6 anti-pile-up
 - Serialize video preview probes and thumbnails, coalesce refreshes and discard removed-item results. Bound transient music artwork and converter thumbnails to 16 MiB estimated string storage each; evicted artwork is re-read when playing a track. Allow completed converter rows to be removed independently. Prevent concurrent photo decode/read/export. Preserve user files and playlists; no forced memory purge. New CI pending.
 

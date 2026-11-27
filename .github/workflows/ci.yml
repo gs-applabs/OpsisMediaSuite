@@ -5,6 +5,12 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      soak_cycles:
+        description: 'Audio soak: 20 (1 min), 120 (6 min), 1200 (at least 1 hour)'
+        type: choice
+        options: ['20', '120', '1200']
+        default: '20'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
@@ -15,7 +21,7 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_cycles == '1200' && 140 || 25 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,6 +53,7 @@ jobs:
         env:
           OPSIS_RESOURCE_PROFILE: '1'
           OPSIS_RESOURCE_SOAK: '1'
+          OPSIS_SOAK_CYCLES: ${{ inputs.soak_cycles || '20' }}
         run: |
           npm run selftest 2>&1 | Tee-Object -FilePath selftest-resource.log
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

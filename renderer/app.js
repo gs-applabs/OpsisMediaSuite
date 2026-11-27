@@ -1436,7 +1436,7 @@ function playTrackAt(index) {
   window.WaveframeVideoPlayer?.pause();
   currentTrackIndex = index;
   const item = playlist[index];
-  if(item.path&&!musicArtCache.has(item)&&!item.picture)void enrichTrackMetadata(item,true);
+  if(item.path&&!musicArtCache.has(item)&&!noArtwork.has(item))void enrichTrackMetadata(item,true);
   engine.switchTrack((slotIndex) => {
     const slot=engine.slots[slotIndex],old=slot.objectUrl;
     slot.el.pause();
@@ -1602,7 +1602,7 @@ function addFilesToPlaylist(files) {
   });
   renderPlaylist();
   if (wasEmpty && playlist.length > 0) playTrackAt(0);
-  void (async()=>{for(const item of added)await enrichTrackMetadata(item);})();
+  scheduleMetadataScan();
 }
 
 let metadataUiBusy=false;
@@ -1610,7 +1610,7 @@ const metadataProgress=document.getElementById('metadataProgress');
 const metadataCancel=document.getElementById('metadataCancel');
 const inferDisplay=document.getElementById('metadataInferDisplay');
 inferDisplay.checked=localStorage.getItem('waveframe.metadata.inferDisplay')==='true';
-inferDisplay.addEventListener('change',()=>{localStorage.setItem('waveframe.metadata.inferDisplay',String(inferDisplay.checked));for(const item of playlist.slice(0,500)){if(item.path)void enrichTrackMetadata(item);}});
+inferDisplay.addEventListener('change',()=>{localStorage.setItem('waveframe.metadata.inferDisplay',String(inferDisplay.checked));scheduleMetadataScan();});
 metadataCancel.addEventListener('click',async()=>{metadataCancel.disabled=true;await window.waveframe.cancelMetadata();});
 window.waveframe.onMetadataProgress(p=>{if(metadataUiBusy&&Number.isInteger(p.done)&&Number.isInteger(p.total))metadataProgress.textContent=p.done+' / '+p.total;});
 async function completeMusicTags(mode){
@@ -1645,7 +1645,31 @@ document.getElementById('metadataManual').addEventListener('click',()=>completeM
 document.getElementById('metadataOnline').addEventListener('click',()=>completeMusicTags('online'));
 document.getElementById('metadataFingerprint').addEventListener('click',()=>completeMusicTags('fingerprint'));
 
-const metadataReads=new WeakMap(),musicArtCache=new Map();let metadataTail=Promise.resolve(),metadataRenderTimer=0,metadataSaveTimer=0;
+const metadataReads=new WeakMap(),musicArtCache=new Map(),noArtwork=new WeakSet();
+let metadataRenderTimer=0,metadataSaveTimer=0,metadataScanBusy=false,metadataScanRevision=0;
+const metadataQueue=OpsisFeatureGuide.createSerialQueue(async item=>{
+  if(!playlist.includes(item))return null;
+  const meta=await window.waveframe.readMetadata(item.path);
+  if(!meta||!playlist.includes(item))return null;
+  if(meta.picture){noArtwork.delete(item);retainMusicArt(item,meta.picture);}else{noArtwork.add(item);musicArtCache.delete(item);}
+  const {picture,...text}=meta;return text;
+},64);
+function scheduleMetadataScan(){
+  metadataScanRevision++;
+  if(metadataScanBusy)return;
+  metadataScanBusy=true;
+  void (async()=>{try{
+    let revision;
+    do{
+      revision=metadataScanRevision;
+      // One scan, no array of asynchronous jobs or repeated queued scans.
+      for(let i=0;i<playlist.length;i++){
+        if(revision!==metadataScanRevision)break;
+        const item=playlist[i];if(item?.path)await enrichTrackMetadata(item);
+      }
+    }while(revision!==metadataScanRevision);
+  }finally{metadataScanBusy=false;}})();
+}
 function retainMusicArt(item,picture){
   for(const key of musicArtCache.keys())if(!playlist.includes(key))musicArtCache.delete(key);
   if(picture)OpsisFeatureGuide.retainImage(musicArtCache,item,picture);
@@ -1662,14 +1686,7 @@ async function enrichTrackMetadata(item,force=false) {
   if (!item.path||!playlist.includes(item)) return;
   let task=metadataReads.get(item);
   if(!task||force){
-    task=metadataTail.then(async()=>{
-      if(!playlist.includes(item))return null;
-      const meta=await window.waveframe.readMetadata(item.path);
-      if(!meta||!playlist.includes(item))return null;
-      if(meta.picture)retainMusicArt(item,meta.picture);else musicArtCache.delete(item);
-      const {picture,...text}=meta;return text;
-    }).catch(()=>null);
-    metadataTail=task.then(()=>{});
+    task=metadataQueue.request(item,force);
     metadataReads.set(item,task);
   }
   const meta=await task;
@@ -1723,7 +1740,7 @@ function restorePlaylist() {
   });
   renderPlaylist();
   // Refresh tags on restored local files in sequence to avoid unbounded disk IO.
-  void (async()=>{for(const item of playlist.slice(0,500)){if(item.path)await enrichTrackMetadata(item);}})();
+  scheduleMetadataScan();
 }
 document.body.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drag-over'); });
 document.body.addEventListener('dragleave', () => document.body.classList.remove('drag-over'));
@@ -1779,7 +1796,7 @@ function renderPlaylist(persist=true) {
       const activeItem=engine.slots[engine.activeSlot].item;
       if(activeItem===removed)engine.pauseActive();
       playlist.splice(idx, 1);
-      musicArtCache.delete(removed);metadataReads.delete(removed);
+      musicArtCache.delete(removed);metadataReads.delete(removed);noArtwork.delete(removed);metadataQueue.remove(removed);metadataScanRevision++;
       if(activeItem===removed)currentTrackIndex=-1;
       else if(activeItem&&playlist.includes(activeItem))currentTrackIndex=playlist.indexOf(activeItem);
       else if(wasSelected)currentTrackIndex=-1;
@@ -3039,7 +3056,8 @@ window.__selfTest = async function () {
 
 // Test-only soak, invoked by the isolated Electron CI profile after normal tests.
 // Local generated media, muted playback, real DOM/transport. No external files.
-window.__resourceSoak=async function(){
+window.__resourceSoak=async function(requestedCycles=20){
+  const cycles=Math.max(20,Math.min(1200,Number.isInteger(requestedCycles)?requestedCycles:20));
   const out=[],check=(name,ok,extra='')=>out.push({name,ok:!!ok,extra:String(extra)});
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const until=async(fn,ms=2000)=>{const end=performance.now()+ms;while(performance.now()<end){if(fn())return true;await wait(50);}return !!fn();};
@@ -3056,7 +3074,7 @@ window.__resourceSoak=async function(){
     const files=[new File([bytes],'soak-a.wav',{type:'audio/wav'}),new File([bytes],'soak-b.wav',{type:'audio/wav'})];
     playlist=[];currentTrackIndex=-1;renderPlaylist();
     showTab('player');
-    for(let i=0;i<20;i++){
+    for(let i=0;i<cycles;i++){
       const started=performance.now();
       if(!playlist.length)playlist.push(...files.map(file=>({file,name:file.name})));
       renderPlaylist(false);
@@ -3068,8 +3086,8 @@ window.__resourceSoak=async function(){
         transitions++;
         before=engine.activeEl.currentTime;
         if(await until(()=>confirmed()&&engine.activeEl.currentTime>before+.04,2500))advancing++;
-        else failures.push({cycle:i+1,before,after:engine.activeEl.currentTime,paused:engine.activeEl.paused,ready:engine.activeEl.readyState,network:engine.activeEl.networkState,ended:engine.activeEl.ended,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
-      }else failures.push({cycle:i+1,reason:'not-confirmed',paused:engine.activeEl.paused,ready:engine.activeEl.readyState,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
+        else if(failures.length<30)failures.push({cycle:i+1,before,after:engine.activeEl.currentTime,paused:engine.activeEl.paused,ready:engine.activeEl.readyState,network:engine.activeEl.networkState,ended:engine.activeEl.ended,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
+      }else if(failures.length<30)failures.push({cycle:i+1,reason:'not-confirmed',paused:engine.activeEl.paused,ready:engine.activeEl.readyState,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
       showTab(i%2?'enhance':'settings');await wait(100);showTab('player');
       if(i%4===3){
         const idx=playlist.indexOf(item),button=els.playlist.children[idx]?.querySelector('.remove-track');
@@ -3078,10 +3096,11 @@ window.__resourceSoak=async function(){
       completed++;
       await wait(Math.max(0,3000-(performance.now()-started)));
     }
-    check('60-second audio/tab soak completed',completed===20,completed+' cycles');
-    check('real audio transitions settle on requested track',transitions===20,transitions+'/20');
-    check('real playback time advances',advancing===20,advancing+'/20'+(failures.length?' '+JSON.stringify(failures):''));
-    check('removed audio sources release all slot references',removed===5,removed+'/5');
+    check('audio/tab soak completed',completed===cycles,completed+' cycles');
+    check('real audio transitions settle on requested track',transitions===cycles,transitions+'/'+cycles);
+    check('real playback time advances',advancing===cycles,advancing+'/'+cycles+(failures.length?' '+JSON.stringify(failures):''));
+    check('removed audio sources release all slot references',removed===Math.floor(cycles/4),removed+'/'+Math.floor(cycles/4));
+    check('metadata queue remains bounded',metadataQueue.diagnostics().peak<=64,JSON.stringify(metadataQueue.diagnostics()));
   }catch(e){check('audio soak threw',false,e?.stack||e);}
   finally{
     engine.pauseActive();engine.stopAlternateSources();

@@ -34,14 +34,15 @@ if(process.platform==='win32'&&process.env.OPSIS_RESOURCE_PROFILE==='1'&&child.p
       try{const row=JSON.parse(stdout.trim());console.log('PROCESS_PROFILE '+JSON.stringify(row));}catch{console.log('PROCESS_PROFILE_UNAVAILABLE invalid-output');}
     });
   };
-  profileTimer=setInterval(sample,4000);sample();
+  profileTimer=setInterval(sample,Number(process.env.OPSIS_SOAK_CYCLES)>120?15000:4000);sample();
 }
 function stopProfile(){profileStopped=true;clearInterval(profileTimer);if(sampler)try{sampler.kill();}catch{}}
-let out = '';
-child.stdout.on('data', (d) => { const s = d.toString(); out += s; process.stdout.write(s); });
+let tail='',sawFailure=false;
+child.stdout.on('data',d=>{const s=d.toString();const lines=(tail+s).split(/\r?\n/);tail=lines.pop().slice(-8192);if(lines.some(l=>/^FAIL/.test(l)))sawFailure=true;process.stdout.write(s);});
 child.stderr.on('data', () => { /* Chromium noise */ });
 
-const timeoutMs=process.env.OPSIS_RESOURCE_SOAK==='1'?360000:240000;
+const cycles=Math.max(20,Math.min(1200,Number.parseInt(process.env.OPSIS_SOAK_CYCLES,10)||20));
+const timeoutMs=process.env.OPSIS_RESOURCE_SOAK==='1'?240000+cycles*6000:240000;
 const timeout = setTimeout(() => {
   stopProfile();
   console.error('FAIL: self-test timed out after '+timeoutMs/1000+' s');
@@ -52,7 +53,7 @@ const timeout = setTimeout(() => {
 child.on('close', (code) => {
   stopProfile();clearTimeout(timeout);
   try { fs.rmSync(USER_DATA, { recursive: true, force: true }); } catch (_) { /* still locked */ }
-  const failed = /^FAIL/m.test(out) || code !== 0;
+  const failed = sawFailure || /^FAIL/.test(tail) || code !== 0;
   console.log(failed ? 'SELF-TEST FAILED' : 'SELF-TEST PASSED');
   process.exit(failed ? 1 : 0);
 });

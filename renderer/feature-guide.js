@@ -21,5 +21,23 @@ function retainImage(cache,key,value,maxBytes=16*1024*1024,maxItems=96){
  while(cache.size>maxItems||bytes>maxBytes){const oldest=cache.keys().next().value;bytes-=cache.get(oldest).length*2;cache.delete(oldest);}
  return cache.has(key);
 }
-const api={list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
+// One running job, bounded pending keys, coalesce duplicate requests.
+function createSerialQueue(work,maxPending=64){
+ const pending=new Map();let active=null,peak=0;
+ function drain(){
+  if(active||!pending.size)return;
+  const [key,job]=pending.entries().next().value;pending.delete(key);active={key,job};
+  Promise.resolve().then(()=>work(key)).catch(()=>null).then(value=>{active=null;job.resolve(value);drain();});
+ }
+ function request(key,priority=false){
+  if(active?.key===key)return active.job.promise;
+  if(pending.has(key)){const job=pending.get(key);if(priority){pending.delete(key);const rest=[...pending];pending.clear();pending.set(key,job);for(const row of rest)pending.set(...row);}return job.promise;}
+  if(pending.size>=maxPending){if(!priority)return Promise.resolve(null);const oldest=pending.keys().next().value;pending.get(oldest).resolve(null);pending.delete(oldest);}
+  let resolve;const promise=new Promise(r=>resolve=r),job={promise,resolve};
+  if(priority){const rest=[...pending];pending.clear();pending.set(key,job);for(const row of rest)pending.set(...row);}else pending.set(key,job);
+  peak=Math.max(peak,pending.size);drain();return promise;
+ }
+ return {request,remove(key){const job=pending.get(key);if(job){pending.delete(key);job.resolve(null);}},diagnostics(){return {pending:pending.size,active:active?1:0,peak};}};
+}
+const api={list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage,createSerialQueue};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
 })(typeof window!=='undefined'?window:globalThis);
