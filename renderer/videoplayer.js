@@ -508,7 +508,7 @@
       try{
         const r=await api.vpSubSearch(req);if(g!==generation||n!==searchGeneration)return;
         if(!r?.ok){onlineStatus(providerStatus(r));return;}
-        for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':'');$('vpSubResults').append(o);}
+        for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':row.matchScore>0?' · release match '+row.matchScore:'');$('vpSubResults').append(o);}
         $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα');
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
     });

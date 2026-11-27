@@ -13,6 +13,8 @@ const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website}=require('./subtitle-sidecar.js');
+const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
+const VP=require('./renderer/vplib');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -174,18 +176,38 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const url=trusted(e)&&website(id);if(!url)return false;
     try{await shell.openExternal(url);return true;}catch{return false;}
   });
+  let subtitleImportBusy=false;
   ipcMain.handle('vp:sub-import-beside',async(e,video,language)=>{
-    if(!trusted(e)||sidecarBusy)return {ok:false,code:'denied-or-busy'};
+    if(!trusted(e)||sidecarBusy||subtitleImportBusy)return {ok:false,code:'denied-or-busy'};
     const p=allowedFile(video,new Set(VIDEO_EXTS));if(!p||!approved.has(p))return {ok:false,code:'video-not-approved'};
-    const pick=await dialog.showOpenDialog(getMainWin(),{defaultPath:app.getPath('downloads'),properties:['openFile'],filters:[{name:'Text subtitles (extract ZIP/RAR first)',extensions:['srt','vtt','ass','ssa']}]});
-    if(pick.canceled||!trusted(e))return {ok:false,code:'cancelled'};
-    const f=allowedFile(pick.filePaths[0],new Set(['srt','vtt','ass','ssa']));
-    if(!f)return {ok:false,code:'invalid-subtitle'};
-    try{const sub=readSubtitle(f);if(!sub)return {ok:false,code:'invalid-subtitle'};
+    subtitleImportBusy=true;
+    try{
+      const pick=await dialog.showOpenDialog(getMainWin(),{defaultPath:app.getPath('downloads'),properties:['openFile'],filters:[{name:'Subtitles or ZIP (RAR: extract first)',extensions:['srt','vtt','ass','ssa','zip']}]});
+      if(pick.canceled||!trusted(e))return {ok:false,code:'cancelled'};
+      const f=allowedFile(pick.filePaths[0],new Set(['srt','vtt','ass','ssa','zip']));
+      if(!f)return {ok:false,code:'invalid-subtitle'};
+      let sub;
+      if(extOf(f)==='zip'){
+        const fd=await fs.promises.open(f,'r');
+        let data;
+        try{const st=await fd.stat();if(st.size>MAX_ARCHIVE)return {ok:false,code:'archive-size'};data=Buffer.alloc(st.size);let offset=0;while(offset<data.length){const rr=await fd.read(data,offset,data.length-offset,offset);if(!rr.bytesRead)return {ok:false,code:'archive-read-failed'};offset+=rr.bytesRead;}}finally{await fd.close();}
+        const candidates=zipSubtitles(data,decodeText).map(x=>({...x,score:VP.releaseScore(p,x.name)})).sort((a,b)=>b.score-a.score);
+        if(!candidates.length)return {ok:false,code:'no-subtitles-in-zip'};
+        if(candidates.length>8)return {ok:false,code:'too-many-subtitles-extract-manually'};
+        // Never silently choose from an archive of multiple episodes/releases.
+        if(candidates.length>1||candidates[0].score<0){
+          const buttons=['Cancel / Ακύρωση',...candidates.map(x=>x.name.slice(0,100))];
+          const choice=await dialog.showMessageBox(getMainWin(),{type:'question',message:'Select subtitle for '+path.basename(p),detail:'Verify episode and release before saving.',buttons,defaultId:0,cancelId:0,noLink:true});
+          if(!choice.response||!trusted(e))return {ok:false,code:'cancelled'};
+          sub=candidates[choice.response-1];
+        }else sub=candidates[0];
+      }else sub=readSubtitle(f);
+      if(!sub)return {ok:false,code:'invalid-subtitle'};
       const saved=await saveDownloaded(e,p,sub,language);
       if(!saved.ok)return {ok:false,code:saved.code};
       return {ok:true,subtitle:sub,saved};
-    }catch{return {ok:false,code:'invalid-subtitle'};}
+    }catch{return {ok:false,code:'invalid-or-unsupported-archive-or-subtitle'};}
+    finally{subtitleImportBusy=false;}
   });
   ipcMain.handle('vp:sub-download',async(e,id,video,save)=>{
     if(!trusted(e))return {ok:false,code:'denied'};

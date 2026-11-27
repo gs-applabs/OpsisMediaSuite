@@ -374,3 +374,38 @@ test('provider refuses HTML challenges and respects rate limits without automati
  const limited=createProvider({fetchImpl:async()=>new Response('quota',{status:429,headers:{'retry-after':'90'}})});
  assert.equal((await limited.search(req)).code,'quota');assert.equal((await limited.search(req)).code,'provider-cooldown');
 });
+
+
+test('episode and release ranking rejects explicit different episodes',()=>{
+ const x=V.releaseInfo('Show.Name.S02E03.1080p.WEB-DL-GROUP.mkv');
+ assert.equal(x.title,'Show Name');assert.equal(x.season,2);assert.equal(x.episode,3);assert.equal(x.source,'WEB-DL');
+ assert.equal(V.releaseInfo('Show.2x03.HDTV.avi').episode,3);
+ assert.equal(V.releaseInfo('Show.S02E03E04.mkv').season,null);
+ assert.equal(V.releaseScore('Show.S02E03.mkv','Show.S02E04.srt'),-1000);
+ assert.ok(V.releaseScore('Show.S02E03.1080p.WEB-DL-GROUP.mkv','Show.S02E03.1080p.WEB-DL-GROUP.srt')>V.releaseScore('Show.S02E03.1080p.WEB-DL-GROUP.mkv','Show.S02E03.HDTV.srt'));
+});
+
+test('ZIP subtitle import bounds decompression, skips traversal and never extracts files',()=>{
+ const AdmZip=require('adm-zip'),{zipSubtitles}=require('../subtitle-archive');
+ const text='1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα';
+ const zip=new AdmZip();zip.addFile('nested/Show.S01E01.srt',Buffer.from(text));zip.addFile('other.exe',Buffer.from('ignored'));
+ const data=zip.toBuffer();const out=zipSubtitles(data,b=>b.toString('utf8'));
+ assert.equal(out.length,1);assert.equal(out[0].name,'Show.S01E01.srt');assert.match(out[0].text,/Καλημέρα/);
+ const tooLarge=new AdmZip();tooLarge.addFile('large.srt',Buffer.alloc(5*1024*1024+1,65));
+ assert.throws(()=>zipSubtitles(tooLarge.toBuffer(),b=>b.toString('utf8')));
+ assert.throws(()=>zipSubtitles(Buffer.from('not zip'),b=>b.toString('utf8')));
+ const damaged=Buffer.from(data);const central=damaged.indexOf(Buffer.from([0x50,0x4b,0x01,0x02]));damaged[central+16]^=1;
+ assert.throws(()=>zipSubtitles(damaged,b=>b.toString('utf8')));
+});
+
+test('OpenSubtitles sends explicit episode parameters and ranks matching releases',async()=>{
+ const {createProvider}=require('../subtitle-provider');let params;
+ const provider=createProvider({fetchImpl:async(url)=>{params=new URL(url).searchParams;return new Response(JSON.stringify({data:[
+ {attributes:{language:'el',files:[{file_id:11,file_name:'Show.S02E04.srt'}]}},
+ {attributes:{language:'el',files:[{file_id:12,file_name:'Show.S02E03.HDTV.srt'}],download_count:999}},
+ {attributes:{language:'el',files:[{file_id:13,file_name:'Show.S02E03.WEB-DL-GROUP.srt'}],download_count:1}}
+ ]}),{headers:{'content-type':'application/json'}});}});
+ const result=await provider.search({query:'Show.S02E03.WEB-DL-GROUP',language:'el',apiKey:'fixture'});
+ assert.equal(params.get('query'),'Show');assert.equal(params.get('season_number'),'2');assert.equal(params.get('episode_number'),'3');
+ assert.deepEqual(result.items.map(x=>x.id),[13,12]);
+});

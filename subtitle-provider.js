@@ -65,10 +65,15 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
    const username=secret(req?.username,256),password=secret(req?.password,512);
    if(username||password){if(!username||!password)return {ok:false,code:'credentials-required'};token='';const login=await json('login','POST',{username,password});token=secret(login.token);if(!token)return {ok:false,code:'auth'};}
    const hash=typeof req?.moviehash==='string'&&/^[a-f0-9]{16}$/.test(req.moviehash)?req.moviehash:null;
+   const info=VP.releaseInfo(query);
    const q=new URLSearchParams({languages:lang,order_by:'download_count',order_direction:'desc'});
    let reply;
    if(hash){q.set('moviehash',hash);reply=await json('subtitles?'+q);q.delete('moviehash');}
-   if(!reply||Array.isArray(reply.data)&&reply.data.length===0){q.set('query',query);reply=await json('subtitles?'+q);}
+   if(!reply||Array.isArray(reply.data)&&reply.data.length===0){
+    q.set('query',info.season!==null&&info.title?info.title:query);
+    if(info.season!==null){q.set('season_number',String(info.season));q.set('episode_number',String(info.episode));}
+    reply=await json('subtitles?'+q);
+   }
    if(!Array.isArray(reply.data))throw Error('bad-response');
    for(const row of reply.data.slice(0,50)){
     const a=row?.attributes;if(!a||a.language!==lang||!Array.isArray(a.files))continue;
@@ -76,10 +81,14 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
      if(!Number.isSafeInteger(f?.file_id)||f.file_id<=0||results.size>=50)continue;
      const name=clean(f.file_name)||'subtitle.srt';
      const item={id:f.file_id,name,release:clean(a.release),language:lang,hearingImpaired:!!a.hearing_impaired,hashMatch:a.moviehash_match===true,downloads:Math.max(0,Math.min(1e9,Number(a.download_count)||0)),fps:Number.isFinite(a.fps)?a.fps:null};
+     const score=VP.releaseScore(query,item.release||item.name);
+     const nameScore=VP.releaseScore(query,item.name);
+     if(!item.hashMatch&&(score===-1000||nameScore===-1000))continue;
+     item.matchScore=item.hashMatch?10000:Math.max(score,nameScore);
      results.set(item.id,item);
     }
    }
-   return {ok:true,items:[...results.values()]};
+   return {ok:true,items:[...results.values()].sort((a,b)=>b.matchScore-a.matchScore||b.downloads-a.downloads)};
   });},
   download(id){return exclusive(async()=>{
    const row=results.get(id);if(!row||!key)return {ok:false,code:'not-in-results'};

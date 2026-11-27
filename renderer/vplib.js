@@ -171,6 +171,29 @@
     }
     return count?out.join('\n')+'\n':'';
   }
+  // Conservative single-episode recognition; do not guess multi-episode ranges.
+  function releaseInfo(value){
+    const raw=String(value||'').split(/[\\/]/).pop().slice(0,400).replace(/\.(mkv|mp4|avi|mov|wmv|webm|m4v|srt|vtt|ass|ssa)$/i,'');
+    const ep=/(?:^|[ ._-])(?:s(\d{1,2})e(\d{1,3})|(\d{1,2})x(\d{1,3}))(?=$|[ ._-]|e\d)/i.exec(raw);
+    const rest=ep?raw.slice(ep.index+ep[0].length):'';
+    const multiple=!!ep&&/^(?:e\d|[ ._-]+(?:e\d|s\d{1,2}e\d|\d{1,2}x\d)|-\d)/i.test(rest);
+    const source=/\bweb[ ._-]?dl\b/i.test(raw)?'WEB-DL':/\bweb[ ._-]?rip\b/i.test(raw)?'WEBRip':/\bblu[ ._-]?ray\b|\bbdrip\b|\bbrrip\b/i.test(raw)?'BluRay':/\bhdtv\b/i.test(raw)?'HDTV':'';
+    const resolution=/\b(2160p|1080p|720p|480p|4k)\b/i.exec(raw)?.[1]?.toLowerCase()||'';
+    const group=/-([a-z0-9]{2,20})$/i.exec(raw)?.[1]?.toLowerCase()||'';
+    const cut=ep?ep.index:raw.search(/(?:[ ._-]+)(?:2160p|1080p|720p|480p|4k|web[ ._-]?dl|web[ ._-]?rip|blu[ ._-]?ray|hdtv)(?=$|[ ._-])/i);
+    const title=(cut>=0?raw.slice(0,cut):raw).replace(/[._]+/g,' ').replace(/\s+/g,' ').trim();
+    return {title,season:ep&&!multiple?Number(ep[1]||ep[3]):null,episode:ep&&!multiple?Number(ep[2]||ep[4]):null,multiple,source,resolution,group};
+  }
+  function releaseScore(video,candidate){
+    const a=releaseInfo(video),b=releaseInfo(candidate);
+    if(a.season!==null&&b.season!==null&&(a.season!==b.season||a.episode!==b.episode))return -1000;
+    let score=0;
+    if(a.season!==null&&b.season===a.season&&b.episode===a.episode)score+=50;
+    if(a.source&&b.source)score+=a.source===b.source?20:-15;
+    if(a.resolution&&b.resolution)score+=a.resolution===b.resolution?5:-3;
+    if(a.group&&b.group&&a.group===b.group)score+=25;
+    return score;
+  }
   function preferredSubtitle(sources,languages=['el','en']) {
     const aliases={el:['el','ell','gre','gr','greek'],en:['en','eng','english'],fr:['fr','fra','fre','french'],de:['de','deu','ger','german'],it:['it','ita','italian'],es:['es','spa','spanish']};
     const rows=Array.isArray(sources)?sources:[];
@@ -233,5 +256,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { ttmlSeconds,editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });
