@@ -19,7 +19,7 @@ internal static class NativeCommands
             string cmd=name.GetString()??"";double value=0;
             bool hasValue=r.TryGetProperty("value",out var v);
             if(hasValue&&(v.ValueKind!=JsonValueKind.Number||!v.TryGetDouble(out value)||!double.IsFinite(value)))return new(n,"invalid",0);
-            if((cmd=="seek"||cmd=="volume"||cmd=="rate")&&!hasValue)return new(n,"invalid",0);
+            if((cmd=="seek"||cmd=="volume"||cmd=="rate"||cmd=="subtitle-delay")&&!hasValue)return new(n,"invalid",0);
             return new(n,cmd,value);
         }catch{return new(0,"invalid",0);}
     }
@@ -34,6 +34,13 @@ internal static class NativeCommands
                 case "seek":if(c.Value<0||c.Value>360000000||!player.IsSeekable||player.Length<=0)return false;player.Time=(long)Math.Min(c.Value,player.Length);return true;
                 case "volume":if(c.Value<0||c.Value>100)return false;player.Volume=(int)c.Value;return true;
                 case "rate":return c.Value>=.5&&c.Value<=4&&player.SetRate((float)c.Value)==0;
+                // LibVLC expects microseconds. The renderer sends an absolute
+                // offset in milliseconds relative to the already-exported SRT.
+                case "subtitle-delay":
+                    if(c.Value < -7200000 || c.Value > 7200000 || player.Spu < 0)return false;
+                    long delay=(long)Math.Round(c.Value*1000);
+                    player.SetSpuDelay(delay);
+                    return player.SpuDelay==delay;
                 default:return false;
             }
         }catch{return false;}

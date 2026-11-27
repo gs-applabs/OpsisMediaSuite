@@ -318,3 +318,13 @@ test('native stdout framing recovers after oversized lines and preserves subsequ
  assert.deepEqual(lines,['{"event":"ready"}','{"event":"ack","id":1,"ok":true}','{"event":"position"}']);
  const burst='{}\n'.repeat(6000);feed(burst);assert.equal(lines.length,6003);
 });
+
+
+test('native subtitle delay is signed, bounded and rounded to milliseconds',()=>{
+ const {normalizeCommand}=require('../native-host');
+ assert.deepEqual(normalizeCommand('subtitle-delay',-750.4),{name:'subtitle-delay',value:-750});
+ assert.deepEqual(normalizeCommand('subtitle-delay',7200000),{name:'subtitle-delay',value:7200000});
+ assert.equal(normalizeCommand('subtitle-delay',-7200001),null);
+ assert.equal(normalizeCommand('subtitle-delay',Infinity),null);
+ assert.equal(normalizeCommand('subtitle-delay',undefined),null);
+});

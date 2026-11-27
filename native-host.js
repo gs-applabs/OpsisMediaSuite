@@ -37,8 +37,8 @@ function createLineFramer(onLine,max=1024){
 }
 function normalizeCommand(name,value){
  if(['toggle','pause','play','mute'].includes(name))return {name};
- if(!['seek','volume','rate'].includes(name)||typeof value!=='number'||!Number.isFinite(value))return null;
- const bounds={seek:[0,360000000],volume:[0,100],rate:[.5,4]}[name];
+ if(!['seek','volume','rate','subtitle-delay'].includes(name)||typeof value!=='number'||!Number.isFinite(value))return null;
+ const bounds={seek:[0,360000000],volume:[0,100],rate:[.5,4],'subtitle-delay':[-7200000,7200000]}[name];
  if(value<bounds[0]||value>bounds[1])return null;
  return {name,value:name==='rate'?value:Math.round(value)};
 }
@@ -93,6 +93,7 @@ function createNativeHost({app,extensions,authorize}){
  }
  function command(session,name,value){
   const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow'].includes(state.engine)||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  if(name==='subtitle-delay'&&state.engine!=='libvlc')return Promise.resolve({ok:false,code:'unsupported-engine'});
   if(pending)return Promise.resolve({ok:false,code:'busy'});
   return new Promise(resolve=>{const id=++commandId;const timer=setTimeout(()=>finishCommand({ok:false,code:'timeout'}),3000);pending={id,timer,resolve};try{child.stdin.write(JSON.stringify({id,...cmd})+'\n');}catch{finishCommand({ok:false,code:'pipe-error'});}});
  }

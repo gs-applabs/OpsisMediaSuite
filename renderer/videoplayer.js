@@ -74,10 +74,11 @@
     say(engine+' — opening native player…');
     const sub=subSrc[subSel];
     const text=engine==='libvlc'&&sub?VP.exportSubtitles(VP.subtitleToVtt(sub.text,sub.ext,subDelay*1000,subScale,subFps).entries,'srt'):null;
+    marker.subtitle={track:sub,text:sub?.text,scale:subScale,fps:subFps,delay:subDelay,transferred:!!text,requested:0};
     const r=await api.vpNativeOpen(p,engine,resume,text||null).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
-    marker.session=r.session;marker.engine=engine;playbackEngine=engine;resumePath=null;
+    marker.session=r.session;marker.engine=engine;marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
     say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine==='directshow'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
       if(handoff!==marker)return;
@@ -88,7 +89,7 @@
       if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
       nativePoll=setTimeout(poll,1000);
     };
-    poll();return true;
+    syncNativeSubtitle();poll();return true;
   }
   // Serialize transport commands per handoff instead of silently dropping fast clicks.
   async function drainNativeCommands(marker){
@@ -98,17 +99,34 @@
         const {name,value}=marker.commands.shift();
         const r=await api.vpNativeCommand(marker.session,name,value).catch(()=>null);
         if(handoff!==marker)return;
-        if(!r?.ok){say('Native command unavailable');if(!r||['timeout','unavailable','pipe-error','native-closed','native-playback-failed'].includes(r.code)){marker.commands.length=0;break;}}
+        if(name==='subtitle-delay'&&marker.subtitle.requested===value){
+          if(r?.ok)say('LibVLC subtitle delay updated / Ενημερώθηκε η καθυστέρηση υποτίτλων');
+          else{marker.subtitle.requested=null;say('LibVLC subtitle delay rejected — reopen native player / Ανοίξτε ξανά τον player');}
+        }
+        if(!r?.ok){if(name!=='subtitle-delay')say('Native command unavailable');if(!r||['timeout','unavailable','pipe-error','native-closed','native-playback-failed'].includes(r.code)){marker.commands.length=0;marker.subtitle.requested=null;break;}}
       }
     }finally{marker.dispatching=false;}
   }
   function nativeCommand(name,value){
     const marker=handoff;if(!marker?.session)return;
     const queue=marker.commands,last=queue[queue.length-1];
-    if(last?.name===name&&['seek','volume','rate'].includes(name))last.value=value;
+    if(last?.name===name&&['seek','volume','rate','subtitle-delay'].includes(name))last.value=value;
     else if(queue.length<8)queue.push({name,value});
-    else{say('Native command queue full');return;}
-    drainNativeCommands(marker);
+    else{say('Native command queue full');return false;}
+    drainNativeCommands(marker);return true;
+  }
+  function syncNativeSubtitle(){
+    const m=handoff;if(!m?.session||!m.subtitle)return;
+    const base=m.subtitle,track=subSrc[subSel];
+    const same=base.track===track&&base.text===track?.text&&base.scale===subScale&&base.fps===subFps;
+    const delta=Math.round((subDelay-base.delay)*1000);
+    if(same&&delta===base.requested)return;
+    // A changed track/scale or previously clipped negative timestamps needs a
+    // fresh exported sidecar. Do not silently pretend the native track updated.
+    if(!same||!base.transferred||!base.accepted||m.engine!=='libvlc'||(base.delay<0&&delta!==0)){
+      say('Subtitle changed — reopen native player / Ανοίξτε ξανά τον native player');return;
+    }
+    if(nativeCommand('subtitle-delay',delta))base.requested=delta;
   }
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
@@ -193,6 +211,7 @@
   function fillCuePage(index=0){const pages=$('vpSubCuePage'),sel=$('vpSubCue');pages.textContent='';sel.textContent='';const count=Math.ceil(rawCues.length/CUE_PAGE);cuePage=Math.max(0,Math.min(count-1,Math.floor(Math.max(0,index)/CUE_PAGE)));for(let page=0;page<count;page++){const o=document.createElement('option');o.value=String(page);o.textContent=(page*CUE_PAGE+1)+'–'+Math.min((page+1)*CUE_PAGE,rawCues.length);pages.append(o);}pages.value=String(cuePage);pages.disabled=count<=1;for(let i=cuePage*CUE_PAGE;i<Math.min(rawCues.length,(cuePage+1)*CUE_PAGE);i++){const c=rawCues[i],o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);sel.append(o);}if(sel.options.length)sel.selectedIndex=Math.max(0,Math.min(sel.options.length-1,index-cuePage*CUE_PAGE));showCueEditor();}
   function showCueEditor(){const c=rawCues[cueIndex()];$('vpSubEditStart').value=c?String(c.start):'';$('vpSubEditEnd').value=c?String(c.end):'';$('vpSubEditText').value=c?c.text:'';$('vpSubEditApply').disabled=!c;$('vpSubEditUndo').disabled=!editUndo||editUndo.track!==subSrc[subSel];}
   function rebuildTrack() {
+    syncNativeSubtitle();
     // Programmatic WebVTT cues avoid the asynchronous blob: fetch and the
     // file-origin/CORS differences between Electron releases.
     if (nativeSubtitleTrack) {

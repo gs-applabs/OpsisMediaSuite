@@ -101,8 +101,22 @@ internal static class Program
         var tracks=player.SpuDescription.Where(t=>t.Id>=0).ToArray();
         bool selected=tracks.Length>0&&player.SetSpu(tracks[^1].Id);
         if(selected){clock.Restart();while(clock.ElapsedMilliseconds<1000&&player.Spu!=tracks[^1].Id)Thread.Sleep(50);selected=player.Spu==tracks[^1].Id;}
-        Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",externalSubtitleAccepted=added,externalSubtitleSelected=selected,tracks=tracks.Length}));
-        player.Stop();return added&&selected?0:5;
+        // Exercise the production command parser and setter on the selected
+        // real external track, with signed delay and reset readback.
+        bool delayVerified=false;
+        if(selected){
+            var positive=NativeCommands.Read(new StringReader("{\"id\":1,\"name\":\"subtitle-delay\",\"value\":1250}\n"));
+            var negative=NativeCommands.Read(new StringReader("{\"id\":2,\"name\":\"subtitle-delay\",\"value\":-750}\n"));
+            var reset=NativeCommands.Read(new StringReader("{\"id\":3,\"name\":\"subtitle-delay\",\"value\":0}\n"));
+            var missing=NativeCommands.Read(new StringReader("{\"id\":4,\"name\":\"subtitle-delay\"}\n"));
+            delayVerified=positive!=null&&negative!=null&&reset!=null&&missing!=null&&
+                NativeCommands.Apply(positive,player,media)&&player.SpuDelay==1250000&&
+                NativeCommands.Apply(negative,player,media)&&player.SpuDelay==-750000&&
+                !NativeCommands.Apply(missing,player,media)&&
+                NativeCommands.Apply(reset,player,media)&&player.SpuDelay==0;
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",externalSubtitleAccepted=added,externalSubtitleSelected=selected,tracks=tracks.Length,delayVerified}));
+        player.Stop();return added&&selected&&delayVerified?0:5;
     }
     private static int SelfTest(MediaPlayer player, Media media)
     {
