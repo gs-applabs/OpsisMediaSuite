@@ -27,7 +27,7 @@
   };
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
   const loadSaved = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) { return {}; } };
-  const save = (o) => { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (_) { /* storage unavailable */ } };
+  const save = (o) => { try { const encoded=JSON.stringify(o);if(localStorage.getItem(KEY)!==encoded)localStorage.setItem(KEY,encoded); } catch (_) { /* storage unavailable */ } };
   const sizeText = (b) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1048576))} MB`);
   const clock = (s) => { s = Math.round(s || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   const parseTime = (text) => { const s = String(text == null ? '' : text).trim().replace(',', '.'); if (!s) return 0; if (!/^\d+(\.\d+)?(:\d{1,2}(\.\d+)?){0,2}$/.test(s)) return NaN; return s.split(':').reduce((a, p) => a * 60 + parseFloat(p), 0); };

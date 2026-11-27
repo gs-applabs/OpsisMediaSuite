@@ -541,7 +541,16 @@ function createWindow() {
       let picture = null;
       if (common.picture && common.picture[0]) {
         const pic = common.picture[0];
-        if(['image/jpeg','image/png','image/webp'].includes(pic.format)&&pic.data?.length<=2*1024*1024)picture = `data:${pic.format};base64,${Buffer.from(pic.data).toString('base64')}`;
+        if(['image/jpeg','image/png','image/webp'].includes(pic.format)&&pic.data?.length<=2*1024*1024){
+          // Bound retained album art per track. Preserve originals on disk.
+          const img=nativeImage.createFromBuffer(Buffer.from(pic.data));
+          const size=img.getSize();
+          if(!img.isEmpty()&&size.width>0&&size.height>0&&size.width<=8192&&size.height<=8192){
+            const factor=Math.min(1,384/Math.max(size.width,size.height));
+            const thumb=factor<1?img.resize({width:Math.max(1,Math.round(size.width*factor)),height:Math.max(1,Math.round(size.height*factor)),quality:'good'}):img;
+            const jpeg=thumb.toJPEG(82);if(jpeg.length<=256*1024)picture='data:image/jpeg;base64,'+jpeg.toString('base64');
+          }
+        }
       }
       return {
         title: common.title || null,

@@ -182,7 +182,7 @@
   const FORMAT_LABEL = { mp3: 'MP3', flac: 'FLAC', wav: 'WAV', aac: 'AAC (M4A)', ogg: 'OGG Vorbis', opus: 'Opus', aiff: 'AIFF', alac: 'ALAC (M4A)', wma: 'WMA' };
 
   function loadSaved() { try { return JSON.parse(localStorage.getItem(OPT_KEY) || '{}'); } catch (_) { return {}; } }
-  function save(o) { try { localStorage.setItem(OPT_KEY, JSON.stringify(o)); } catch (_) { /* storage unavailable */ } }
+  function save(o) { try { const encoded=JSON.stringify(o);if(localStorage.getItem(OPT_KEY)!==encoded)localStorage.setItem(OPT_KEY,encoded); } catch (_) { /* storage unavailable */ } }
 
   function select(id, options, value) {
     const s = h('select', { id });
@@ -270,7 +270,7 @@
       $('convNote').classList.toggle('dep-hidden', !(norm.checked || fx.checked));
       nativeFx.disabled=nativeRow.hidden||!fx.checked;if(!fx.checked)nativeFx.checked=false;
     };
-    const syncOut = () => { outRow.classList.toggle('dep-hidden', outSel.value !== 'custom'); localStorage.setItem('waveframe.destMode', outSel.value); };
+    const syncOut = () => { outRow.classList.toggle('dep-hidden', outSel.value !== 'custom'); if(localStorage.getItem('waveframe.destMode')!==outSel.value)localStorage.setItem('waveframe.destMode', outSel.value); };
     outSel.addEventListener('change', syncOut); syncOut();
     outPick.addEventListener('click', async () => {
       const r = await api.convChooseFolder();

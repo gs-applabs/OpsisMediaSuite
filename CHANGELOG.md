@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20A.1 / 20B.1
+- Serialized and cached metadata reads per playlist item, coalesced playlist renders and persisted changes after quiet time, bounded retained album art, deduplicated converter settings writes, skipped invisible meter and inactive seek updates. Live loudness analysis only when enabled, one active/latest pending, local files up to 32 MiB and 10 minutes; skips streams to avoid full download. Windows resource measurements and regression tests pending.
+
 ## Unreleased — Ultra Mega Pass 19E.2 / 19F.1
 - Eight more finder/help/welcome strings in 20 languages; five music metadata feature entries translated into French, German, Spanish and Italian (20 complete localized entries). Mark fallback language in markup. Refined finder layout with clear search, themed cards and responsive toolbar; Help search styling and accurate installer history. OpsisUI repository unavailable, so existing theme tokens retained. Full translations and visual acceptance pending.
 
