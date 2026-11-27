@@ -700,3 +700,17 @@ test('resource trend requires enough samples and uses robust window medians',()=
 });
 
 test('subtitle language preferences validate and preserve requested priority',()=>{assert.deepEqual(V.subtitleLanguages(['fr','el','fr','invalid']),['fr','el']);assert.deepEqual(V.subtitleLanguages(null),['el','en']);assert.equal(V.preferredSubtitle([{name:'film.el.srt'},{name:'film.fr.srt'}],['fr','el']),1);});
+
+
+test('streamed subtitle audio activity matches whole PCM across odd chunk boundaries',()=>{
+ const A=require('../subtitle-autosync'),b=Buffer.alloc(16000*15);
+ for(let i=8000*2;i<8000*6;i++)b.writeInt16LE(i%2?10000:-10000,i*2);
+ const whole=A.activityFromPcm(b),stream=A.createActivityAccumulator();
+ for(let i=0;i<b.length;i+=1001)stream.add(b.subarray(i,i+1001));
+ assert.deepEqual(stream.finish(),whole);assert.ok(stream.diagnostics().retainedBytes<150000);assert.equal(stream.diagnostics().bytes,b.length);
+ assert.throws(()=>A.createActivityAccumulator(1600).add(Buffer.alloc(1601)),/audio-limit/);
+});
+test('subtitle activity estimation honours cancellation during scoring',()=>{
+ const A=require('../subtitle-autosync'),activity=Uint8Array.from({length:650},(_,i)=>i%20<7?1:0),cues=Array.from({length:10},(_,i)=>({start:i*4,end:i*4+1}));
+ assert.deepEqual(A.estimate(activity,cues,{cancelled:()=>true}),{ok:false,code:'cancelled'});
+});

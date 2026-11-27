@@ -60,7 +60,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpNativeSubtitle:(session,text)=>ipcRenderer.invoke('vp:native-subtitle',session,text),
   vpNativeStop: ()=>ipcRenderer.invoke('vp:native-stop'),
   vpNativeCommand:(session,name,value)=>ipcRenderer.invoke('vp:native-command',session,name,value),
-  vpCodecInventory: () => ipcRenderer.invoke('vp:codec-inventory'),
+  vpCodecInventory: (refresh=false) => ipcRenderer.invoke('vp:codec-inventory',refresh===true),
   vpOpenSource: (p) => ipcRenderer.invoke('vp:open-source', p),
   vpReleaseSource: (p) => ipcRenderer.invoke('vp:release-source', p),
   vpPick: (kind) => ipcRenderer.invoke('vp:pick', kind),

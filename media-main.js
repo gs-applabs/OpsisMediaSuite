@@ -89,7 +89,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   let closing=false;
   app.once('before-quit',()=>{closing=true;});
   const trusted = (e) => { const w = getMainWin(); return !closing && !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
-  ipcMain.handle('vp:codec-inventory', e => trusted(e) ? inventory() : null);
+  ipcMain.handle('vp:codec-inventory', (e,refresh) => trusted(e) ? inventory(refresh===true) : null);
   const approved = new Set(), tickets = new Map();
   const remember = p => { if (!p) return; if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
   let mediaConsentBusy=false;
@@ -408,15 +408,16 @@ function init({ getMainWin, resolveFfmpegPath }) {
       return {ok:true,subtitle,saved};
     }catch{return {ok:false,code:'extract-failed'};}finally{embeddedBusy=false;}
   });
-  let autoSyncBusy=false,autoSyncWorker=null,autoSyncCancelled=false;
-  app.once('before-quit',()=>{autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');if(batchState?.running)batchState.cancelled=true;});
-  ipcMain.handle('vp:sub-autosync-cancel',e=>{if(!trusted(e)||!autoSyncBusy)return false;autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');return true;});
+  let autoSyncBusy=false,autoSyncWorker=null,autoSyncCancelled=false,autoSyncFlag=null;
+  const cancelAutoSync=()=>{autoSyncCancelled=true;if(autoSyncFlag)Atomics.store(autoSyncFlag,0,1);try{autoSyncWorker?.postMessage('cancel');}catch{}};
+  app.once('before-quit',()=>{cancelAutoSync();if(batchState?.running)batchState.cancelled=true;});
+  ipcMain.handle('vp:sub-autosync-cancel',e=>{if(!trusted(e)||!autoSyncBusy)return false;cancelAutoSync();return true;});
   ipcMain.handle('vp:sub-autosync',async(e,req)=>{
     if(!trusted(e)||autoSyncBusy||!req||!Array.isArray(req.cues)||req.cues.length>20000)return {ok:false,code:'denied-or-busy'};
     const p=allowedFile(req.path,PLAY_EXTS);
     if(!p||!approved.has(p))return {ok:false,code:'denied'};
     const audioIndex=req.audioIndex??0;if(!Number.isInteger(audioIndex)||audioIndex<0||audioIndex>63)return {ok:false,code:'bad-audio-index'};
-    autoSyncBusy=true;autoSyncCancelled=false;
+    autoSyncBusy=true;autoSyncCancelled=false;autoSyncFlag=new Int32Array(new SharedArrayBuffer(4));
     try{
       const ff=await resolveFfmpegPath();
       if(!ff||!trusted(e))return {ok:false,code:'no-ffmpeg'};
@@ -425,13 +426,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
       const {Worker}=require('node:worker_threads');
       return await new Promise(resolve=>{
         const workerPath=app.isPackaged?path.join(process.resourcesPath,'app.asar.unpacked','subtitle-sync-worker.js'):path.join(__dirname,'subtitle-sync-worker.js');
-        const worker=new Worker(workerPath,{workerData:{ffmpeg:ff,file:p,cues,audioIndex,seconds:1800}});autoSyncWorker=worker;
+        const worker=new Worker(workerPath,{workerData:{ffmpeg:ff,file:p,cues,audioIndex,seconds:1800,cancelFlag:autoSyncFlag.buffer}});autoSyncWorker=worker;
         let result=null,finished=false;
-        const finish=r=>{if(finished)return;finished=true;clearTimeout(timer);autoSyncWorker=null;resolve(autoSyncCancelled?{ok:false,code:'cancelled'}:r);};
-        const timer=setTimeout(()=>{worker.postMessage('cancel');},125000);
+        const finish=r=>{if(finished)return;finished=true;clearTimeout(timer);autoSyncWorker=null;resolve(autoSyncCancelled&&r?.code!=='audio-stop-unconfirmed'?{ok:false,code:'cancelled'}:r);};
+        const timer=setTimeout(cancelAutoSync,125000);
         worker.once('message',r=>{result=r;});worker.once('error',()=>finish({ok:false,code:'worker-error'}));worker.once('exit',()=>finish(result||{ok:false,code:'worker-exited'}));
       });
-    }catch{return {ok:false,code:'audio-analysis-failed'};}finally{autoSyncBusy=false;autoSyncWorker=null;}
+    }catch{return {ok:false,code:'audio-analysis-failed'};}finally{autoSyncBusy=false;autoSyncWorker=null;autoSyncFlag=null;}
   });
   let subtitleSaveBusy=false;
   ipcMain.handle('vp:save-sub',async(e,req)=>{

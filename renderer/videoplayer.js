@@ -112,7 +112,7 @@
       // A prior timeout is sticky until an explicit retry is acknowledged.
       const stopped=await (nativeStopping||requestNativeStop(g));
       if(handoff!==marker||g!==generation)return false;
-      if(!stopped){handoff=null;$('vpNativeStop').hidden=true;say('Native stop not confirmed');if(wasPlaying)video.play().catch(()=>{});return false;}
+      if(!stopped){handoff=null;$('vpNativeStop').hidden=true;say('Native stop not confirmed');return false;}
     }
     // Native hosts may produce sound before the ready event reaches Electron.
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
@@ -124,7 +124,7 @@
       const stopped=stopNative(),ok=await stopped;
       if(g!==generation||handoff)return false;
       say(engine+' — '+(r?.code||'unavailable')+(!ok?' · Native stop not confirmed':''));
-      if(ok&&wasPlaying)video.play().catch(()=>{});return false;
+      if(ok&&wasPlaying)void resumeChromium();return false;
     }
     marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
@@ -208,6 +208,20 @@
     if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);
     handoff=null;clearTimeout(nativePoll);nativePoll=null;playbackEngine=null;$('vpNativeStop').hidden=true;
     return requestNativeStop(generation);
+  }
+  // Common Chromium resume gate for click, keyboard, replay and fallback.
+  async function resumeChromium(){
+    const g=generation,el=video,s=session;
+    if(handoff||!current())return false;
+    window.dispatchEvent(new CustomEvent('waveframe:video-intent'));
+    if(nativeStopping||nativeStopUnconfirmed){
+      const ok=await (nativeStopping||requestNativeStop(g));
+      if(g!==generation||el!==video||handoff)return false;
+      if(!ok){say('Native stop not confirmed');return false;}
+    }
+    if(g!==generation||el!==video||handoff)return false;
+    window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
+    try{if(s&&s===session&&playbackEngine==='chromium')await s.play();else await el.play();return g===generation&&el===video;}catch{return false;}
   }
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
@@ -439,7 +453,7 @@
     saveResume();
     if (stopAfter) { stopAfter = false; $('vpStopAfter').checked = false; return; }
     const n = VP.nextIndex($('vpRepeat').value, idx, list.length);
-    if (n === idx && n >= 0) { video.currentTime = 0; video.play().catch(() => {}); } else if (n >= 0) playAt(n);
+    if (n === idx && n >= 0) { video.currentTime = 0; void resumeChromium(); } else if (n >= 0) playAt(n);
   }
   function stepFrame(d) { if (!Number.isFinite(video.duration)) return; video.pause(); seekTo(video.currentTime + d / 25); }
   function toggleAB() {
@@ -503,7 +517,7 @@
     on('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
     on('timeupdate', syncTime); on('durationchange', syncTime);
     for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev,()=>{syncTransport();syncResumeTimer();});
-    on('click', () => { if(parked){playAt(idx);return;}if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    on('click', () => { if(parked){playAt(idx);return;}if (video.paused) void resumeChromium(); else video.pause(); });
     on('dblclick', () => $('vpFull').click());
     on('error', () => say(t('vp.cantPlay')));
     on('ended', onEnded);
@@ -552,7 +566,7 @@
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
-    $('vpPlay').addEventListener('click', () => { if(handoff){nativeCommand('toggle');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
+    $('vpPlay').addEventListener('click', () => { if(handoff){nativeCommand('toggle');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)void resumeChromium();else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
     $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} if(parked){parked.seconds=0;syncTime();syncTransport();return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { if(handoff){nativeCommand('mute');return;} video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { if(handoff)return; video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
@@ -834,7 +848,7 @@
       }catch{say('GPU diagnostics unavailable');}finally{button.disabled=false;}
     });
     $('vpCodecs').addEventListener('click', async () => {
-      const report=await api.vpCodecInventory().catch(()=>null);
+      const report=await api.vpCodecInventory(true).catch(()=>null);
       if(!report){await showAlertDialog(t('vp.codecManager'),t('vp.inventoryUnavailable'));return;}
       const lines=['Active engine / Ενεργός μηχανισμός: '+(playbackEngine||'—'), 'Architecture: '+report.arch, 'Inventory only / Μόνο ανίχνευση — not loaded / χωρίς φόρτωση'];
       for(const row of report.packs)lines.push(row.name+' '+row.version+' ['+row.view+']');
@@ -876,7 +890,7 @@
       if(!window.OpsisFeatureGuide.shortcutAllowed({defaultPrevented:e.defaultPrevented,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey,interactive,modal:!!document.querySelector('.tutorial-overlay.open')},document.querySelector('.tab-btn.active')?.dataset.tab,'video'))return;
       const k = e.key; let used = true;
       if(handoff){if(k===' '){nativeCommand('toggle');e.preventDefault();}else if(k==='m'||k==='M'){nativeCommand('mute');e.preventDefault();}return;}
-      if (k === ' ') { if(parked){playAt(idx);}else if (video.paused) video.play().catch(() => {}); else video.pause(); }
+      if (k === ' ') { if(parked){playAt(idx);}else if (video.paused) void resumeChromium(); else video.pause(); }
       else if (k === 'ArrowRight') seekTo(video.currentTime + (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowLeft') seekTo(video.currentTime - (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowUp') video.volume = Math.min(1, video.volume + 0.05);

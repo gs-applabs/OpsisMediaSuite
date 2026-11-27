@@ -79,10 +79,10 @@ foreach($v in @('Registry64','Registry32')){
 @{lav=@($lav);packs=@($packs|Select-Object -First 500);filters=@($filters|Select-Object -First 500);transforms=@($transforms|Select-Object -First 500)}|ConvertTo-Json -Depth 4 -Compress
 `;
 let cached=null,expires=0,inflight=null;
-function inventory(){
+function inventory(refresh=false){
  if(process.platform!=='win32')return Promise.resolve({...normalize({}),status:'unsupported'});
- if(cached&&Date.now()<expires)return Promise.resolve(cached);
  if(inflight)return inflight;
+ if(cached&&!refresh&&Date.now()<expires)return Promise.resolve(cached);
  const exe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
  inflight=new Promise(resolve=>{
   execFile(exe,['-NoProfile','-NonInteractive','-Command',SCRIPT],{windowsHide:true,timeout:12000,maxBuffer:512*1024},(err,out)=>{

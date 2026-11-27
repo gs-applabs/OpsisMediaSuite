@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 2E — bounded subtitle audio analysis and native handoff safety (2026-11-27)
+
+- Prior 2C general CI 46070309790 PASS and seven specialist workflows PASS; installer pending. Prior 2D still running. No new full green claim.
+- Subtitle audio analysis now streams 100ms PCM frames into bounded compact energy storage, no full PCM concatenation. Same activity formula, single partial frame, explicit byte cap. Cancellation during scoring via SharedArrayBuffer atomic flag; FFmpeg cancellation waits for close or reports unconfirmed after four seconds. No physical RAM benchmark yet; worker timeout and child failure limitations retained.
+- Chromium resume (click, keyboard, replay, failed native open) uses common stop-ack gate; no fallback resume on unconfirmed native stop. Independent converter/photo tasks unaffected. Explicit codec inventory refresh bypasses TTL but shares in-flight scan, read-only; registry presence is not decoder proof.
+- Added chunk-boundary parity, memory-bound and cancellation tests. New CI pending; physical backend/audio and provider credentials still open. No merge/release.
+
 ## ULTRA 2D — bounded folder library, duplicate review and subtitle preference (2026-11-27)
 
 - Prior 2B general CI 46070110308 PASS; 2C seven specialist workflows PASS, general/installer still in progress at inspection. No full 2C certification.
