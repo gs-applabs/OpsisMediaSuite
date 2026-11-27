@@ -43,7 +43,7 @@ function normalizeCommand(name,value){
  return {name,value:name==='rate'?value:Math.round(value)};
 }
 function createNativeHost({app,extensions,authorize}){
- let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0;
+ let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0,subtitleSession=null;
  function finishCommand(r){if(!pending)return;const p=pending;pending=null;clearTimeout(p.timer);p.resolve(r);}
  const hostPath=()=>path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'native-player','publish'),...(app.isPackaged?['native-player']:[]),'Opsis.NativePlayer.exe');
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
@@ -59,13 +59,13 @@ function createNativeHost({app,extensions,authorize}){
    const valid=allowedFile(p,extensions),exe=localPath(hostPath());if(!valid||!exe)return {ok:false,code:'denied'};
    const pos=Math.round(Math.max(0,Math.min(360000000,Number(positionMs)||0)));
    let scratch=null,sidecar=null;
-   const cleanup=()=>{if(scratch){try{fs.rmSync(scratch,{recursive:true,force:true});}catch{}scratch=null;}};
-   if(engine==='libvlc'&&subtitleText!==null){
-     const body=prepareSubtitle(subtitleText);if(!body)return {ok:false,code:'bad-subtitle'};
-     try{scratch=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-native-sub-'));sidecar=path.join(scratch,'synced.srt');fs.writeFileSync(sidecar,body,{encoding:'utf8',flag:'wx',mode:0o600});}
+   const cleanup=()=>{if(subtitleSession?.token===token)subtitleSession=null;if(scratch){try{fs.rmSync(scratch,{recursive:true,force:true});}catch{}scratch=null;}};
+   if(engine==='libvlc'){
+     const body=subtitleText===null?'':prepareSubtitle(subtitleText);if(body===null)return {ok:false,code:'bad-subtitle'};
+     try{scratch=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-native-sub-'));sidecar=path.join(scratch,'synced.srt');fs.writeFileSync(sidecar,body,{encoding:'utf8',flag:'wx',mode:0o600});subtitleSession={token,dir:scratch,revision:0,bytes:Buffer.byteLength(body,'utf8')};}
      catch{cleanup();return {ok:false,code:'subtitle-temp-failed'};}
    }
-   state={phase:'starting',engine,positionMs:pos,durationMs:0,session:token,subtitleTransferred:!!sidecar};
+   state={phase:'starting',engine,positionMs:pos,durationMs:0,session:token,subtitleTransferred:engine==='libvlc'&&subtitleText!==null};
    return await new Promise(resolve=>{
     let proc,settled=false,timer;
     const finish=r=>{if(settled)return;settled=true;clearTimeout(timer);resolve(r);};
@@ -94,11 +94,28 @@ function createNativeHost({app,extensions,authorize}){
  function command(session,name,value){
   const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow'].includes(state.engine)||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
   if(name==='subtitle-delay'&&state.engine!=='libvlc')return Promise.resolve({ok:false,code:'unsupported-engine'});
+  return sendCommand(cmd);
+ }
+ function sendCommand(cmd){
   if(pending)return Promise.resolve({ok:false,code:'busy'});
   return new Promise(resolve=>{const id=++commandId;const timer=setTimeout(()=>finishCommand({ok:false,code:'timeout'}),3000);pending={id,timer,resolve};try{child.stdin.write(JSON.stringify({id,...cmd})+'\n');}catch{finishCommand({ok:false,code:'pipe-error'});}});
  }
+ function replaceSubtitle(session,text){
+  const s=subtitleSession;
+  if(!s||s.token!==session||state.session!==session||state.phase!=='playing'||state.engine!=='libvlc'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  if(pending)return Promise.resolve({ok:false,code:'busy'});
+  if(text===null)return sendCommand({name:'subtitle-off'});
+  const body=prepareSubtitle(text);if(!body)return Promise.resolve({ok:false,code:'bad-subtitle'});
+  const bytes=Buffer.byteLength(body,'utf8');
+  if(s.revision>=24||s.bytes+bytes>32*1024*1024)return Promise.resolve({ok:false,code:'subtitle-session-limit'});
+  const revision=++s.revision;
+  try{fs.writeFileSync(path.join(s.dir,'revision-'+revision+'.srt'),body,{encoding:'utf8',flag:'wx',mode:0o600});s.bytes+=bytes;}
+  catch{return Promise.resolve({ok:false,code:'subtitle-temp-failed'});}
+  // Retain every staged revision until exit: LibVLC may still read it.
+  return sendCommand({name:'subtitle-replace',value:revision});
+ }
  function stop(){epoch++;finishCommand({ok:false,code:'cancelled'});if(child){state={...state,phase:'stopping'};try{child.kill();}catch(_){}}}
  if(typeof app.on==='function')app.on('before-quit',stop);
- return {available,status,open,stop,command};
+ return {available,status,open,stop,command,replaceSubtitle};
 }
 module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer};

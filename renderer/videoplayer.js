@@ -75,6 +75,7 @@
     const sub=subSrc[subSel];
     const text=engine==='libvlc'&&sub?VP.exportSubtitles(VP.subtitleToVtt(sub.text,sub.ext,subDelay*1000,subScale,subFps).entries,'srt'):null;
     marker.subtitle={track:sub,text:sub?.text,scale:subScale,fps:subFps,delay:subDelay,transferred:!!text,requested:0};
+    marker.subtitleDesired=marker.subtitle;
     const r=await api.vpNativeOpen(p,engine,resume,text||null).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
@@ -97,36 +98,43 @@
     try{
       while(handoff===marker&&marker.commands.length){
         const {name,value}=marker.commands.shift();
-        const r=await api.vpNativeCommand(marker.session,name,value).catch(()=>null);
+        let result;
+        if(name==='subtitle-sync'){
+          const base=marker.subtitle,next=value;
+          const same=base.track===next.track&&base.text===next.text&&base.scale===next.scale&&base.fps===next.fps;
+          const delta=Math.round((next.delay-base.delay)*1000);
+          if(same&&delta===base.requested)continue;
+          if(same&&base.transferred&&base.accepted&&base.delay>=0){
+            result=await api.vpNativeCommand(marker.session,'subtitle-delay',delta).catch(()=>null);
+            if(result?.ok)base.requested=delta;
+          }else{
+            const body=next.track?VP.exportSubtitles(VP.subtitleToVtt(next.text,next.track.ext,next.delay*1000,next.scale,next.fps).entries,'srt'):null;
+            result=next.track&&!body?{ok:false,code:'no-valid-cues'}:await api.vpNativeSubtitle(marker.session,body).catch(()=>null);
+            if(result?.ok)marker.subtitle={...next,transferred:!!body,accepted:!!body,requested:0};
+          }
+          if(handoff!==marker)return;
+          if(marker.subtitleDesired===next)say(result?.ok?'LibVLC subtitle update accepted / Ελέγξτε την εμφάνιση':'Subtitle update failed: '+(result?.code||'unavailable'));
+        }else result=await api.vpNativeCommand(marker.session,name,value).catch(()=>null);
         if(handoff!==marker)return;
-        if(name==='subtitle-delay'&&marker.subtitle.requested===value){
-          if(r?.ok)say('LibVLC subtitle delay updated / Ενημερώθηκε η καθυστέρηση υποτίτλων');
-          else{marker.subtitle.requested=null;say('LibVLC subtitle delay rejected — reopen native player / Ανοίξτε ξανά τον player');}
-        }
-        if(!r?.ok){if(name!=='subtitle-delay')say('Native command unavailable');if(!r||['timeout','unavailable','pipe-error','native-closed','native-playback-failed'].includes(r.code)){marker.commands.length=0;marker.subtitle.requested=null;break;}}
+        if(!result?.ok){if(name!=='subtitle-sync')say('Native command unavailable');if(!result||['timeout','unavailable','pipe-error','native-closed','native-playback-failed'].includes(result.code)){marker.commands.length=0;break;}}
       }
     }finally{marker.dispatching=false;}
   }
   function nativeCommand(name,value){
     const marker=handoff;if(!marker?.session)return;
     const queue=marker.commands,last=queue[queue.length-1];
-    if(last?.name===name&&['seek','volume','rate','subtitle-delay'].includes(name))last.value=value;
+    if(last?.name===name&&['seek','volume','rate','subtitle-sync'].includes(name))last.value=value;
     else if(queue.length<8)queue.push({name,value});
     else{say('Native command queue full');return false;}
     drainNativeCommands(marker);return true;
   }
   function syncNativeSubtitle(){
     const m=handoff;if(!m?.session||!m.subtitle)return;
-    const base=m.subtitle,track=subSrc[subSel];
-    const same=base.track===track&&base.text===track?.text&&base.scale===subScale&&base.fps===subFps;
-    const delta=Math.round((subDelay-base.delay)*1000);
-    if(same&&delta===base.requested)return;
-    // A changed track/scale or previously clipped negative timestamps needs a
-    // fresh exported sidecar. Do not silently pretend the native track updated.
-    if(!same||!base.transferred||!base.accepted||m.engine!=='libvlc'||(base.delay<0&&delta!==0)){
-      say('Subtitle changed — reopen native player / Ανοίξτε ξανά τον native player');return;
-    }
-    if(nativeCommand('subtitle-delay',delta))base.requested=delta;
+    const track=subSrc[subSel],next={track,text:track?.text,scale:subScale,fps:subFps,delay:subDelay};
+    const last=m.subtitleDesired;
+    if(last.track===next.track&&last.text===next.text&&last.scale===next.scale&&last.fps===next.fps&&last.delay===next.delay)return;
+    if(m.engine!=='libvlc'){say('DirectShow subtitle handoff unavailable');return;}
+    if(nativeCommand('subtitle-sync',next))m.subtitleDesired=next;
   }
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
@@ -490,7 +498,7 @@
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
     });
     $('vpSubDownload').addEventListener('click',async()=>{
-      if(!current()||handoff)return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
+      if(!current()||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
       $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
       try{const r=await api.vpSubDownload(id);if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
         if(!r?.ok){onlineStatus(r?.code||'Download failed');return;}
@@ -499,12 +507,12 @@
     });
     $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
     $('vpSubDelayExact').addEventListener('change',()=>setDelay(Number($('vpSubDelayExact').value)));
-    $('vpSubSyncHere').addEventListener('click',()=>{if(!handoff&&$('vpSubCue').options.length&&Number.isFinite(video.currentTime))setDelay(video.currentTime-Number($('vpSubCue').value)*subScale);});
-    function marker(){return !handoff&&$('vpSubCue').options.length&&Number.isFinite(video.currentTime)?{subtitle:Number($('vpSubCue').value),video:video.currentTime}:null;}
+    function marker(){const pos=handoff?(handoff.engine==='libvlc'&&handoff.status?.playing===false?handoff.status.positionMs/1000:NaN):video.currentTime;return $('vpSubCue').options.length&&Number.isFinite(pos)?{subtitle:Number($('vpSubCue').value),video:pos}:null;}
+    $('vpSubSyncHere').addEventListener('click',()=>{const a=marker();if(a)setDelay(a.video-a.subtitle*subScale);else if(handoff)say('Pause native playback before aligning a cue');});
     $('vpSubAnchorA').addEventListener('click',()=>{syncAnchor=marker();$('vpSubAnchorStatus').textContent=syncAnchor?'A: '+syncAnchor.subtitle.toFixed(2)+' → '+syncAnchor.video.toFixed(2)+' s':'Select a cue first';});
     $('vpSubAnchorB').addEventListener('click',()=>{const r=VP.twoPointSync(syncAnchor,marker());if(!r){$('vpSubAnchorStatus').textContent='Select two ordered cues at least 2s apart';return;}subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAnchorStatus').textContent='Scale '+r.scale.toFixed(6)+' · '+subDelay.toFixed(3)+' s';});
     $('vpSubAutoSync').addEventListener('click',async()=>{
-      const s=subSrc[subSel],p=current();if(!s||!p||VP.isUrl(p)||handoff)return;
+      const s=subSrc[subSel],p=current();if(!s||!p||VP.isUrl(p)||(handoff&&handoff.engine!=='libvlc'))return;
       const g=generation,rev=subRevision,selected=subSel,sourceFps=subFps,original=VP.subtitleToVtt(s.text,s.ext,0,1,subFps);
       clearSuggestion();$('vpSubAutoSync').disabled=true;$('vpSubAutoCancel').disabled=false;$('vpSubAutoStatus').textContent='Analyzing local audio (up to 30 min of media)…';
       try{
@@ -521,7 +529,7 @@
     $('vpSubCuePage').addEventListener('change',()=>fillCuePage(Number($('vpSubCuePage').value)*CUE_PAGE));
     $('vpSubCue').addEventListener('change',showCueEditor);
     $('vpSubEditApply').addEventListener('click',()=>{
-      const original=subSrc[subSel],i=cueIndex();if(!original||handoff)return;
+      const original=subSrc[subSel],i=cueIndex();if(!original||(handoff&&handoff.engine!=='libvlc'))return;
       const start=$('vpSubEditStart').value,end=$('vpSubEditEnd').value;
       const next=start!==''&&end!==''?VP.editCue(rawCues,i,{start:Number(start),end:Number(end),text:$('vpSubEditText').value}):null;
       const text=next&&VP.exportSubtitles(next,'vtt');

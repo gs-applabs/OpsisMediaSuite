@@ -17,6 +17,8 @@ internal static class Program
         } catch { return false; }
     }
 
+    internal static bool SafeSubtitle(string file)=>SafeLocal(file,new HashSet<string>(StringComparer.OrdinalIgnoreCase){".srt"})&&new FileInfo(file).Length<=5*1024*1024;
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -25,7 +27,7 @@ internal static class Program
         if(args.Length==4&&args[0]!="--open")return 2;
         if(args.Length==4||args[0]=="--selftest-sub"){
             if(args[0]=="--selftest-sub"&&args.Length!=3)return 2;
-            sidecar=args[^1];if(!SafeLocal(sidecar,new HashSet<string>(StringComparer.OrdinalIgnoreCase){".srt"})||new FileInfo(sidecar).Length>5*1024*1024)return 2;
+            sidecar=args[^1];if(!SafeSubtitle(sidecar))return 2;
         }
         long resume=0;if(args.Length>=3&&args[0]!="--selftest-sub"&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow")))return 2;
 #if CODEC_CI_TEST
@@ -198,7 +200,7 @@ internal static class Program
                     var cmd=NativeCommands.Read(Console.In);if(cmd==null)return;
                     using var handled=new ManualResetEventSlim(false);
                     if(IsDisposed||!IsHandleCreated)return;
-                    BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!closing&&ready&&NativeCommands.Apply(cmd,player,media));}finally{handled.Set();}}));
+                    BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!closing&&ready&&NativeCommands.Apply(cmd,player,media,sidecar));}finally{handled.Set();}}));
                     // One command may be queued at a time; don't let stdin flood the UI.
                     handled.Wait();
                 }
@@ -211,7 +213,7 @@ internal static class Program
             if(closing)return;
             if(player.State==VLCState.Error){HostEvent("error",player.Time,player.Length);Close();return;}
             if(!resumed&&player.IsSeekable&&player.Length>0){resumed=true;if(resume>0)player.Time=Math.Min(resume,Math.Max(0,player.Length-500));}
-            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;bool? accepted=sidecar==null?null:player.AddSlave(MediaSlaveType.Subtitle,new Uri(sidecar).AbsoluteUri,true);HostEvent("ready",player.Time,player.Length,accepted,player.IsPlaying,player.Mute,player.Volume);lastReport=Environment.TickCount64;}
+            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;bool? accepted=sidecar==null||new FileInfo(sidecar).Length==0?null:player.AddSlave(MediaSlaveType.Subtitle,new Uri(sidecar).AbsoluteUri,true);HostEvent("ready",player.Time,player.Length,accepted,player.IsPlaying,player.Mute,player.Volume);lastReport=Environment.TickCount64;}
             else if(ready&&Environment.TickCount64-lastReport>=1000){lastReport=Environment.TickCount64;HostEvent("position",player.Time,player.Length,null,player.IsPlaying,player.Mute,player.Volume);}
             time.Text=Clock(player.Time)+" / "+Clock(player.Length);
             seek.Enabled=player.IsSeekable&&player.Length>0;

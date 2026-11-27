@@ -328,3 +328,12 @@ test('native subtitle delay is signed, bounded and rounded to milliseconds',()=>
  assert.equal(normalizeCommand('subtitle-delay',Infinity),null);
  assert.equal(normalizeCommand('subtitle-delay',undefined),null);
 });
+
+
+test('renderer cannot submit arbitrary native subtitle revision paths as commands',()=>{
+ const {normalizeCommand,prepareSubtitle}=require('../native-host');
+ assert.equal(normalizeCommand('subtitle-replace',1),null);
+ assert.equal(normalizeCommand('subtitle-off'),null);
+ assert.equal(prepareSubtitle('C:\\untrusted.srt'),null);
+ assert.ok(prepareSubtitle('1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα'));
+});

@@ -19,11 +19,11 @@ internal static class NativeCommands
             string cmd=name.GetString()??"";double value=0;
             bool hasValue=r.TryGetProperty("value",out var v);
             if(hasValue&&(v.ValueKind!=JsonValueKind.Number||!v.TryGetDouble(out value)||!double.IsFinite(value)))return new(n,"invalid",0);
-            if((cmd=="seek"||cmd=="volume"||cmd=="rate"||cmd=="subtitle-delay")&&!hasValue)return new(n,"invalid",0);
+            if((cmd=="seek"||cmd=="volume"||cmd=="rate"||cmd=="subtitle-delay"||cmd=="subtitle-replace")&&!hasValue)return new(n,"invalid",0);
             return new(n,cmd,value);
         }catch{return new(0,"invalid",0);}
     }
-    internal static bool Apply(Command c,MediaPlayer player,Media media)
+    internal static bool Apply(Command c,MediaPlayer player,Media media,string? sessionSidecar=null)
     {
         try{
             switch(c.Name){
@@ -41,6 +41,15 @@ internal static class NativeCommands
                     long delay=(long)Math.Round(c.Value*1000);
                     player.SetSpuDelay(delay);
                     return player.SpuDelay==delay;
+                case "subtitle-off":return player.Spu<0||player.SetSpu(-1);
+                case "subtitle-replace":
+                    // Only numbered files in the session's initial sidecar directory.
+                    if(sessionSidecar==null||c.Value<1||c.Value>24||c.Value!=Math.Truncate(c.Value))return false;
+                    var file=Path.Combine(Path.GetDirectoryName(sessionSidecar)!,"revision-"+((int)c.Value).ToString(System.Globalization.CultureInfo.InvariantCulture)+".srt");
+                    if(!Program.SafeSubtitle(file)||new FileInfo(file).Length==0)return false;
+                    if(!player.AddSlave(MediaSlaveType.Subtitle,new Uri(file).AbsoluteUri,true))return false;
+                    player.SetSpuDelay(0);
+                    return true; // accepted by LibVLC; selection/rendering may be asynchronous
                 default:return false;
             }
         }catch{return false;}
