@@ -1,8 +1,8 @@
 # Application screenshots / Στιγμιότυπα εφαρμογής
 
-Source commit: 1807f3e6f02264a198c29754224a3d40fa3f266b
+Source commit: e27f464a16c26868beab2d53b60da9bc69eab442
 
-Actual Electron UI, isolated empty media library, two themes. Not a playback or conversion test.
+Actual Electron UI started through its package entrypoint, isolated empty media library, two themes. Not a playback or conversion test.
 
 ### 0-midnight-converter
 
