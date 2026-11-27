@@ -62,37 +62,7 @@ foreach($v in @('Registry64','Registry32')){
     $ver=[string]$kl.GetValue('Version')
     $variant=[string]$kl.GetValue('Pack')
     $n='K-Lite Codec Pack'
-    if($variant -match '^(Mega|Full|Standard|Basic)
-    $srv=$root.OpenSubKey('SOFTWARE\Classes\CLSID\'+$id+'\InprocServer32')
-    if($srv){try{$lav+=@{clsid=$id;server=[string]$srv.GetValue('');hive=$h;view=$label}}finally{$srv.Dispose()}}
-   }
-   $cat=$root.OpenSubKey('SOFTWARE\Classes\CLSID\{083863F1-70DE-11D0-BD40-00A0C911CE86}\Instance')
-   if($cat){try{foreach($key in $cat.GetSubKeyNames()){$k=$cat.OpenSubKey($key);if($k){try{$n=[string]$k.GetValue('FriendlyName');if($n -match '(LAV (Video|Audio|Splitter)|DirectVobSub|VSFilter|ffdshow|Xvid|DivX)'){$filters+=@{name=$n;view=$label}}}finally{$k.Dispose()}}}}finally{$cat.Dispose()}}
-   $m=$root.OpenSubKey('SOFTWARE\Classes\MediaFoundation\Transforms')
-   if($m){try{foreach($key in $m.GetSubKeyNames()){$k=$m.OpenSubKey($key);if($k){try{$n=[string]$k.GetValue('');if($n -match '(decoder|encoder|video processor|transform|HEVC|H\.265|AV1|VP9|H\.264|AAC)'){$transforms+=@{name=$n;view=$label}}}finally{$k.Dispose()}}}}finally{$m.Dispose()}}
-  }finally{$root.Dispose()}
- }
-}
-@{lav=@($lav);packs=@($packs|Select-Object -First 500);filters=@($filters|Select-Object -First 500);transforms=@($transforms|Select-Object -First 500)}|ConvertTo-Json -Depth 4 -Compress
-`;
-let cached=null,expires=0,inflight=null;
-function inventory(){
- if(process.platform!=='win32')return Promise.resolve({...normalize({}),status:'unsupported'});
- if(cached&&Date.now()<expires)return Promise.resolve(cached);
- if(inflight)return inflight;
- const exe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
- inflight=new Promise(resolve=>{
-  execFile(exe,['-NoProfile','-NonInteractive','-Command',SCRIPT],{windowsHide:true,timeout:12000,maxBuffer:512*1024},(err,out)=>{
-   let report;
-   try{if(err)throw err;report=normalize(JSON.parse(out.replace(/^\uFEFF/,'')));}
-   catch(_){report={...normalize({}),status:'unavailable'};}
-   cached=report;expires=Date.now()+60000;resolve(report);
-  });
- }).finally(()=>{inflight=null;});
- return inflight;
-}
-module.exports={inventory,normalize,classifyLav,peMachine};
-){$n+=' '+$variant}
+    if($variant -in @('Mega','Full','Standard','Basic')){$n+=' '+$variant}
     $packs+=@{name=$n;version=$ver;view=$label;source='product-registry'}
    }finally{$kl.Dispose()}}
    foreach($id in $ids){

@@ -63,3 +63,6 @@ Added native Windows Media Foundation Source Reader path, independent of VLC/Dir
 
 ## Pass 19 — photo file access policy
 Photo picker grants canonical selected images only (bounded session set); arbitrary path IPC denied, one asynchronous capped file read at a time with before/after size/mtime validation. Drag/drop uses browser File directly. Added unit and real renderer denial checks. Existing filesystem TOCTOU limitations remain; this is not an OS sandbox. Converter grant migration remains pending.
+
+## Pass 20 — repair generated registry script and gate syntax
+Pass 18 native CI 45940154870 succeeded: Media Foundation decoded 8 PCM samples / 70,560 bytes (WAV), 8 PCM samples / 16,384 bytes and 8 NV12 samples / 737,280 bytes (MP4). LibVLC and built-in DirectShow also passed. Pass 17–19 JS CI and installed-pack CI failed because a replacement string expanded a PowerShell regex terminator into duplicated JS source. Removed duplicated suffix and repaired registry script; added JS syntax gates before expensive steps. Retry installed-pack decode. No previous general CI success claimed for affected commits.
