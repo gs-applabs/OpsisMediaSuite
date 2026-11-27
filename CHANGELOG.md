@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19D.3 / 19E.1
+- Cancel pending video source opening when music takes over; stop native handoff instead of leaving external audio active; release microphone source connection; stop both audio slots and alternate sources on sleep/stop. Reuse existing translated control labels as searchable aliases in Help and feature finder. Correct Windows native realpath comparisons in conversion tests, and build the required DSP adapter in public subtitle CI. Full native process exit timing and complete guide translation remain pending.
+
 ## Unreleased — Ultra Mega Pass 19D.2
 - Stop alternate audio sources when selecting a music track, pause Chromium video when selecting audio sources, prevent overlapping custom dialogs from losing the first resolver, update in-app history and welcome guide. Native arbitration and modal feedback for suppressed messages remain pending.
 

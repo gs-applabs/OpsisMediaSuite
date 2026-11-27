@@ -289,6 +289,7 @@ class AudioEngine {
       try { this.testOsc.stop(); } catch { /* already stopped */ }
       this.testOsc = null;
     }
+    if(this.micSource){try{this.micSource.disconnect();}catch{}}
     if (this.micStream) {
       this.micStream.getTracks().forEach((tr) => tr.stop());
       this.micStream = null;
@@ -323,6 +324,7 @@ class AudioEngine {
   get activeEl() { return this.slots[this.activeSlot].el; }
 
   play() {
+    window.WaveframeVideoPlayer?.pause();
     this.cancelCrossfade(true);
     this.resume();
     this.stopAlternateSources();
@@ -963,7 +965,7 @@ function initFeatureGuide(){
   document.getElementById('featureGuideGroupLabel').textContent=labels.tab;
   quick.title=labels.title;quick.setAttribute('aria-label',quick.title);
   const rows=OpsisFeatureGuide.list(lang(),input.value,dictionary()).filter(r=>!group.value||r.tab===group.value);results.replaceChildren();
-  for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
+  for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;if(row.controlLabel&&row.controlLabel!==row.title){const alias=document.createElement('span');alias.textContent=row.controlLabel;btn.append(alias);}const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
   status.textContent=rows.length?(gr()?rows.length+' αποτελέσματα':rows.length+' results'):labels.empty;
  }
  input.addEventListener('input',render);group.addEventListener('change',render);document.addEventListener('waveframe:language-changed',()=>{renderGroups();render();});renderGroups();render();
@@ -1314,7 +1316,6 @@ setInterval(() => {
 els.seek.addEventListener('input', () => engine.seekTo(parseFloat(els.seek.value) / 1000));
 
 els.btnPlay.addEventListener('click', async () => {
-  if (window.WaveframeVideoPlayer && window.WaveframeVideoPlayer.playing) window.WaveframeVideoPlayer.pause();
   if (currentTrackIndex === -1 && playlist.length > 0) { playTrackAt(0); return; }
   await engine.togglePlay();
   syncPlayButton();
@@ -1453,7 +1454,7 @@ function refreshSleepButton() {
 function stopSleepTick() { if (sleepTick) { clearInterval(sleepTick); sleepTick = null; } engine.setSleepFactor(1); }
 function fireSleep() {
   stopSleepTick(); sleepStep = 0;
-  engine.activeEl.pause();
+  engine.pauseActive();engine.stopAlternateSources();
   engine.setSleepFactor(1);            // restore the user's volume for the next time they press play
   refreshSleepButton(); syncPlayButton();
 }
@@ -2793,7 +2794,7 @@ window.waveframe.onMediaKey((action) => {
   if (action === 'playpause') { if (currentTrackIndex === -1 && playlist.length > 0) playTrackAt(0); else engine.togglePlay().then(syncPlayButton); }
   else if (action === 'next') goNext();
   else if (action === 'prev') goPrev();
-  else if (action === 'stop') { engine.pauseActive(); syncPlayButton(); }
+  else if (action === 'stop') { engine.pauseActive();engine.stopAlternateSources();syncPlayButton(); }
 });
 
 /* ---- Taskbar thumbnail toolbar icons (drawn on a canvas, no image assets needed) ---- */

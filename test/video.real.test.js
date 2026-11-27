@@ -17,7 +17,7 @@ function findFfmpeg() {
 }
 const FFMPEG = findFfmpeg();
 const skip = FFMPEG ? false : 'ffmpeg not available';
-const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-')));
+const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-')));
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 const ff = (args) => execFileSync(FFMPEG, ['-hide_banner', '-v', 'error', '-y', ...args], { stdio: 'ignore' });
@@ -50,7 +50,7 @@ test('encoders are detected; this ffmpeg can encode H.264 in some way', { skip }
 
 test('web preset (H.264, 720p max, AAC) -> decodes, h264, never upscaled, next to the source', { skip }, async () => {
   const r = await encode({ preset: 'webSmall' }, new Set([sw264()]));
-  assert.equal(path.dirname(r.output), dir);
+  assert.equal(fs.realpathSync.native(path.dirname(r.output)), fs.realpathSync.native(dir));
   assert.match(path.basename(r.output), /^clip-video\.mp4$/);
   const { dec, info } = await check(r.output);
   assert.equal(info.video.codec, 'h264');
@@ -158,7 +158,7 @@ test('output folder: created on demand and collisions are numbered, the source i
   const e = new Set([sw264()]);
   const one = await (await EV.encodeVideo({ ffmpegPath: FFMPEG, input: SRC, options: v.options, available: e, outDir: target })).promise;
   const two = await (await EV.encodeVideo({ ffmpegPath: FFMPEG, input: SRC, options: v.options, available: e, outDir: target })).promise;
-  assert.equal(path.dirname(one.output), target);
+  assert.equal(fs.realpathSync.native(path.dirname(one.output)), fs.realpathSync.native(target));
   assert.equal(path.basename(one.output), 'clip-out.mp4');
   assert.equal(path.basename(two.output), 'clip-out (1).mp4');
   assert.ok(before.equals(fs.readFileSync(SRC)), 'the original is unchanged');

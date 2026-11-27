@@ -12,3 +12,5 @@ test('all 20 languages have explicit finder UI labels',()=>{for(const lang of ["
 test('guide is grouped in tab order',()=>{const rows=guide.list('en'),order=Object.keys(guide.tabs);assert.ok(rows.every((r,i)=>i===0||order.indexOf(rows[i-1].tab)<=order.indexOf(r.tab)));});
 
 test('keyboard ownership never crosses tabs or interactive controls',()=>{const f=guide.shortcutAllowed;assert.equal(f({},'player','player'),true);assert.equal(f({},'video','player'),false);assert.equal(f({},'settings','player'),false);for(const k of ['defaultPrevented','ctrlKey','altKey','metaKey','interactive','modal'])assert.equal(f({[k]:true},'video','video'),false);});
+
+test('localized existing control labels are searchable without replacing curated meaning',()=>{const r=guide.list('de','Dateien öffnen',{'vp.openFiles':'Dateien öffnen'});assert.equal(r.length,1);assert.equal(r[0].target,'vpOpen');assert.equal(r[0].controlLabel,'Dateien öffnen');});

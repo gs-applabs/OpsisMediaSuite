@@ -826,8 +826,14 @@
   window.WaveframeVideoPlayer = {
     show() { build(); },
     open(p) { build(); addPaths([p], true); },
-    pause() { if (built && video && !video.paused) video.pause(); },
-    get playing() { return built && video && !video.paused; },
+    pause() {
+      if(!built)return;
+      if(handoff){stopNative();return;}
+      // Cancel an unresolved video open as well as an already-playing element.
+      if(current()&&!playbackEngine){++generation;releaseTicket();if(session)session.stop().catch(()=>{});video.pause();return;}
+      if(video&&!video.paused)video.pause();
+    },
+    get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();
 })();

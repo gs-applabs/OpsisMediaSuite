@@ -191,12 +191,12 @@ test('normalization gain is applied once to shared mono-to-stereo buffers',()=>{
 test('exclusive publication preserves a concurrently created output and cleans completed staging file',()=>{
  const fs=require('node:fs'),os=require('node:os');
  const {publishOutput}=require('../conv-engine');
- const dir=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'opsis-publish-')));
+ const dir=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'opsis-publish-')));
  const src=path.join(dir,'source.wav'),tmp=path.join(dir,'.temp.wav'),first=path.join(dir,'source-out.wav');
  try{
   fs.writeFileSync(src,'source');fs.writeFileSync(tmp,'complete');
   const real=fs.linkSync;let raced=false;
-  fs.linkSync=(from,to)=>{if(!raced){raced=true;assert.equal(to,first);fs.writeFileSync(to,'competing file',{flag:'wx'});}return real(from,to);};
+  fs.linkSync=(from,to)=>{if(!raced){raced=true;assert.equal(fs.realpathSync.native(path.dirname(to)),fs.realpathSync.native(path.dirname(first)));assert.equal(path.basename(to),path.basename(first));fs.writeFileSync(to,'competing file',{flag:'wx'});}return real(from,to);};
   let final;try{final=publishOutput(tmp,{input:src,ext:'wav',suffix:'-out',outDir:dir});}finally{fs.linkSync=real;}
   assert.equal(path.basename(final),'source-out (1).wav');
   assert.equal(fs.readFileSync(first,'utf8'),'competing file');assert.equal(fs.readFileSync(final,'utf8'),'complete');

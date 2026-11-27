@@ -19,7 +19,7 @@ function findFfmpeg() {
 const FFMPEG = findFfmpeg();
 const opts = { skip: FFMPEG ? false : 'ffmpeg not available' };
 
-const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-conv-')));
+const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-conv-')));
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 function tone(file, seconds, rate, channels) {
@@ -62,7 +62,7 @@ for (const [format, extra, codec, rate, channels] of MATRIX) {
     assert.ok(v.ok, v.errors.join());
     const job = await E.convertDirect({ ffmpegPath: FFMPEG, input: src, options: v.options });
     const { output } = await job.promise;
-    assert.equal(path.dirname(output), path.dirname(src), 'written next to the original');
+    assert.equal(fs.realpathSync.native(path.dirname(output)), fs.realpathSync.native(path.dirname(src)), 'written next to the original');
     assert.match(path.basename(output), /^tone-converted.*\./);
     const r = await E.verifyDecodes(FFMPEG, output);
     assert.ok(r.ok, 'output decodes without errors');
@@ -159,7 +159,7 @@ test('outDir: results go to the chosen folder (created on demand), named after t
   const v = C.validateOptions({ format: 'flac', suffix: '-out' });
   const a = await (await E.convertDirect({ ffmpegPath: FFMPEG, input: src, options: v.options, outDir: target })).promise;
   const b = await (await E.convertDirect({ ffmpegPath: FFMPEG, input: src, options: v.options, outDir: target })).promise;
-  assert.equal(path.dirname(a.output), target);
+  assert.equal(fs.realpathSync.native(path.dirname(a.output)), fs.realpathSync.native(target));
   assert.equal(path.basename(a.output), 'tone-out.flac');
   assert.equal(path.basename(b.output), 'tone-out (1).flac');
   // a playlist track has no file on disk: a virtual source name inside the folder is used
