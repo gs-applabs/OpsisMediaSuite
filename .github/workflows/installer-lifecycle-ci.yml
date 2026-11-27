@@ -1,0 +1,45 @@
+name: Installer lifecycle CI (test only)
+on:
+  pull_request:
+    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: installer-lifecycle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  lifecycle:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: npm ci
+      - run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
+      - name: Build unsigned isolated NSIS version fixtures
+        run: |
+          node test/build-installer-ci.js 2.4.2
+          if ($LASTEXITCODE) { throw 'base fixture build failed' }
+          node test/build-installer-ci.js 3.0.0-rc.1
+          if ($LASTEXITCODE) { throw 'upgrade fixture build failed' }
+        shell: pwsh
+      - name: Test installation, upgrade and removal
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          ./test/installer-lifecycle.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-lifecycle-evidence
+          path: |
+            installer-first.log
+            installer-upgrade.log
+          retention-days: 7
