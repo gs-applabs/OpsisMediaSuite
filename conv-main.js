@@ -2,7 +2,7 @@
 // IPC glue for the audio converter. Only the main window may call these channels; every payload is validated here
 // (options through convlib.validateOptions, files must exist and be regular files). The original files are only read.
 
-const { ipcMain, dialog, shell } = require('electron');
+const { ipcMain, dialog, shell, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const L = require('./renderer/convlib.js');
