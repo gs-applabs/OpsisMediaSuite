@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 3A — selective video DSP and on-demand FxSound detection (2026-11-27)
+
+- Frozen 2E head `d04d85f449e07a84155907f45e213484330bee9f`: all nine workflows PASS, general 46071056272 298/298, real Electron SELF-TEST PASSED. Five samples startup CPU 0.11% / 535427.2 KiB summed working set, post-soak 0.04% / 564650.4 KiB; not a controlled benchmark.
+- Chromium video uses existing shared RouteGate dry/web. EQ/bass/presence/balance processors created only for selected nonneutral supported settings, smoothly bypassed and released after 80ms, or immediately if suspended. MediaElementSource remains in a minimal dry graph until source replacement (cannot detach/recreate it safely). Pause/ended/native handoff suspend context, resume on play. Music EQ/bass changes propagate to video even without live music AudioContext.
+- FxSound registry/process/device discovery now only on Enhance tab or explicit auto mode, no native-mode startup scan, coalesced request, no redundant route writes. No change to OS devices, external software or offline export, no claim of actual external DSP proof. Video effect subset remains explicit; native playback and offline parity still pending.
+- Added pure config and real Electron branch allocation/external bypass release tests; new CI pending. No release/merge.
+
 ## ULTRA 2E — bounded subtitle audio analysis and native handoff safety (2026-11-27)
 
 - Prior 2C general CI 46070309790 PASS and seven specialist workflows PASS; installer pending. Prior 2D still running. No new full green claim.

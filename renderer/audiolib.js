@@ -170,6 +170,14 @@
       exciter_percent:state?.exciter===true?percent(state.exciterAmount):0,
       limiter:1};
   }
+  // Video has a deliberately smaller effect set than the music enhancer.
+  function videoFxConfig(state,selected){
+    const n=(v,min,max)=>Math.max(min,Math.min(max,Number.isFinite(v)?v:0));
+    const enabled=selected===true&&state?.masterEnabled===true&&!state?.routeBypass;
+    const eq=EQ_FREQS.map((_,i)=>enabled?n(state?.eqBands?.[i],-12,12):0);
+    const bass=enabled?n(state?.bassBoost,-12,12):0,presence=enabled?presenceParams(state?.presence).gain:0,balance=enabled?balanceValue(state?.balance):0;
+    return {eq,bass,presence,balance,active:eq.some(x=>x!==0)||bass!==0||presence!==0||balance!==0};
+  }
   function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
-  return { nativeDspConfig,nativeDspConfigV2,impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { videoFxConfig,nativeDspConfig,nativeDspConfigV2,impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

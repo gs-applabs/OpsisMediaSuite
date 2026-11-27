@@ -383,37 +383,64 @@
   }
 
   /* ---------------- sound: the Suite's equaliser on the video ---------------- */
+  function releaseVideoFxBranch(graph){
+    clearTimeout(graph.releaseTimer);graph.releaseTimer=0;
+    if(!graph.nodes)return;
+    try{graph.src.disconnect(graph.nodes[0]);}catch{}
+    for(const n of graph.nodes)try{n.disconnect();}catch{}
+    graph.nodes=null;graph.filters=null;graph.bass=null;graph.presence=null;graph.balance=null;
+  }
   function refreshFx() {
-    const btn = $('vpFx'); if (!fx || !btn) return;
-    const on = btn.getAttribute('aria-pressed') === 'true' && (typeof engine === 'undefined' || (engine.state.masterEnabled&&!engine.state.routeBypass));
-    const bands = (typeof engine !== 'undefined' && engine.state && engine.state.eqBands) || [];
-    fx.filters.forEach((f, i) => { f.gain.value = on ? Number(bands[i]) || 0 : 0; });
-    fx.bass.gain.value = on && typeof engine !== 'undefined' && engine.state ? Number(engine.state.bassBoost) || 0 : 0;
-    if(fx.presence)fx.presence.gain.value=on&&typeof engine!=='undefined'?WaveframeAudio.presenceParams(engine.state.presence).gain:0;
-    if(fx.balance)fx.balance.pan.value=on&&typeof engine!=='undefined'?WaveframeAudio.balanceValue(engine.state.balance):0;
+    const btn=$('vpFx');if(!fx||!btn)return;
+    const graph=fx,ctx=graph.ctx;
+    const cfg=WaveframeAudio.videoFxConfig(typeof engine==='undefined'?null:engine.state,btn.getAttribute('aria-pressed')==='true');
+    const immediate=ctx.state!=='running';
+    if(cfg.active){
+      clearTimeout(graph.releaseTimer);graph.releaseTimer=0;
+      if(!graph.nodes){
+        try{
+          const freqs=WaveframeAudio.EQ_FREQS;
+          graph.filters=freqs.map((f,i)=>{const n=ctx.createBiquadFilter();n.type=i===0?'lowshelf':i===freqs.length-1?'highshelf':'peaking';n.frequency.value=f;n.Q.value=1;return n;});
+          graph.bass=ctx.createBiquadFilter();graph.bass.type='lowshelf';graph.bass.frequency.value=100;
+          graph.presence=ctx.createBiquadFilter();graph.presence.type='peaking';graph.presence.frequency.value=2800;graph.presence.Q.value=.85;
+          graph.balance=ctx.createStereoPanner();
+          graph.nodes=[...graph.filters,graph.bass,graph.presence,graph.balance];
+          graph.src.connect(graph.nodes[0]);for(let i=1;i<graph.nodes.length;i++)graph.nodes[i-1].connect(graph.nodes[i]);graph.nodes.at(-1).connect(graph.wet);
+        }catch{releaseVideoFxBranch(graph);graph.gate.select('dry',true);say(t('vp.fxFailed'));return;}
+      }
+      const at=ctx.currentTime,assign=(param,value)=>{param.cancelScheduledValues(at);if(immediate||graph.gate.target==='dry')param.setValueAtTime(value,at);else param.setTargetAtTime(value,at,.02);};
+      graph.filters.forEach((f,i)=>assign(f.gain,cfg.eq[i]));assign(graph.bass.gain,cfg.bass);assign(graph.presence.gain,cfg.presence);assign(graph.balance.pan,cfg.balance);
+      graph.gate.select('web',immediate);
+    }else{
+      graph.gate.select('dry',immediate);
+      if(graph.nodes&&!graph.releaseTimer){
+        if(immediate)releaseVideoFxBranch(graph);
+        else graph.releaseTimer=setTimeout(()=>{if(fx===graph&&graph.gate.target==='dry'){graph.gate.select('dry',true);releaseVideoFxBranch(graph);}},80);
+      }
+    }
+  }
+  function syncVideoFxActivity(){
+    if(!fx)return;const graph=fx,ctx=graph.ctx;
+    if(video.paused||video.ended||handoff){if(ctx.state==='running')ctx.suspend().then(()=>{if(fx===graph)refreshFx();}).catch(()=>{});}
+    else if(ctx.state==='suspended')ctx.resume().catch(()=>{});
   }
   async function toggleFx() {
     if (!current() || !video.getAttribute('src')) return;
     const btn = $('vpFx'), on = btn.getAttribute('aria-pressed') !== 'true';
     if (on && VP.isUrl(current())) { say(t('vp.fxLocalOnly')); return; }
     if (!fx) {
+      if(!on)return;
       const expected=video,g=generation;
       if(fxClosing){await fxClosing;if(expected!==video||g!==generation||!current())return;if(fx)return;}
       let ctx;
-      try {
-        ctx = new AudioContext();const src = ctx.createMediaElementSource(video), freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-        const filters = freqs.map((f, i) => { const n = ctx.createBiquadFilter(); n.type = i === 0 ? 'lowshelf' : i === 9 ? 'highshelf' : 'peaking'; n.frequency.value = f; n.Q.value = 1; return n; });
-        const bass = ctx.createBiquadFilter(); bass.type = 'lowshelf'; bass.frequency.value = 100;
-        const presence=ctx.createBiquadFilter();presence.type='peaking';presence.frequency.value=2800;presence.Q.value=.85;
-        const balance=ctx.createStereoPanner();
-        let node = src; for (const f of [...filters, bass,presence,balance]) { node.connect(f); node = f; }
-        node.connect(ctx.destination);
-        fx = { ctx, filters, bass,presence,balance };
-      } catch (_) { if(ctx)ctx.close().catch(()=>{});say(t('vp.fxFailed')); return; }
+      try{
+        ctx=new AudioContext();const src=ctx.createMediaElementSource(video),dry=ctx.createGain(),wet=ctx.createGain();
+        src.connect(dry);dry.connect(ctx.destination);wet.connect(ctx.destination);
+        fx={ctx,src,dry,wet,gate:new OpsisDspRouting.RouteGate(ctx,{web:wet,dry},'dry'),nodes:null,releaseTimer:0};
+      }catch{if(ctx)ctx.close().catch(()=>{});say(t('vp.fxFailed'));return;}
     }
-    btn.setAttribute('aria-pressed', String(on)); btn.classList.toggle('active', on);
-    if (fx.ctx.state === 'suspended') fx.ctx.resume().catch(() => say(t('vp.fxFailed')));
-    refreshFx();
+    btn.setAttribute('aria-pressed',String(on));btn.classList.toggle('active',on);
+    refreshFx();syncVideoFxActivity();
   }
 
   /* ---------------- saved playlists, recent ---------------- */
@@ -516,7 +543,7 @@
     const on = (name, handler) => video.addEventListener(name, handler, { signal: eventController.signal });
     on('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
     on('timeupdate', syncTime); on('durationchange', syncTime);
-    for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev,()=>{syncTransport();syncResumeTimer();});
+    for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev,()=>{syncTransport();syncResumeTimer();syncVideoFxActivity();});
     on('click', () => { if(parked){playAt(idx);return;}if (video.paused) void resumeChromium(); else video.pause(); });
     on('dblclick', () => $('vpFull').click());
     on('error', () => say(t('vp.cantPlay')));
@@ -536,7 +563,7 @@
     const old = video, volume = old.volume, muted = old.muted;
     if (eventController) eventController.abort();
     old.pause(); old.removeAttribute('src'); old.load(); $('vpFrame').classList.remove('has-media');
-    if (fx) { const closing=fx.ctx.close().catch(()=>{});fxClosing=closing;closing.finally(()=>{if(fxClosing===closing)fxClosing=null;});fx=null; }
+    if (fx) { releaseVideoFxBranch(fx);const closing=fx.ctx.close().catch(()=>{});fxClosing=closing;closing.finally(()=>{if(fxClosing===closing)fxClosing=null;});fx=null; }
     const fresh = old.cloneNode(false);
     fresh.removeAttribute('crossorigin');
     old.replaceWith(fresh); video = fresh; nativeSubtitleTrack = null;
@@ -873,6 +900,7 @@
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
     window.addEventListener('waveframe:dsp-route-changed',refreshFx);
+    window.addEventListener('waveframe:video-fx-settings',refreshFx);
 
     const frame = $('vpFrame');
     frame.addEventListener('dragover', (e) => { e.preventDefault(); frame.classList.add('drag'); });
@@ -920,7 +948,7 @@
       if(video&&!video.paused)video.pause();
     },
     parkForAudio,
-    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
+    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,fxProcessors:fx?.nodes?.length||0,fxRoute:fx?.gate?.target||null,fxContext:fx?.ctx?.state||null,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();

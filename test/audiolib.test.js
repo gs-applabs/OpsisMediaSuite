@@ -221,3 +221,14 @@ test('bounded loudness accumulation rejects malformed input and stays stable on 
  assert.equal(lib.integratedLufs([a,a.subarray(1)],fs),-Infinity);
  assert.equal(lib.integratedLufs([a],NaN),-Infinity);
 });
+
+
+test('video DSP config activates only selected supported effects, respects external bypass',()=>{
+ const A=require('../renderer/audiolib');
+ const state={masterEnabled:true,routeBypass:false,eqBands:[0,0,6],bassBoost:3,presence:50,balance:-25};
+ const active=A.videoFxConfig(state,true);assert.equal(active.active,true);assert.equal(active.eq[2],6);assert.equal(active.bass,3);assert.equal(active.balance,-.25);
+ assert.equal(A.videoFxConfig({...state,routeBypass:true},true).active,false);
+ assert.equal(A.videoFxConfig({...state,masterEnabled:false},true).active,false);
+ assert.equal(A.videoFxConfig(state,false).active,false);
+ assert.equal(A.videoFxConfig({masterEnabled:true,compressor:true,reverb:true},true).active,false);
+});

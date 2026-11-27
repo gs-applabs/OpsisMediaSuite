@@ -584,6 +584,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));
           check('equalizer on the video sound turns on (CORS-enabled wfmedia: source)', await js("document.getElementById('vpFx').getAttribute('aria-pressed') === 'true' && !/./.test(document.getElementById('vpStatus').textContent.match(/equalizer|ισοσταθμιστ/i) || '')"), await js("document.getElementById('vpStatus').textContent"));
+          const fxState=await js("({bass:engine.state.bassBoost,master:engine.state.masterEnabled,bypass:engine.state.routeBypass})");
+          await js("engine.setMasterEnable(true);engine.setRouteBypass(false);engine.setBassBoost(6);1");
+          check('video DSP constructs processing branch only when selected and nonneutral',await until("WaveframeVideoPlayer.diagnostics().fxProcessors>0&&WaveframeVideoPlayer.diagnostics().fxRoute==='web'",2000));
+          await js("engine.setRouteBypass(true);1");
+          check('video external bypass releases processing nodes',await until("WaveframeVideoPlayer.diagnostics().fxProcessors===0&&WaveframeVideoPlayer.diagnostics().fxRoute==='dry'",2000));
+          await js("engine.setBassBoost("+JSON.stringify(fxState.bass)+");engine.setMasterEnable("+JSON.stringify(fxState.master)+");engine.setRouteBypass("+JSON.stringify(fxState.bypass)+");1");
           const parked=await js("(async()=>{const p=WaveframeVideoPlayer;const el=document.getElementById('vpVideo');el.pause();el.currentTime=1;p.parkForAudio();return {...p.diagnostics(),src:document.getElementById('vpVideo').getAttribute('src')};})()");
           check('audio ownership parks video without losing selection',parked.parked&&!parked.session&&!parked.ticket&&!parked.fx&&!parked.saveTimer&&!parked.src&&parked.selected>=0,JSON.stringify(parked));
           await js("document.getElementById('vpPlay').click();1");

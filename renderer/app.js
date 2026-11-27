@@ -343,6 +343,7 @@ class AudioEngine {
   }
 
   setRouteBypass(on) {
+    if(this.state.routeBypass===!!on)return;
     this.state.routeBypass=!!on;
     this.applyLiveBypass();
   }
@@ -504,12 +505,14 @@ class AudioEngine {
 
   setEqBand(index, db) {
     this.state.eqBands[index] = db;
+    window.dispatchEvent(new CustomEvent('waveframe:video-fx-settings'));
     if(!this.ctx)return;
     this.syncToneStage('eq');
     this.syncWorkletSettings();
   }
   applyEqBands(bands) {
     bands.slice(0,EQ_FREQS.length).forEach((db,i)=>{this.state.eqBands[i]=db;});
+    window.dispatchEvent(new CustomEvent('waveframe:video-fx-settings'));
     if(this.ctx){this.syncToneStage('eq');this.syncWorkletSettings();}
   }
 
@@ -540,6 +543,7 @@ class AudioEngine {
   }
   setBassBoost(db) {
     this.state.bassBoost = db;
+    window.dispatchEvent(new CustomEvent('waveframe:video-fx-settings'));
     if(!this.ctx)return;
     this.syncToneStage('bass');
     this.syncWorkletSettings();
@@ -2012,14 +2016,16 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
     select.options[2].textContent=t('enhance.dspAuto');
     bypass.textContent=t('enhance.dspBypass');
   }
-  function change(){mode=select.value;try{localStorage.setItem('waveframe.fxSoundMode',mode);}catch{}show();}
+  function change(){mode=select.value;OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.fxSoundMode',mode);show();refreshDetection();}
   async function devices(){
     const n=++revision;const list=await navigator.mediaDevices?.enumerateDevices().catch(()=>[])||[];
     if(n!==revision)return;
     deviceSeen=list.some(d=>d.kind==='audiooutput'&&/fxsound/i.test(d.label));
     route=list.some(d=>d.kind==='audiooutput'&&d.deviceId==='default'&&/fxsound/i.test(d.label));show();
   }
-  async function detect(){const r=await window.waveframe.fxSoundStatus().catch(()=>null);installed=r?.installed??null;running=r?.running??null;show();}
+  let detectPending=null;
+  function detect(){if(detectPending)return detectPending;detectPending=window.waveframe.fxSoundStatus().catch(()=>null).then(r=>{installed=r?.installed??null;running=r?.running??null;show();}).finally(()=>{detectPending=null;});return detectPending;}
+  function refreshDetection(){if(mode==='auto'||document.getElementById('tab-enhance').classList.contains('active')){void devices();void detect();}}
   const experimental=document.getElementById('experimentalWorklet'),workletStatus=document.getElementById('experimentalWorkletStatus');
   let wasmBytes=null;
   function showWorklet(failed=false){
@@ -2060,10 +2066,11 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
   });
   select.addEventListener('change',change);
   bypass.addEventListener('click',()=>{select.value='external';change();});
-  navigator.mediaDevices?.addEventListener('devicechange',()=>{devices();detect();});
-  window.addEventListener('focus',()=>{devices();detect();});
+  navigator.mediaDevices?.addEventListener('devicechange',refreshDetection);
+  window.addEventListener('focus',refreshDetection);
+  window.addEventListener('waveframe:tab-selected',e=>{if(e.detail==='enhance')refreshDetection();});
   document.addEventListener('waveframe:language-changed',show);
-  detect();devices();
+  show();refreshDetection();
 })();
 // Switches are <button>s: expose them as role=switch and keep aria-checked in step with the 'active' class (whoever toggles it).
 function wireSwitch(btn, onChange, initial = false) {
