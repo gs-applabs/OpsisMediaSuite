@@ -87,3 +87,10 @@ for (const [k, v] of Object.entries(window.WAVEFRAME_LICENSES || {})) { const el
     const li = document.createElement('li'); li.textContent = pick('help.v242.1'); ul.appendChild(li);
   }
 }
+
+{
+const lang=new URLSearchParams(location.search).get('lang')||'el',gr=lang==='el';
+const target=document.getElementById('featureHelpList');document.getElementById('featureHelpTitle').textContent=gr?'Κατάλογος δυνατοτήτων':'Feature guide';document.getElementById('featureHelpIntro').textContent=gr?'Στις Ρυθμίσεις → Εύρεση λειτουργιών μπορείς να μεταβείς απευθείας στο αντίστοιχο εργαλείο. Οι πειραματικές λειτουργίες έχουν προϋποθέσεις.':'Settings → Find features opens the relevant existing tool. Experimental features have prerequisites.';
+for(const r of OpsisFeatureGuide.list(lang)){const p=document.createElement('p'),b=document.createElement('strong');b.textContent=r.category+' — '+r.title;p.append(b,document.createTextNode(': '+r.description));target.append(p);}
+for(const line of gr?['18E.1/18F: Inno Setup και δοκιμές εγκατάστασης· η τελική αποδοχή εκκρεμεί.','18G–18I: MP3/FLAC metadata, MusicBrainz, προεπισκόπηση και ακύρωση. AcoustID πειραματικό, απαιτεί κλειδί.','19A: Εύρεση λειτουργιών, ενημερωμένη Βοήθεια και οδηγός εκκίνησης.']:['18E.1/18F: Inno Setup lifecycle; final acceptance pending.','18G–18I: MP3/FLAC tags, MusicBrainz, preview and cancel. AcoustID experimental; requires a key.','19A: Feature finder, updated Help and welcome guide.']){const li=document.createElement('li');li.textContent=line;document.getElementById('featureHistory').append(li);}
+}

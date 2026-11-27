@@ -924,6 +924,37 @@ function loadScripts(key, files) {
 function loadVideoPlayer() { return loadScripts('video', ['../playback-core.js', 'vplib.js', 'videoplayer.js']); }
 function loadPhoto() { return loadScripts('photo', ['photolib.js', 'photo.js']); }
 function showTab(name) { const b = document.querySelector(`.tab-btn[data-tab="${name}"]`); if (b) b.click(); }
+function initFeatureGuide(){
+ const input=document.getElementById('featureGuideQuery'), results=document.getElementById('featureGuideResults'),status=document.getElementById('featureGuideStatus');
+ const lang=()=>localStorage.getItem('waveframe.lang')||'el';
+ const gr=()=>lang()==='el';
+ async function navigate(row){
+  showTab(row.tab);
+  try{if(row.tab==='converter')await loadConverter();if(row.tab==='video')await loadVideoPlayer();if(row.tab==='photo')await loadPhoto();}
+  catch{status.textContent=gr()?'Η καρτέλα δεν φορτώθηκε.':'Tab failed to load.';showTab('settings');return;}
+  if(row.tab==='player'&&row.target?.startsWith('metadata'))document.getElementById('playlistDrawer').classList.add('open');
+  const target=row.target&&document.getElementById(row.target);
+  if(target)for(let p=target.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;
+  const visible=target&&target.getClientRects().length&&!target.closest('[hidden],.dep-hidden');
+  const dest=visible?target:document.querySelector('.tab-btn[data-tab="'+row.tab+'"]');
+  dest?.scrollIntoView({block:'nearest'});dest?.focus({preventScroll:true});
+  if(visible){target.classList.add('feature-guide-highlight');setTimeout(()=>target.classList.remove('feature-guide-highlight'),1800);}
+  else if(row.target)await showAlertDialog(gr()?'Διαθεσιμότητα λειτουργίας':'Feature availability',row.description);
+ }
+ function render(){
+  document.getElementById('featureGuideTitle').textContent=gr()?'Εύρεση λειτουργιών και ρυθμίσεων':'Find features and settings';
+  document.getElementById('featureGuideHint').textContent=gr()?'Αναζήτησε μια δυνατότητα. Η επιλογή ανοίγει το υπάρχον εργαλείο χωρίς να εκτελεί ενέργειες.':'Search for a feature. Selecting a result opens the existing tool without running an action.';
+  input.placeholder=gr()?'π.χ. υπότιτλοι, metadata, GPU':'e.g. subtitles, metadata, GPU';
+  const rows=OpsisFeatureGuide.list(lang(),input.value);results.replaceChildren();
+  for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
+  status.textContent=gr()?rows.length+' αποτελέσματα':rows.length+' results';
+ }
+ input.addEventListener('input',render);document.addEventListener('waveframe:language-changed',render);render();
+ // One unobtrusive entry point in each existing tab; no new parallel feature controls.
+ for(const tab of document.querySelectorAll('.tab-btn')){const name=tab.dataset.tab;if(name==='settings')continue;tab.addEventListener('contextmenu',e=>{e.preventDefault();showTab('settings');input.value=OpsisFeatureGuide.tabs[name][gr()?0:1];render();input.focus();});}
+ const quick=document.getElementById('featureGuideQuick');quick.addEventListener('click',()=>{showTab('settings');input.value='';render();input.focus();});
+}
+initFeatureGuide();
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it
 window.waveframe.onOpenVideo((filePath) => { showTab('video'); loadVideoPlayer().then(() => window.WaveframeVideoPlayer.open(filePath)); });
 // only one thing plays at a time

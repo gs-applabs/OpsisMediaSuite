@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19A
+- Shared searchable feature guide with 26 entries, direct navigation to existing tabs/controls, Help catalog and development history, and eight-page welcome guide updates. No media action runs when navigating. Greek/English text with English fallback; full 20-language and visual accessibility checks remain pending.
+
 ## Unreleased — Ultra Mega Pass 18H.1
 - Optional acoustic identification via installed FFmpeg Chromaprint and AcoustID POST, requiring explicit consent, configured application key and review. No audio upload. Provider response fixture added; real provider and compatible FFmpeg validation pending.
 

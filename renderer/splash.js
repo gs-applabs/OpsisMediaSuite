@@ -72,6 +72,10 @@
       const p = document.createElement('p'); p.className = 'intro'; p.textContent = tr(`splash.p${i}.intro`);
       const ul = document.createElement('ul');
       for (const line of tr(`splash.p${i}.l`).split('\n')) { const li = document.createElement('li'); li.textContent = line; ul.appendChild(li); }
+      // Keep eight pages and existing first-run behavior. Add concise pointers to the shared guide.
+      const extra={2:lang==='el'?'Λίστα → metadata MP3/FLAC, MusicBrainz και προαιρετικό AcoustID.':'Playlist → MP3/FLAC tags, MusicBrainz and optional AcoustID.',3:lang==='el'?'Δρομολόγηση DSP / FxSound: όταν είναι διαθέσιμη.':'DSP / FxSound routing: when available.',6:lang==='el'?'Ρυθμίσεις → Εύρεση λειτουργιών: αναζήτηση και άμεση μετάβαση στο εργαλείο.':'Settings → Find features: search and jump to a tool.',7:lang==='el'?'Υπότιτλοι: online αναζήτηση, μαζικός έλεγχος, συγχρονισμός και διαγνωστικά codecs.':'Subtitles: online search, batch audit, sync and codec diagnostics.'};
+      if(i===5){p.textContent=lang==='el'?'Οι εξαγωγές κρατούν τα πρωτότυπα· η εγγραφή metadata χρειάζεται επιβεβαίωση.':'Exports preserve originals; writing tags needs confirmation.';if(ul.lastElementChild)ul.lastElementChild.textContent=lang==='el'?'Οι online υπηρεσίες χρησιμοποιούνται κατόπιν επιλογής και συγκατάθεσης όπου απαιτείται.':'Online services are used on request and with consent where required.';}
+      if(extra[i]){const li=document.createElement('li');li.textContent=extra[i];ul.append(li);}
       el.append(h, p, ul);
       pages.appendChild(el);
       const d = document.createElement('div'); d.className = 'dot'; dots.appendChild(d);

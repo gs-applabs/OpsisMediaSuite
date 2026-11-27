@@ -930,3 +930,5 @@ body.mini-mode #bgCanvas { display: none; }
 
 /* Audio endpoint inventory: no inline styles under strict CSP. */
 #audioEndpointReport { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.feature-guide-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px;max-height:340px;overflow:auto;padding:3px}.feature-guide-result{white-space:normal;text-align:start;display:flex;flex-direction:column;align-items:flex-start;gap:4px;line-height:1.35}.feature-guide-result span{font-weight:normal;font-size:.9em}.feature-guide-highlight{outline:2px solid currentColor!important;outline-offset:3px}#featureGuideQuick{margin:4px auto;font-size:1.25rem}
