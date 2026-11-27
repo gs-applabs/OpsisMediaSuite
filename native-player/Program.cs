@@ -20,7 +20,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 2 || !SafeLocal(args[1], MediaExt)) return 2;
+        if (args.Length < 2 || args.Length > 3 || !SafeLocal(args[1], MediaExt)) return 2;
+        long resume=0;if(args.Length==3&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow")))return 2;
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
@@ -29,7 +30,7 @@ internal static class Program
             if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
             if (args[0] == "--mf-audio-selftest") return MediaFoundationProbe.Run(args[1],false);
             if (args[0] == "--directshow-selftest") return DirectShowHost.SelfTest(args[1]);
-            if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1]); }
+            if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1],resume); }
             Core.Initialize();
             bool selftest = args[0] == "--selftest";
             // No remote URL or caller-supplied VLC arguments. Separate process;
@@ -41,10 +42,10 @@ internal static class Program
             using var media = new Media(vlc, args[1], FromType.FromPath);
             if (selftest) return SelfTest(player, media);
             ApplicationConfiguration.Initialize();
-            using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]));
+            using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume);
             Application.Run(form);
             return 0;
-        } catch (Exception ex) { Console.Error.WriteLine(ex.GetType().Name); return 1; }
+        } catch (Exception ex) { Console.Error.WriteLine(ex.GetType().Name); HostEvent("error",0,0); return 1; }
     }
 
     private static int SelfTest(MediaPlayer player, Media media)
@@ -70,6 +71,7 @@ internal static class Program
         player.Stop(); return 5;
     }
 
+    internal static void HostEvent(string kind,long position,long duration){Console.WriteLine(JsonSerializer.Serialize(new{ @event=kind,positionMs=Math.Max(0,position),durationMs=Math.Max(0,duration)}));Console.Out.Flush();}
     private sealed record TrackItem(int Id, string Name) { public override string ToString() => Name; }
 
     private sealed class PlayerWindow : Form
@@ -83,10 +85,12 @@ internal static class Program
         private readonly ComboBox audio = new() { DropDownStyle=ComboBoxStyle.DropDownList, Width=170 };
         private readonly ComboBox subtitle = new() { DropDownStyle=ComboBoxStyle.DropDownList, Width=170 };
         private readonly System.Windows.Forms.Timer timer = new() { Interval=250 };
-        private bool updating, seeking, closing;
-        public PlayerWindow(MediaPlayer player, Media media, string title)
+        private bool updating, seeking, closing,ready,resumed;
+        private readonly long resume;
+        private long lastReport;
+        public PlayerWindow(MediaPlayer player, Media media, string title,long resume)
         {
-            this.player=player; this.media=media; Text="OPSIS Native Player — "+title;
+            this.player=player; this.media=media;this.resume=resume; Text="OPSIS Native Player — "+title;
             Width=1050;Height=690;MinimumSize=new Size(650,420);
             var transport=new FlowLayoutPanel { Dock=DockStyle.Fill, AutoScroll=true, WrapContents=true };
             Button Button(string label, Action action) { var b=new Button{Text=label,AutoSize=true}; b.Click+=(_,_)=>action(); transport.Controls.Add(b);return b; }
@@ -112,13 +116,17 @@ internal static class Program
             seek.Scroll+=(_,_)=>{if(!seeking&&player.IsSeekable&&player.Length>0)player.Time=player.Length*seek.Value/1000;};
             timer.Tick+=(_,_)=>RefreshState();
             Shown+=(_,_)=>{player.Hwnd=video.Handle;player.Volume=75;if(!player.Play(media))status.Text="Playback failed";timer.Start();};
-            FormClosing+=(_,_)=>{if(closing)return;closing=true;timer.Stop();player.Stop();};
+            FormClosing+=(_,_)=>{if(closing)return;closing=true;timer.Stop();HostEvent("closed",player.Time,player.Length);player.Stop();};
         }
         private void SeekRelative(long delta){if(player.IsSeekable&&player.Length>0)player.Time=Math.Clamp(player.Time+delta,0,player.Length);}
         private static string Clock(long ms)=>TimeSpan.FromMilliseconds(Math.Max(0,ms)).ToString(@"hh\:mm\:ss");
         private void RefreshState()
         {
             if(closing)return;
+            if(player.State==VLCState.Error){HostEvent("error",player.Time,player.Length);Close();return;}
+            if(!resumed&&player.IsSeekable&&player.Length>0){resumed=true;if(resume>0)player.Time=Math.Min(resume,Math.Max(0,player.Length-500));}
+            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;HostEvent("ready",player.Time,player.Length);lastReport=Environment.TickCount64;}
+            else if(ready&&Environment.TickCount64-lastReport>=1000){lastReport=Environment.TickCount64;HostEvent("position",player.Time,player.Length);}
             time.Text=Clock(player.Time)+" / "+Clock(player.Length);
             seek.Enabled=player.IsSeekable&&player.Length>0;
             if(!seeking&&seek.Enabled)seek.Value=(int)Math.Clamp(player.Time*1000d/player.Length,0,1000);

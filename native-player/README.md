@@ -10,3 +10,5 @@ K-Lite may install x64 modules under Program Files (x86). Both standard Program 
 
 ## Media Foundation (decode diagnostic)
 Source Reader independently negotiates PCM and NV12 and reads actual decoded samples from local WAV and H.264/AAC MP4 fixtures. No video renderer, audio endpoint or app playback adapter yet. Windows selects its own transforms; this does not verify active decoder identity or third-party transform trust. Parent CI imposes process timeout. This diagnostic is not advertised as a production player.
+
+Native handoff now accepts bounded resume milliseconds, reports JSON ready/position/closed/error on stdout, and main process waits for readiness (120s cap, including consent). Separate window remains; opt-in LibVLC fallback does not imply embedded playback. DirectShow readiness is graph run success; visual certification pending.

@@ -207,3 +207,11 @@ test('MicroDVD uses explicit or declared FPS and refuses unknown timing',()=>{
  assert.equal(V.subtitleToVtt('{24}{48}text','sub',0,1,24).entries[0].end,2);
  assert.equal(V.subtitleToVtt('{24}{12}bad','sub',0,1,24).cues,0);
 });
+
+test('native host protocol accepts bounded known events only',()=>{
+ const {parseHostEvent}=require('../native-host');
+ assert.deepEqual(parseHostEvent('{"event":"ready","positionMs":100,"durationMs":5000}'),{event:'ready',positionMs:100,durationMs:5000});
+ assert.equal(parseHostEvent('{"event":"spawn","positionMs":5}'),null);
+ assert.equal(parseHostEvent('x'.repeat(1025)),null);
+ assert.equal(parseHostEvent('{"event":"position","positionMs":-5}').positionMs,0);
+});

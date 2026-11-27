@@ -72,3 +72,6 @@ Session-bounded picker grants for input/subtitles, explicit native confirmation 
 
 ## Pass 22 — MicroDVD text subtitles
 Frame-number MicroDVD .sub parser, declared or explicitly selected FPS, multiline and simple style stripping, shift/scale reuse, bounded cues and binary VobSub rejection in Chromium. Never infer 25 FPS silently. Bitmap VobSub and PGS still belong to native engines; this is text-only. New UI label translations and CI pending.
+
+## Full pass 23 — native handoff and status protocol
+Installed K-Lite CI 45941014419 succeeded with x64 LAV splitter/video/audio graph on actual MKV H.264/AAC (5s duration, 529ms position, module SHA256 recorded). Added bounded JSON line protocol, actual native ready/position/closed/error status, resume handoff, explicit close and optional unchecked-by-default LibVLC fallback for local Chromium decode failure. Separate windows, no native DSP sharing. DirectShow ready reports graph Run success, not observed pixels. Native transport build and renderer CI pending.

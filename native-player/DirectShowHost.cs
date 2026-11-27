@@ -195,7 +195,7 @@ internal static class DirectShowHost
         return duration>10000000&&pos>=5000000?0:8;
     }
 #endif
-    public static int Run(string file)
+    public static int Run(string file,long resume=0)
     {
         // Explicit experimental local-only path. No automatic fallback.
         using var source=new Approved(LavSource,"LAVSplitter.ax");
@@ -220,9 +220,13 @@ internal static class DirectShowHost
         controls.Controls.AddRange(new Control[]{play,pause,stop,new Label{Text="DirectShow / LAV (explicit graph)",AutoSize=true}});
         form.Controls.Add(panel);form.Controls.Add(controls);
         var window=g.Window;
-        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());};
+        using var timer=new System.Windows.Forms.Timer{Interval=1000};
+        long Duration(){Check(g.Seeking.GetDuration(out long n));return n/10000;}
+        long Position(){Check(g.Seeking.GetCurrentPosition(out long n));return n/10000;}
+        timer.Tick+=(_,_)=>{try{Program.HostEvent("position",Position(),Duration());}catch{}};
+        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;g.Seeking.SetPositions(pos,AMSeekingSeekingFlags.AbsolutePosition,0,AMSeekingSeekingFlags.NoPositioning);}Program.HostEvent("ready",Position(),Duration());timer.Start();};
         panel.Resize+=(_,_)=>{if(form.Visible)window.SetWindowPosition(0,0,panel.Width,panel.Height);};
-        form.FormClosing+=(_,_)=>{g.Control.Stop();window.put_Visible(OABool.False);window.put_Owner(IntPtr.Zero);};
+        form.FormClosing+=(_,_)=>{timer.Stop();try{Program.HostEvent("closed",Position(),Duration());}catch{}g.Control.Stop();window.put_Visible(OABool.False);window.put_Owner(IntPtr.Zero);};
         Application.Run(form);return 0;
     }
 }

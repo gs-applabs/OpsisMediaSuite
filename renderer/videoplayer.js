@@ -63,9 +63,34 @@
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function stop() { saveResume(); releaseTicket(); ++generation; if(session)session.stop().catch(()=>{}); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
 
+  let handoff=null,nativePoll=null;
+  async function nativeHandoff(engine,p,g){
+    if(handoff||!p||VP.isUrl(p))return false;
+    const wasPlaying=!video.paused,pos=Number.isFinite(video.currentTime)?Math.round(video.currentTime*1000):0;
+    const resume=pos||Number(get(K.resume,{})[p])||0;
+    saveResume();video.pause();
+    const marker={p,g,session:null};handoff=marker;
+    $('vpNativeStop').hidden=false;
+    say(engine+' — opening native player…');
+    const r=await api.vpNativeOpen(p,engine,resume).catch(()=>null);
+    if(handoff!==marker||g!==generation){if(r?.ok)api.vpNativeStop().catch(()=>{});return false;}
+    if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
+    marker.session=r.session;playbackEngine=engine;
+    say(engine+' — native playback ready');
+    const poll=async()=>{
+      if(handoff!==marker)return;
+      const s=await api.vpNativeStatus().catch(()=>null);
+      if(handoff!==marker)return;
+      if(s?.session===marker.session&&s.durationMs>0){const map=get(K.resume,{}),act=VP.resumeAction(s.positionMs,s.durationMs);if(act==='save'){map[p]=Math.round(s.positionMs);put(K.resume,VP.limitResume(map));}else if(act==='clear'){delete map[p];put(K.resume,map);}}
+      if(!s||s.phase==='closed'||s.phase==='error'||s.session!==marker.session){handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;say(engine+' — native window closed');return;}
+      nativePoll=setTimeout(poll,1000);
+    };
+    poll();return true;
+  }
+  function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
-    saveResume(); releaseTicket();
+    stopNative();saveResume(); releaseTicket();
     const g = ++generation;
     if(session)session.stop().catch(()=>{}); playbackEngine=null;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
@@ -87,7 +112,7 @@
     if (!VP.isUrl(p)) loadSiblingSubs(p, g, subRevision);
     const result=await opening;
     if(g!==generation)return;
-    if(!result.ok){releaseTicket();say(t('vp.cantPlay'));return;}
+    if(!result.ok){releaseTicket();say(t('vp.cantPlay'));if(!VP.isUrl(p)&&$('vpNativeFallback').checked){await nativeHandoff('libvlc',p,g);}return;}
     playbackEngine=result.engine;
     if (restoreFx) toggleFx();
     $('vpFrame').classList.add('has-media');
@@ -414,14 +439,10 @@
     $('vpAB').addEventListener('click', toggleAB);
     $('vpSnap').addEventListener('click', snapshot);
     $('vpInfo').addEventListener('click', fileInfo);
-    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;}).catch(()=>{});
-    $('vpDirectShow').addEventListener('click',async()=>{const p=current();if(!p||VP.isUrl(p))return;saveResume();video.pause();const r=await api.vpNativeOpen(p,'directshow').catch(()=>null);say(r?.ok?'DirectShow — experimental host launched':'DirectShow — '+(r?.code||'unavailable'));});
-    $('vpNative').addEventListener('click', async()=>{
-      const p=current(); if(!p||VP.isUrl(p))return;
-      saveResume();video.pause();
-      const r=await api.vpNativeOpen(p).catch(()=>null);
-      say(r?.ok?'LibVLC — native window launched / Άνοιγμα εγγενούς player':'LibVLC — '+(r?.code||'unavailable'));
-    });
+    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;$('vpNativeFallbackLabel').hidden=!r?.available;}).catch(()=>{});
+    $('vpDirectShow').addEventListener('click',()=>nativeHandoff('directshow',current(),generation));
+    $('vpNative').addEventListener('click',()=>nativeHandoff('libvlc',current(),generation));
+    $('vpNativeStop').addEventListener('click',stopNative);
     $('vpCodecs').addEventListener('click', async () => {
       const report=await api.vpCodecInventory().catch(()=>null);
       if(!report){await showAlertDialog('Codec Manager','Inventory unavailable / Μη διαθέσιμη ανίχνευση');return;}
