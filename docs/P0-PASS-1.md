@@ -210,3 +210,62 @@ Baseline c150655b passed all three CI workflows; integrated HWND test is same-pr
 
 ## Mega Pass 16 — bounded resource work and persistent-write reduction
 Baseline 96b82994 passed all three CI workflows. Video resume checkpoint interval 15s instead of 5s Chromium/1s native, suppress small periodic movement and unchanged values, force precise available checkpoint on pause/stop/end/close; native last polled position can be up to 1s old. Playlist resize and hue slider persist on completion, unchanged window bounds skipped, pending timer cleared. Full-window background and visualizer maximum ~30fps, static/reduced-motion redraw on change/resize, hidden drawing skipped, meter sampling kept current. Subtitle audit total enumeration/comparison/stat budgets and deterministic hashed shortened sidecar stems prevent long-name collisions; older truncated ambiguous filenames no longer auto-associated. On-demand cached Electron CPU/working-set snapshot, no continuous logging or physical disk measurement; excludes native/FFmpeg subprocesses, not a leak certification. New tests and CI pending.
+
+
+## Consolidated roadmap — 3.0 and optional system-wide audio (2026-11-27)
+
+Status: MP16 head 0a3f3c00 verified general CI 45973157384, native CI 45973157470, plugin CI 45973157587 (all successful). This is a planning update, not implementation or release certification. Previous passes and their historical limitations above remain the evidence record. The following supersedes the earlier MP17–20 schedule. No new repository or duplicate archive is required.
+
+### MP17A–E — independent OPSIS Audio Engine (P0 design / P1 implementation)
+- A01 Original MIT-compatible, portable native DSP library (C++ with narrow C ABI); independent test harness, no copied AGPL FxSound code. Float32 PCM, 44.1/48/96 kHz, mono/stereo first, channel mapping and multichannel later.
+- A02 EQ 10/15/31 bands and parametric filters; stable coefficients, smoothing, preamp/headroom, bass, presence, stereo width, ambience, dynamics, true-peak-aware limiter, LUFS/R128 analysis; reference tests and explicit algorithm labels.
+- A03 Device/rate change, denormal/NaN guards, no allocation/locks/disk/IPC in real-time callback; bounded ring buffers, atomic preset snapshots, bypass with smooth transition. Native library and media-local integration must work without any system installation.
+- A04 Feasibility gate: investigate componentized APO on existing render endpoints, signed package and OS/device requirements. WASAPI loopback is capture, NOT a transparent system-wide effect; no same-endpoint capture/replay feedback or doubled dry signal. Consider a lawfully redistributable already-signed virtual endpoint only if license, integrity and compatibility explicitly verified; do not assume any driver qualifies.
+- A05 No certificate purchases, no Secure Boot changes, no disabling HVCI or signature enforcement, no registry hacks to replace unrelated OEM APOs. Test certificates only in isolated lab VMs under explicit test configuration, never retail installer. If no supported zero-cost production route, mark system-wide mode blocked and keep independent media-local DSP shipped; do not claim FxSound fully replaced. No automatic download/install of third-party driver or consent bypass.
+- A06 Optional authorized system-wide endpoint integration only after gate A04; device selection, hardware IDs and version checks, restore exact previous config, fail-open bypass, no default-output change without explicit consent. Preserve OEM effects and communications roles; test headphones, USB, Bluetooth, HDMI, hotplug/sleep, stereo and 5.1/7.1, exclusive/raw/offload compatibility; report unsupported modes.
+- A07 Device profiles, shared/exclusive mode disclosure, per-session volume and optional per-app EQ only where technically supported; tray/background controller, no always-running service unless enabled, per-user permissions, no recording/telemetry by default. Separate microphone processing opt-in.
+- A08 Single routing authority: app DSP / proven system DSP / explicit external bypass; never double process. Existing FxSound detection stays compatibility-only until replacement is verified. Native player, Chromium and offline export DSP equivalence or explicit differences. Export must not include system-wide processing accidentally. Integrate with versioned Opsis plugin interface, no duplicate instances.
+- A09 Gates: unity bypass, impulse/frequency response, sine/noise, clipping/NaN, channel isolation, sample-rate changes, stress/recovery, CPU/latency and dropout measurement (targets <10 ms added processing latency and <2% of one logical core for basic stereo EQ on a documented reference machine; targets, not verified). Long sessions and native Windows real hardware tests; 24 h soak optional. No WHQL claim without actual certification.
+- A10 Distribution decision: ship core/local DSP with 3.0 if validated; system-wide add-on separately opt-in and disabled/unavailable until supported installation, rollback, real audio and signature gates pass. Public Microsoft driver submissions require EV registration; no promise of cost-free signing.
+
+References:
+- https://learn.microsoft.com/windows-hardware/drivers/audio/implementing-audio-processing-objects
+- https://learn.microsoft.com/windows-hardware/drivers/dashboard/deploying-audio-processing-objects
+- https://learn.microsoft.com/windows-hardware/drivers/dashboard/code-signing-reqs
+- https://learn.microsoft.com/windows/win32/coreaudio/loopback-recording
+- https://learn.microsoft.com/windows-hardware/drivers/audio/combine-custom-and-windows-apos
+
+### MP18 — cohesive UI and library (P1 core / P2 enhancements)
+- U01 Audit existing controls against shared OpsisUI contract; consistent tokens, navigation, dialogs, keyboard, contrast, screen readers and DPI scaling; avoid breaking other Opsis applications. Translate every new label in Greek/English, then existing locale matrix.
+- U02 Unified media library with opt-in folder indexing, incremental metadata scan, bounded cache, search/filter, duplicate detection using explicit scan, smart playlists and watch history, import/export portable metadata. No file deletion by default.
+- U03 Full per-media audio/subtitle/video track selection, chapter navigation, resume by profile, reliable PiP/mini player, fullscreen, playlist gapless where supported and media keys.
+- U04 Video enhancements: frame stepping accuracy, source FPS and HDR/SDR reporting, aspect ratio/crop, deinterlace policy, A/V sync, separate audio delay; verify native vs browser limitations. Avoid advertising HDR output without display tests.
+- U05 Subtitle workspace: side-by-side cue/time editor, spelling/search/replace, SDH labels, encoding, reading-speed/overlap validation, explicit save language, original preservation; opt-in offline speech transcription/translation as P2 only with user-provided verified model, local processing and explicit model size/license. No automated site challenges bypass.
+- U06 Conversion presets and queue: estimated output, configurable concurrency, pause/resume only when technically feasible, cancellation and temporary cleanup, safe output collision handling, lossless remux vs re-encode distinction, metadata retention and selected tracks. Batch audio tag editing and album art with preview/undo as P2.
+- U07 Photo: non-destructive edit recipe, batch resize/watermark, EXIF orientation and opt-in metadata retention/removal, ICC-aware preview where supported, RAW capability probe (not promised), before/after, bounded thumbnail cache, output checks.
+- U08 Optional offline visual/audio tools: waveform and spectrum, spectrogram, silence trim, noise reduction, mono/stereo mix, ABX comparison; do not claim AI quality without tests. Local-only by default.
+
+### MP19 — evidence and reliability (P0 release blockers)
+- T01 Repair any CI regressions before adding features. Capture exact SHA, versions, pass/fail and skipped tests; signed artifacts never inferred from CI.
+- T02 Real Windows 10/11 x64 smoke and integration, second independent VM if accessible without cost/credentials, manual physical device validation if required; no false certification. ARM64 only after native binaries/dependencies verified.
+- T03 Real cross-process embedded LibVLC presentation, pixel/readback, foreground/resize/DPI/multi-monitor, playback/subtitle/seek and fallback; keep feature experimental or disabled if unsafe. Real RAR fixtures with installed validated 7-Zip, K-Lite real graph recheck and explicit GPU evidence; authenticated provider tests require user-owned valid credentials, never commit them.
+- T04 CPU/RAM/GPU/native/FFmpeg process measurements and disk I/O counters, idle and playing, repeated open/close, conversion, image export, 1 h soak plus optional 24 h; baseline vs candidate on same VM and physical hardware. Logical write calls != physical SSD writes. Set regressions and budgets after baseline; no invented savings.
+- T05 Security: IPC and scoped path grants, untrusted media/archive parser limits, no traversal/symlinks, no secrets/logs, URL/redirect policy, update verification, dependency/SBOM/licenses, high/critical vulnerability gates, negative and fuzz tests. A native child is not a security sandbox.
+- T06 Recovery: crash loop protection, atomic config transactions, corrupt settings migration/rollback, interrupted export cleanup, no orphan FFmpeg/native children, minimal redacted diagnostics and opt-in crash report. Test update/uninstall preserving user data.
+- T07 UI functional inventory and accessibility: exercise every control in all shipping modes, keyboard and localization, screenshots from real app, no fictitious mockup evidence. Document skipped hardware-dependent cases.
+- T08 Plugin integration tests with compatible Opsis versions; explicit contract version, discovery, handshake, uninstall, conflict handling and restricted commands. Do not silently duplicate DSP or change system routing.
+
+### MP20 — core 3.0 release (P0)
+- R01 Consolidate tested source, package version everywhere, single history/roadmap in this document, README links; retain only necessary deliverables, no duplicate ZIP history. Preserve working rollback release.
+- R02 Windows reproducible build with pinned Electron, .NET and native codecs; offline-capable installer/portable core, optional verified native/media tools, explicit component licensing and notices. No automatic unsigned driver installation.
+- R03 Verify SHA256/checksum manifest, SBOM, malware/dependency scans, installation, upgrade, repair, uninstall on clean VM and previous version. Distinguish unsigned executable from signed software, do not instruct users to disable Windows security. Publish only validated assets and accurate release notes.
+- R04 Help, screenshots, capability matrix, source and installer links, known limitations, user-owned provider key setup, troubleshooting for external codecs and audio effects. Keep system-wide audio separate if A04–A09 incomplete.
+- R05 Release gate: all core mandatory tests green at exact release SHA, no unresolved P0 defect; no merge or release solely based on estimated progress.
+
+### P2 post-core additions (not automatic release blockers)
+- A/B mastering and loudness matching, speaker/headphone calibration and optional licensed correction profiles, true surround downmix, optional VST3 hosting only after licensing and isolated plugin process security evaluation.
+- Optional offline subtitle STT/translation, OCR for PGS/VobSub with manual verification, additional official subtitle APIs, media library interoperability, optional DLNA renderer/casting with explicit local-network consent and no internet-facing default.
+- Optional lightweight plugin SDK for third-party tools and a scoped local automation API; no arbitrary script execution; maintain compatibility with OpsisUI and Opsis Desktop.
+- Evaluate modern Media Foundation presentation backend, ARM64, and future architecture migration separately, based on measurements rather than a blanket rewrite.
+
+Progress rule: preserve the last rough core estimate (~84% at MP16) as historical, not a measured completion ratio. New system audio work starts at planning/0 implementation, separately tracked by A01–A10 gates. Report actual validated milestones and blockers for each pass; never inflate percentages because a proposal is recorded.

@@ -25,6 +25,7 @@
 - [Ελληνικά](#ελληνικά)
 - [English](#english)
 - [Άδεια / License](#άδεια--license)
+- [Roadmap 3.0 / OPSIS Audio Engine](docs/P0-PASS-1.md#consolidated-roadmap--30-and-optional-system-wide-audio-2026-11-27)
 
 ## Ελληνικά
 
