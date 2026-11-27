@@ -2,7 +2,7 @@ name: Public subtitle HTTPS and renderer CI
 on:
   push:
     branches: ['feat/photo-tools-fxsound-coexistence']
-    paths: ['.github/workflows/public-subtitle-ci.yml','test/public-subtitle-fixture.js']
+    paths: ['.github/workflows/public-subtitle-ci.yml','test/public-subtitle-fixture.js','subtitle-autosync.js','subtitle-sync-worker.js']
   workflow_dispatch:
 permissions:
   contents: read
@@ -34,3 +34,4 @@ jobs:
           path: |
             public-subtitle-test.log
             public-subtitle-fixture/*.png
+            public-subtitle-fixture/sintel-audio-sync.json

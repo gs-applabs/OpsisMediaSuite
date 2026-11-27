@@ -117,3 +117,6 @@ Edit selected original cue text and start/end times; create a separate in-memory
 
 ## Pass 37 — LibVLC central transport bridge
 Bounded fixed JSON command protocol with session and request IDs, one outstanding command, acknowledgment/timeout, native UI dispatcher; main playback controls toggle, mute, seek, volume and rate now target LibVLC instead of paused Chromium. Periodic actual native position/volume/mute/play status. DirectShow still separate controls only. Added real native command parsing/seek selftest (dummy output); interactive pipe/UI test and installer packaging remain pending. CI pending.
+
+## Pass 38 — real soundtrack autosync evidence and worker packaging
+Public Sintel CI evaluates genuine soundtrack against original captions and artificially +2s shifted captions. Reports suggestion or abstention, original offset, scale and relative correction consistency; no false pass claim for dialogue accuracy. Test evidence JSON included alongside captured captions. Worker and dependency explicitly unpacked from ASAR for packaged runtime; packaging smoke test pending. Clear native engine state on explicit close. CI pending.

@@ -12,7 +12,6 @@ const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
-const AutoSync=require('./subtitle-autosync.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -177,7 +176,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
       const cues=req.cues.map(c=>({start:c?.start,end:c?.end})).filter(c=>Number.isFinite(c.start)&&Number.isFinite(c.end));
       const {Worker}=require('node:worker_threads');
       return await new Promise(resolve=>{
-        const worker=new Worker(path.join(__dirname,'subtitle-sync-worker.js'),{workerData:{ffmpeg:ff,file:p,cues,audioIndex,seconds:1800}});autoSyncWorker=worker;
+        const workerPath=app.isPackaged?path.join(process.resourcesPath,'app.asar.unpacked','subtitle-sync-worker.js'):path.join(__dirname,'subtitle-sync-worker.js');
+        const worker=new Worker(workerPath,{workerData:{ffmpeg:ff,file:p,cues,audioIndex,seconds:1800}});autoSyncWorker=worker;
         let result=null,finished=false;
         const finish=r=>{if(finished)return;finished=true;clearTimeout(timer);autoSyncWorker=null;resolve(autoSyncCancelled?{ok:false,code:'cancelled'}:r);};
         const timer=setTimeout(()=>{worker.postMessage('cancel');},125000);
@@ -373,6 +373,18 @@ function init({ getMainWin, resolveFfmpegPath }) {
         const shifted=await until("!document.getElementById('vpVideo').seeking&&Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==="+JSON.stringify(cue.text)+"&&Math.abs(c.startTime-"+(cue.start+2)+")<.001))",6000);
         check('downloaded public subtitle follows 2s timing correction',shifted,target+' s');
         fs.writeFileSync(path.join(source,'sintel-caption-synced.png'),(await win.webContents.capturePage()).toPNG());
+        // Real soundtrack, original MDN captions and an intentionally shifted copy.
+        // Energy correlation can legitimately abstain on a music/effects-heavy clip.
+        const usable=expected.filter(c=>c.start>=2&&c.end<=Number.MAX_SAFE_INTEGER).map(c=>({start:c.start,end:c.end}));
+        const original=await js("waveframe.vpSubAutoSync("+JSON.stringify({path:file,cues:usable})+")");
+        const shiftedCues=usable.map(c=>({start:c.start+2,end:c.end+2}));
+        const shiftedAudio=await js("waveframe.vpSubAutoSync("+JSON.stringify({path:file,cues:shiftedCues})+")");
+        const consistent=original?.ok&&shiftedAudio?.ok&&Math.abs(original.scale-shiftedAudio.scale)<.001&&Math.abs((shiftedAudio.delay-original.delay)+2*original.scale)<=.35;
+        const evidence={source:"MDN Sintel",artificialDelaySeconds:2,original,shifted:shiftedAudio,consistent:!!consistent,originalOffsetWithin1s:original?.ok?Math.abs(original.delay)<=1:null};
+        fs.writeFileSync(path.join(source,'sintel-audio-sync.json'),JSON.stringify(evidence,null,2));
+        console.log('INFO real soundtrack audio-sync '+JSON.stringify(evidence));
+        check('real soundtrack sync returns explicit suggestion or abstention',typeof original?.ok==='boolean'&&typeof shiftedAudio?.ok==='boolean');
+
       }
       // Real file decode + authorized IPC + timing estimator. The waveform
       // is synthetic and has known irregular audio activity, not spoken words.

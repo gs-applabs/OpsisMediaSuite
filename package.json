@@ -52,6 +52,8 @@
       "m3u.js"
     ],
     "asarUnpack": [
+      "subtitle-sync-worker.js",
+      "subtitle-autosync.js",
       "node_modules/music-metadata/**/*",
       "node_modules/@borewit/**/*",
       "node_modules/@tokenizer/**/*",
