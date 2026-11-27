@@ -154,7 +154,9 @@
   }
 
   /* ---------------- subtitles ---------------- */
-  function clearSubs() { $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  let syncAnchor=null;
+  function clearAnchors(){syncAnchor=null;$('vpSubAnchorStatus').textContent='';}
+  function clearSubs() { clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -169,6 +171,7 @@
       for (const cue of Array.from(nativeSubtitleTrack.cues || [])) nativeSubtitleTrack.removeCue(cue);
       nativeSubtitleTrack.mode = 'disabled';
     }
+    const selectedCue=$('vpSubCue').selectedIndex;
     $('vpSubCue').textContent='';
     if (subSel < 0 || !subSrc[subSel]) return;
     const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps);
@@ -191,7 +194,8 @@
       nativeSubtitleTrack.addCue(cue);
     }
     nativeSubtitleTrack.mode = 'showing';
-    const raw=VP.subtitleToVtt(s.text,s.ext,0,subScale,subFps);for(const [i,c] of raw.entries.slice(0,2000).entries()){const o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);$('vpSubCue').append(o);}
+    const raw=VP.subtitleToVtt(s.text,s.ext,0,1,subFps);for(const [i,c] of raw.entries.slice(0,2000).entries()){const o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);$('vpSubCue').append(o);}
+    if(selectedCue>=0&&selectedCue<$('vpSubCue').options.length)$('vpSubCue').selectedIndex=selectedCue;
   }
   function preferredIndex() { return VP.preferredSubtitle(subSrc,(get(K.subs,{})||{}).languages); }
   async function loadSiblingSubs(p, g, revision) {
@@ -210,6 +214,7 @@
     attachSubtitle(f);
   }
   function attachSubtitle(f){
+    clearAnchors();
     const old = subSrc.findIndex(s => s.name === f.name && s.text === f.text);
     if (old >= 0) subSel = old;
     else { if(subSrc.length>=24){subSrc.shift();}subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
@@ -417,7 +422,7 @@
     $('vpSpeed').addEventListener('change', () => { video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
     $('vpFx').addEventListener('click', toggleFx);
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
-    $('vpSubTrack').addEventListener('change', () => { ++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
+    $('vpSubTrack').addEventListener('change', () => { clearAnchors();++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
     let searchGeneration=0;
     const onlineStatus=t=>{$('vpSubOnlineStatus').textContent=t;};
@@ -444,7 +449,11 @@
     });
     $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
     $('vpSubDelayExact').addEventListener('change',()=>setDelay(Number($('vpSubDelayExact').value)));
-    $('vpSubSyncHere').addEventListener('click',()=>{if($('vpSubCue').options.length&&Number.isFinite(video.currentTime))setDelay(video.currentTime-Number($('vpSubCue').value));});
+    $('vpSubSyncHere').addEventListener('click',()=>{if($('vpSubCue').options.length&&Number.isFinite(video.currentTime))setDelay(video.currentTime-Number($('vpSubCue').value)*subScale);});
+    function marker(){return $('vpSubCue').options.length&&Number.isFinite(video.currentTime)?{subtitle:Number($('vpSubCue').value),video:video.currentTime}:null;}
+    $('vpSubAnchorA').addEventListener('click',()=>{syncAnchor=marker();$('vpSubAnchorStatus').textContent=syncAnchor?'A: '+syncAnchor.subtitle.toFixed(2)+' → '+syncAnchor.video.toFixed(2)+' s':'Select a cue first';});
+    $('vpSubAnchorB').addEventListener('click',()=>{const r=VP.twoPointSync(syncAnchor,marker());if(!r){$('vpSubAnchorStatus').textContent='Select two ordered cues at least 2s apart';return;}subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAnchorStatus').textContent='Scale '+r.scale.toFixed(6)+' · '+subDelay.toFixed(3)+' s';});
+    $('vpSubAnchorReset').addEventListener('click',()=>{clearAnchors();subScale=1;$('vpSubFps').value='1';setDelay(0);});
     async function saveSubtitle(format){
       const s=subSrc[subSel];if(!s){say(t('vp.subEmpty'));return;}
       const r=VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps),text=VP.exportSubtitles(r.entries,format);
@@ -455,8 +464,8 @@
     $('vpSubSaveSrt').addEventListener('click',()=>saveSubtitle('srt'));
     $('vpSubSaveVtt').addEventListener('click',()=>saveSubtitle('vtt'));
     $('vpSubReset').addEventListener('click',()=>setDelay(0));
-    $('vpSubFps').addEventListener('change',()=>{subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
-    $('vpMicroFps').addEventListener('change',()=>{subFps=Number($('vpMicroFps').value)||0;rebuildTrack();});
+    $('vpSubFps').addEventListener('change',()=>{if($('vpSubFps').value==='custom')return;clearAnchors();subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
+    $('vpMicroFps').addEventListener('change',()=>{clearAnchors();subFps=Number($('vpMicroFps').value)||0;rebuildTrack();});
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));
     $('vpSubPlus').addEventListener('click', () => setDelay(subDelay + 0.5));
     $('vpSubSize').addEventListener('input', applySubStyle);

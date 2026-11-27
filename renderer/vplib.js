@@ -103,6 +103,16 @@
     return srtToVtt(e === 'ass' || e === 'ssa' ? assToSrt(text) : text, shiftMs, scale);
   }
 
+  // Two correspondences map original subtitle time to actual video time.
+  // Reject implausible drift and ambiguous or reversed markers.
+  function twoPointSync(a,b){
+    if(!a||!b||![a.subtitle,a.video,b.subtitle,b.video].every(Number.isFinite)||Math.min(a.subtitle,a.video,b.subtitle,b.video)<0)return null;
+    const ds=b.subtitle-a.subtitle,dv=b.video-a.video;
+    if(ds<2||dv<=0)return null;
+    const scale=dv/ds,delay=a.video-a.subtitle*scale;
+    if(scale<.5||scale>2||Math.abs(delay)>3600)return null;
+    return {scale,delay};
+  }
   function exportSubtitles(entries,format='srt'){
     if(!['srt','vtt'].includes(format)||!Array.isArray(entries))return '';
     const out=format==='vtt'?['WEBVTT','']:[];
@@ -178,5 +188,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

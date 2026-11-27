@@ -282,7 +282,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
             await js("document.getElementById('vpSubCue').selectedIndex=0;document.getElementById('vpSubSyncHere').click();1");
             check('align selected cue computes exact negative offset',await js("Math.abs(Number(document.getElementById('vpSubDelayExact').value)+0.3)<.15"));
             await seek(0.9);check('aligned cue active at corrected time',await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==='Δοκιμή υποτίτλων'))",3000));
-            await js("document.getElementById('vpSubOnlineToggle').click();1");
+            await seek(0.7);
+            await js("document.getElementById('vpSubCue').selectedIndex=0;document.getElementById('vpSubAnchorA').click();1");
+            await seek(3.1);
+            await js("document.getElementById('vpSubCue').selectedIndex=1;document.getElementById('vpSubAnchorB').click();1");
+            check('two-point subtitle correction adjusts drift and offset',await js("(()=>{const t=Array.from(document.getElementById('vpVideo').textTracks).find(t=>t.mode==='showing');return t?.cues?.length===2&&Math.abs(t.cues[0].startTime-.7)<.18&&Math.abs(t.cues[1].startTime-3.1)<.18;})()"));
+            await js("document.getElementById('vpSubAnchorReset').click();document.getElementById('vpSubOnlineToggle').click();1");
           }finally{subtitleProvider=savedProvider;server.closeAllConnections();await new Promise(r=>server.close(r));}
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));

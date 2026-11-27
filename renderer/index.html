@@ -321,7 +321,7 @@
                   <span class="vp-delay" id="vpSubDelay" aria-live="polite">0 s</span>
                   <button class="small-btn" id="vpSubReset" aria-label="Reset subtitle delay / Μηδενισμός καθυστέρησης">0 s</button>
                   <label>MicroDVD FPS <select id="vpMicroFps" aria-label="MicroDVD source FPS"><option value="0">Header / Auto</option><option value="23.976">23.976</option><option value="24">24</option><option value="25">25</option><option value="29.97">29.97</option><option value="30">30</option></select></label>
-                  <label>FPS <select id="vpSubFps" aria-label="Subtitle frame rate conversion"><option value="1">1:1</option><option value="0.95904">23.976 → 25</option><option value="1.042709375">25 → 23.976</option><option value="0.96">24 → 25</option><option value="1.0416666667">25 → 24</option></select></label>
+                  <label>FPS <select id="vpSubFps" aria-label="Subtitle frame rate conversion"><option value="1">1:1</option><option value="0.95904">23.976 → 25</option><option value="1.042709375">25 → 23.976</option><option value="0.96">24 → 25</option><option value="1.0416666667">25 → 24</option><option value="custom" hidden>Custom drift</option></select></label>
                   <button class="small-btn" id="vpSubPlus" aria-label="+0.5 s">+0,5″</button>
                 </div>
                 <div id="vpSubOnline" hidden>
@@ -336,6 +336,7 @@
                   <p class="hint" id="vpSubOnlineStatus" role="status"></p>
                 </div>
                 <div class="vp-bar vp-row"><label>Delay (s) <input id="vpSubDelayExact" type="number" min="-3600" max="3600" step="0.05" value="0"></label><button class="small-btn" id="vpSubSyncHere">Align selected cue to video time</button><select id="vpSubCue" aria-label="Subtitle cue to synchronize"></select></div>
+                <div class="vp-bar vp-row"><button class="small-btn" id="vpSubAnchorA">Mark A</button><button class="small-btn" id="vpSubAnchorB">Mark B &amp; sync</button><button class="small-btn" id="vpSubAnchorReset">Reset markers</button><span class="hint" id="vpSubAnchorStatus" role="status"></span></div>
                 <div class="vp-field"><label for="vpSubSize" data-i18n="vp.subSize">Μέγεθος</label><input type="range" id="vpSubSize" min="8" max="48" step="1" value="16" /></div>
                 <div class="vp-bar vp-row">
                   <label class="vp-inline"><span data-i18n="vp.subColor">Χρώμα</span>

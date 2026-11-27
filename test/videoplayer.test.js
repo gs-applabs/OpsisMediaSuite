@@ -241,3 +241,12 @@ test('OpenSubtitles provider search, download and hostile link guards',async()=>
  const out=await provider.download(123);assert.equal(out.ok,true);assert.match(out.subtitle.text,/Καλημέρα/);assert.equal(seen[2].opts.headers['Api-Key'],undefined);assert.equal(seen[2].opts.redirect,'error');
  await new Promise(r=>setTimeout(r,760));assert.equal((await provider.download(456)).code,'not-in-results');
 });
+
+test('two point sync corrects both offset and drift',()=>{
+ const r=V.twoPointSync({subtitle:10,video:12},{subtitle:110,video:117});
+ assert.equal(r.scale,1.05);assert.equal(r.delay,1.5);
+ const out=V.subtitleToVtt('1\n00:00:10,000 --> 00:00:11,000\nA\n\n2\n00:01:50,000 --> 00:01:51,000\nB','srt',r.delay*1000,r.scale);
+ assert.equal(out.entries[0].start,12);assert.equal(out.entries[1].start,117);
+ assert.equal(V.twoPointSync({subtitle:5,video:1},{subtitle:6,video:2}),null);
+ assert.equal(V.twoPointSync({subtitle:5,video:8},{subtitle:10,video:2}),null);
+});

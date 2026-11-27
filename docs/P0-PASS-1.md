@@ -93,3 +93,6 @@ A self-test-only loopback HTTP fixture drives production provider request parsin
 
 ## Pass 29 — external public media subtitle proof
 Dedicated CI downloads the MDN Sintel excerpt and matching WebVTT from a pinned shared-assets revision over HTTPS (bounded, verified Git blob identities), loads the real video and downloaded subtitle in Electron, checks active cue at correct time and after +2s correction, saves screenshots as test evidence. This complements loopback provider integration and is not an authenticated OpenSubtitles download. Clears search title when changing source. Prior checkpoint d3c83505: 181/181 tests, Electron selftest, native seek and plugin 12/12 passed. New runs pending.
+
+## Pass 30 — two-point subtitle drift correction
+Choose two original cue starts and corresponding paused video positions. Compute affine correction (scale + offset), apply to all cues and existing SRT/VTT export, keep one-point alignment working with custom scale. Bounds reject reversed/too-close markers and implausible rate. Unit and real renderer tests added; manual anchoring, not speech-recognition autosync. CI pending.
