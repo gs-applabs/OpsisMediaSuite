@@ -181,3 +181,9 @@ npm run dist        # produces a portable build + NSIS installer (Windows x64) i
 *Opsis Media Suite is distributed under the **MIT License** (see [LICENSE](LICENSE)). The full texts of the third-party licenses (Electron/Chromium, music-metadata, adm-zip: MIT; FFmpeg: LGPL v3, which incorporates the GPL v3 by reference) are in the [licenses](licenses) folder and in Help → License.*
 
 **Το λογισμικό παρέχεται "ΩΣ ΕΧΕΙ", χωρίς καμία εγγύηση. / Provided "AS IS", without warranty of any kind.**
+
+
+## Current screenshot gallery / Νέα στιγμιότυπα
+
+[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)
+
