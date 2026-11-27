@@ -14,7 +14,7 @@ const stub = {
   dialog: { showSaveDialog: async () => ({ canceled: false, filePath: target }), showOpenDialog: async () => openTarget?({canceled:false,filePaths:[openTarget]}):({canceled:true}) },
   protocol: { handle() {}, registerSchemesAsPrivileged() {} },
   net: {},
-  app: { getPath: () => os.tmpdir() },
+  app: { getPath: () => os.tmpdir(), once() {} },
 };
 const origLoad = Module._load;
 Module._load = function (request, ...rest) { return request === 'electron' ? stub : origLoad.call(this, request, ...rest); };

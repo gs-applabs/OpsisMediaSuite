@@ -183,3 +183,31 @@ test('native offline adapter actually processes PCM when built by CI',async t=>{
  const bypass=await bridge.render(rate,2,bytes,{...cfg,base:{...cfg.base,enabled:0}});
  assert.equal(bypass.ok,true);assert.deepEqual(bypass.pcm,bytes);
 });
+
+
+test('native stream bounds and session state; preserves ambience across PCM chunk boundary',async t=>{
+ const {createDspBridge,makeHeader,BLOCK_FRAMES}=require('../native-dsp-bridge');
+ const cfg=lib.nativeDspConfigV2({masterEnabled:true,reverb:true,reverbAmount:100});
+ assert.equal(makeHeader(96000,2,96000*300,cfg),null); // byte cap
+ assert.equal(makeHeader(48000,2,48000*301,cfg),null);
+ assert.ok(makeHeader(48000,2,48000*35,cfg));
+ const bridge=createDspBridge({app:{isPackaged:false}});
+ if(!bridge.available()){if(process.platform==='win32'&&process.env.GITHUB_ACTIONS==='true')assert.fail('CI native DSP adapter absent');t.skip('native DSP developer build absent');return;}
+ const frames=48000*35,s=bridge.open(48000,2,frames,cfg);assert.equal(s.ok,true);
+ assert.equal(bridge.open(48000,2,1,cfg).code,'native-dsp-busy');
+ assert.equal((await bridge.chunk('wrong',new Uint8Array(8))).ok,false);
+ try{
+  let measured=false;
+  for(let offset=0;offset<frames;offset+=BLOCK_FRAMES){
+   const count=Math.min(BLOCK_FRAMES,frames-offset),pcm=new Uint8Array(count*8);
+   if(offset===0)new DataView(pcm.buffer).setFloat32((BLOCK_FRAMES-1)*8,.5,true);
+   const res=await bridge.chunk(s.session,pcm);assert.equal(res.ok,true,res.code);
+   if(offset===BLOCK_FRAMES){
+    const view=new DataView(res.pcm.buffer,res.pcm.byteOffset,res.pcm.byteLength);
+    assert.ok(Math.abs(view.getFloat32((Math.floor(48000*.037)-1)*8,true)-.14)<1e-5);
+    measured=true;
+   }
+  }
+  assert.ok(measured);assert.equal((await bridge.finish(s.session)).ok,true);
+ }finally{bridge.cancel(s.session);}
+});

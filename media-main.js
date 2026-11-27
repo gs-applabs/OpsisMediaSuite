@@ -95,12 +95,18 @@ function init({ getMainWin, resolveFfmpegPath }) {
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   const dspBridge=createDspBridge({app});
   ipcMain.handle('audio:dsp-available',e=>trusted(e)&&dspBridge.available());
-  ipcMain.handle('audio:dsp-render',async(e,rate,channels,pcm,cfg)=>{
+  ipcMain.handle('audio:dsp-open',(e,rate,channels,frames,cfg)=>trusted(e)?dspBridge.open(rate,channels,frames,cfg):{ok:false,code:'denied'});
+  ipcMain.handle('audio:dsp-chunk',async(e,session,pcm)=>{
     if(!trusted(e))return {ok:false,code:'denied'};
-    const result=await dspBridge.render(rate,channels,pcm,cfg);
-    return trusted(e)?result:{ok:false,code:'denied'};
+    const result=await dspBridge.chunk(session,pcm);
+    if(!trusted(e)){dspBridge.cancel(session);return {ok:false,code:'denied'};}
+    return result;
   });
-  ipcMain.handle('audio:dsp-cancel',e=>{if(!trusted(e))return false;dspBridge.cancel();return true;});
+  ipcMain.handle('audio:dsp-finish',async(e,session)=>{
+    if(!trusted(e))return {ok:false,code:'denied'};
+    const result=await dspBridge.finish(session);return trusted(e)?result:{ok:false,code:'denied'};
+  });
+  ipcMain.handle('audio:dsp-cancel',(e,session)=>trusted(e)&&typeof session==='string'&&dspBridge.cancel(session));
   app.once('before-quit',()=>dspBridge.cancel());
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
   let audioInventoryBusy=false;

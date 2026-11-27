@@ -24,7 +24,7 @@ int main(int argc,char**){
     char magic[4]{};uint32_t rate=0,channels=0,frames=0;
     opsis_dsp_config_v2 cfg{};cfg.version=2;cfg.base.version=1;
     if(!readExact(magic,4)||std::memcmp(magic,"ODP2",4)!=0||!read(rate)||!read(channels)||!read(frames)||!read(cfg.base.enabled))return 2;
-    if((channels!=1&&channels!=2)||rate<44100||rate>96000||frames==0||frames>30u*rate)return 2;
+    if((channels!=1&&channels!=2)||rate<44100||rate>96000||frames==0||frames>300u*rate)return 2;
     for(float& x:cfg.base.eq_db)if(!read(x))return 2;
     if(!read(cfg.base.bass_db)||!read(cfg.base.presence_percent)||!read(cfg.base.balance_percent)||
        !read(cfg.base.surround_percent)||!read(cfg.base.preamp_db)||!read(cfg.compressor_mode)||
@@ -33,11 +33,18 @@ int main(int argc,char**){
     if(!dsp||!opsis_dsp_configure_v2(dsp.get(),&cfg))return 2;
     opsis_dsp_reset(dsp.get());
     try{
-        std::vector<float> pcm(size_t(frames)*channels);
-        if(!readExact(pcm.data(),pcm.size()*sizeof(float))||std::cin.peek()!=std::char_traits<char>::eof())return 2;
-        for(uint32_t offset=0;offset<frames;offset+=4096)
-            if(!opsis_dsp_process(dsp.get(),pcm.data()+size_t(offset)*channels,std::min(4096u,frames-offset)))return 3;
-        std::cout.write(reinterpret_cast<const char*>(pcm.data()),static_cast<std::streamsize>(pcm.size()*sizeof(float)));
-        std::cout.flush();return std::cout?0:3;
+        constexpr uint32_t blockFrames=32768;
+        std::vector<float> pcm(size_t(blockFrames)*channels);
+        for(uint32_t offset=0;offset<frames;){
+            const uint32_t count=std::min(blockFrames,frames-offset);
+            const size_t bytes=size_t(count)*channels*sizeof(float);
+            if(!readExact(pcm.data(),bytes))return 2;
+            if(!opsis_dsp_process(dsp.get(),pcm.data(),count))return 3;
+            std::cout.write(reinterpret_cast<const char*>(pcm.data()),static_cast<std::streamsize>(bytes));
+            std::cout.flush();if(!std::cout)return 3;
+            offset+=count;
+        }
+        // EOF finalizes the exact declared frame count; extra data rejected.
+        return std::cin.peek()==std::char_traits<char>::eof()?0:2;
     }catch(...){return 3;}
 }
