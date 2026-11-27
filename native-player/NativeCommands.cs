@@ -8,7 +8,11 @@ internal static class NativeCommands
     internal static Command? Read(TextReader reader)
     {
         var line=new StringBuilder(128);
-        while(true){int c=reader.Read();if(c<0)return null;if(c=='\n')break;if(line.Length>=256)return null;line.Append((char)c);}
+        bool oversized=false;
+        // Discard the remainder of an oversized frame without growing memory
+        // or terminating the command loop. EOF still closes the pipe.
+        while(true){int c=reader.Read();if(c<0)return null;if(c=='\n')break;if(line.Length>=256){oversized=true;continue;}line.Append((char)c);}
+        if(oversized)return new(0,"invalid",0);
         try{
             using var json=JsonDocument.Parse(line.ToString());var r=json.RootElement;
             if(!r.TryGetProperty("id",out var id)||!id.TryGetInt32(out int n)||n<1||!r.TryGetProperty("name",out var name)||name.ValueKind!=JsonValueKind.String)return new(0,"invalid",0);

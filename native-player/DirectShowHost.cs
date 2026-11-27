@@ -140,6 +140,30 @@ internal static class DirectShowHost
         public IMediaControl Control => (IMediaControl)graph;
         public IMediaSeeking Seeking => (IMediaSeeking)graph;
         public IVideoWindow Window => (IVideoWindow)graph;
+        // DirectShow graph-local audio only; never change the Windows master volume.
+        public int? AudioVolume { get; private set; }
+        public bool? AudioMuted => AudioVolume.HasValue ? muted : null;
+        private bool muted;
+        public void ReadInitialAudio()
+        {
+            try {
+                if(graph is IBasicAudio audio && audio.get_Volume(out int db)>=0)
+                    AudioVolume=db<=-10000?0:Math.Clamp((int)Math.Round(100*Math.Pow(10,db/2000.0)),0,100);
+            } catch { }
+        }
+        public bool SetAudio(int volume,bool mute)
+        {
+            if(volume<0||volume>100||graph is not IBasicAudio audio)return false;
+            if(!AudioVolume.HasValue)ReadInitialAudio();
+            if(!AudioVolume.HasValue)return false;
+            if(audio.put_Volume(mute?-10000:VolumeAttenuation(volume))<0)return false;
+            AudioVolume=volume;muted=mute;return true;
+        }
+        public bool ToggleMute()
+        {
+            if(!AudioVolume.HasValue)ReadInitialAudio();
+            return AudioVolume.HasValue&&SetAudio(AudioVolume.Value,!muted);
+        }
         public Graph()=>graph=(IGraphBuilder)SystemObject(GraphId);
         public IBaseFilter Add(Guid id,string name,string? approved=null)
         {
@@ -159,6 +183,7 @@ internal static class DirectShowHost
         }
     }
 
+    private static int VolumeAttenuation(int percent)=>percent<=0?-10000:Math.Clamp((int)Math.Round(2000*Math.Log10(percent/100.0)),-10000,0);
     private static bool IsRunning(Graph g){return g.Control.GetState(0,out var state)>=0&&(int)state==2;}
     private static bool ApplyControl(Graph g,NativeCommands.Command c){
         try{
@@ -168,6 +193,8 @@ internal static class DirectShowHost
                 case "play":return g.Control.Run()>=0;
                 case "seek":if(c.Value<0||c.Value>360000000)return false;Check(g.Seeking.GetDuration(out long duration));return g.Seeking.SetPositions((long)Math.Min(c.Value*10000,duration),(AMSeekingSeekingFlags)1,0,AMSeekingSeekingFlags.NoPositioning)>=0;
                 case "rate":return c.Value>=.5&&c.Value<=4&&g.Seeking.SetRate(c.Value)>=0;
+                case "volume":return c.Value>=0&&c.Value<=100&&g.SetAudio((int)Math.Round(c.Value),g.AudioMuted==true);
+                case "mute":return g.ToggleMute();
                 default:return false;
             }
         }catch{return false;}
@@ -175,6 +202,8 @@ internal static class DirectShowHost
     public static int SelfTest(string file,bool pipe=false)
     {
         if(!string.Equals(Path.GetExtension(file),".wav",StringComparison.OrdinalIgnoreCase))return 2;
+        // Hardware-independent conversion contract; actual audible output remains a separate release gate.
+        if(VolumeAttenuation(0)!=-10000||VolumeAttenuation(50)!=-602||VolumeAttenuation(100)!=0)return 9;
         using var g=new Graph();
         var source=g.Add(AsyncReaderId,"Async Reader");var parser=g.Add(WaveParserId,"Wave Parser");var sink=g.Add(NullRendererId,"Null Renderer");
         g.Load(source,file);g.Connect(source,parser);g.Connect(parser,sink);
@@ -229,6 +258,7 @@ internal static class DirectShowHost
         g.Load(src,file);
         g.Connect(src,vd,MediaType.Video);g.Connect(vd,vr,MediaType.Video);
         g.Connect(src,ad,MediaType.Audio);g.Connect(ad,ar,MediaType.Audio);
+        g.ReadInitialAudio();
         using var form=new Form{Text="OPSIS DirectShow — LAV",Width=1000,Height=650};
         var panel=new Panel{Dock=DockStyle.Fill,BackColor=Color.Black};
         var controls=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=42};
@@ -240,8 +270,8 @@ internal static class DirectShowHost
         using var timer=new System.Windows.Forms.Timer{Interval=1000};
         long Duration(){Check(g.Seeking.GetDuration(out long n));return n/10000;}
         long Position(){Check(g.Seeking.GetCurrentPosition(out long n));return n/10000;}
-        timer.Tick+=(_,_)=>{try{Program.HostEvent("position",Position(),Duration(),null,IsRunning(g));}catch{}};
-        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;Check(g.Seeking.SetPositions(pos,(AMSeekingSeekingFlags)1 /* AM_SEEKING_AbsolutePositioning */,0,AMSeekingSeekingFlags.NoPositioning));}Program.HostEvent("ready",Position(),Duration(),null,IsRunning(g));timer.Start();if(Console.IsInputRedirected)Task.Run(()=>{try{while(true){var cmd=NativeCommands.Read(Console.In);if(cmd==null||form.IsDisposed)return;using var handled=new ManualResetEventSlim(false);form.BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!form.IsDisposed&&ApplyControl(g,cmd));}finally{handled.Set();}}));handled.Wait();}}catch{}});};
+        timer.Tick+=(_,_)=>{try{Program.HostEvent("position",Position(),Duration(),null,IsRunning(g),g.AudioMuted,g.AudioVolume);}catch{}};
+        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;Check(g.Seeking.SetPositions(pos,(AMSeekingSeekingFlags)1 /* AM_SEEKING_AbsolutePositioning */,0,AMSeekingSeekingFlags.NoPositioning));}g.ReadInitialAudio();Program.HostEvent("ready",Position(),Duration(),null,IsRunning(g),g.AudioMuted,g.AudioVolume);timer.Start();if(Console.IsInputRedirected)Task.Run(()=>{try{while(true){var cmd=NativeCommands.Read(Console.In);if(cmd==null||form.IsDisposed)return;using var handled=new ManualResetEventSlim(false);form.BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!form.IsDisposed&&ApplyControl(g,cmd));}finally{handled.Set();}}));handled.Wait();}}catch{}});};
         panel.Resize+=(_,_)=>{if(form.Visible)window.SetWindowPosition(0,0,panel.Width,panel.Height);};
         form.FormClosing+=(_,_)=>{timer.Stop();try{Program.HostEvent("closed",Position(),Duration());}catch{}g.Control.Stop();window.put_Visible(OABool.False);window.put_Owner(IntPtr.Zero);};
         Application.Run(form);return 0;

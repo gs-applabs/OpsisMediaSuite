@@ -21,5 +21,11 @@ const watchdog=setTimeout(()=>child.kill(),29000);
  await send(1,'pause');await send(2,'seek',1500);
  assert.ok(await waitFor(e=>e.event==='position'&&Math.abs(e.positionMs-1500)<=300));
  await send(3,'seek',-1,false);await send(4,'seek',undefined,false);await send(5,'open','C:\\invalid',false);
+ // Invalid oversized frames must not disable transport for subsequent valid commands.
+ child.stdin.write('x'.repeat(257)+'\n');
+ assert.equal((await waitFor(e=>e.event==='ack'&&e.id===0)).ok,false);
+ await send(6,'pause');await send(7,'seek',1000);
+ assert.ok(await waitFor(e=>e.event==='position'&&Math.abs(e.positionMs-1000)<=300));
+ await send(8,'volume',101,false);
  child.stdin.end();assert.equal(await exited,0);console.log('Native redirected pipe acknowledgments and seek verified');
 })().catch(e=>{console.error(e);process.exitCode=1;child.kill();}).finally(()=>{clearTimeout(watchdog);fs.writeFileSync(directshow?'directshow-pipe-result.json':'pipe-result.json',JSON.stringify({events,errors},null,2));});

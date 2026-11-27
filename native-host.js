@@ -76,7 +76,7 @@ function createNativeHost({app,extensions,authorize}){
   }finally{opening=false;}
  }
  function command(session,name,value){
-  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow'].includes(state.engine)||(state.engine==='directshow'&&!['toggle','play','pause','seek','rate'].includes(name))||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow'].includes(state.engine)||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
   if(pending)return Promise.resolve({ok:false,code:'busy'});
   return new Promise(resolve=>{const id=++commandId;const timer=setTimeout(()=>finishCommand({ok:false,code:'timeout'}),3000);pending={id,timer,resolve};try{child.stdin.write(JSON.stringify({id,...cmd})+'\n');}catch{finishCommand({ok:false,code:'pipe-error'});}});
  }

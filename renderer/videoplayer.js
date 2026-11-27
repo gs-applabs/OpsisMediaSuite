@@ -90,7 +90,7 @@
     };
     poll();return true;
   }
-  function nativeCommand(name,value){if(!handoff?.session)return;if(handoff.engine==='directshow'&&!['toggle','play','pause','seek','rate'].includes(name)){say('DirectShow audio command is not supported yet');return;}api.vpNativeCommand(handoff.session,name,value).then(r=>{if(!r?.ok&&r?.code!=='busy')say('Native command unavailable');}).catch(()=>{});}
+  function nativeCommand(name,value){if(!handoff?.session)return;api.vpNativeCommand(handoff.session,name,value).then(r=>{if(!r?.ok&&r?.code!=='busy')say('Native command unavailable');}).catch(()=>{});}
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
