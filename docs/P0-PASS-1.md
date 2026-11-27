@@ -96,3 +96,6 @@ Dedicated CI downloads the MDN Sintel excerpt and matching WebVTT from a pinned 
 
 ## Pass 30 — two-point subtitle drift correction
 Choose two original cue starts and corresponding paused video positions. Compute affine correction (scale + offset), apply to all cues and existing SRT/VTT export, keep one-point alignment working with custom scale. Bounds reject reversed/too-close markers and implausible rate. Unit and real renderer tests added; manual anchoring, not speech-recognition autosync. CI pending.
+
+## Pass 31 — optional OpenSubtitles moviehash matching
+Read only first/last 64KiB of an already authorized local media file, compute unsigned 64-bit hash plus size, check stat consistency. Explicit opt-in; send hash not path/file, try hash match then title fallback; show provider-reported hash match, 20 language choices. Exact release match improves odds but does not guarantee synchronized dialogue. Unit test for overflow and too-small input. Live authenticated provider still unverified.

@@ -250,3 +250,13 @@ test('two point sync corrects both offset and drift',()=>{
  assert.equal(V.twoPointSync({subtitle:5,video:1},{subtitle:6,video:2}),null);
  assert.equal(V.twoPointSync({subtitle:5,video:8},{subtitle:10,video:2}),null);
 });
+
+test('OpenSubtitles moviehash reads first and last 64KiB and matches unsigned 64-bit algorithm',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const {movieHash}=require('../subtitle-provider');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-hash-'));
+ try{
+  const p=path.join(dir,'fixture.mkv'),buf=Buffer.alloc(131072);buf.writeBigUInt64LE(0xffffffffffffffffn,0);buf.writeBigUInt64LE(3n,65536);fs.writeFileSync(p,buf);
+  assert.equal(await movieHash(p),'0000000000020002');
+  fs.writeFileSync(p,Buffer.alloc(12));assert.equal(await movieHash(p),null);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

@@ -17,6 +17,21 @@ async function boundedBody(response,limit=MAX){
  finally{try{await reader.cancel();}catch{}reader.releaseLock();}
  return Buffer.concat(chunks,total);
 }
+// OpenSubtitles moviehash: uint64 file size + first and last 64KiB sums.
+async function movieHash(file){
+ const h=await require('node:fs/promises').open(file,'r');
+ try{
+  const st=await h.stat();if(!st.isFile()||!Number.isSafeInteger(st.size)||st.size<131072)return null;
+  let sum=BigInt(st.size);
+  for(const start of [0,st.size-65536]){
+   const b=Buffer.alloc(65536);let offset=0;
+   while(offset<b.length){const r=await h.read(b,offset,b.length-offset,start+offset);if(!r.bytesRead)return null;offset+=r.bytesRead;}
+   for(let i=0;i<b.length;i+=8)sum=BigInt.asUintN(64,sum+b.readBigUInt64LE(i));
+  }
+  const after=await h.stat();if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)return null;
+  return sum.toString(16).padStart(16,'0');
+ }finally{await h.close();}
+}
 function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('utf-8',{fatal:true}).decode(b)}={}){
  let key='',token='',busy=false,results=new Map(),last=0;
  async function request(url,options={},limit=MAX){
@@ -38,15 +53,18 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
    if(!key)return {ok:false,code:'api-key-required'};
    const username=secret(req?.username,256),password=secret(req?.password,512);
    if(username||password){if(!username||!password)return {ok:false,code:'credentials-required'};token='';const login=await json('login','POST',{username,password});token=secret(login.token);if(!token)return {ok:false,code:'auth'};}
-   const q=new URLSearchParams({query,languages:lang,order_by:'download_count',order_direction:'desc'});
-   const reply=await json('subtitles?'+q);
+   const hash=typeof req?.moviehash==='string'&&/^[a-f0-9]{16}$/.test(req.moviehash)?req.moviehash:null;
+   const q=new URLSearchParams({languages:lang,order_by:'download_count',order_direction:'desc'});
+   let reply;
+   if(hash){q.set('moviehash',hash);reply=await json('subtitles?'+q);q.delete('moviehash');}
+   if(!reply||Array.isArray(reply.data)&&reply.data.length===0){q.set('query',query);reply=await json('subtitles?'+q);}
    if(!Array.isArray(reply.data))throw Error('bad-response');
    for(const row of reply.data.slice(0,50)){
     const a=row?.attributes;if(!a||a.language!==lang||!Array.isArray(a.files))continue;
     for(const f of a.files.slice(0,4)){
      if(!Number.isSafeInteger(f?.file_id)||f.file_id<=0||results.size>=50)continue;
      const name=clean(f.file_name)||'subtitle.srt';
-     const item={id:f.file_id,name,release:clean(a.release),language:lang,hearingImpaired:!!a.hearing_impaired,downloads:Math.max(0,Math.min(1e9,Number(a.download_count)||0)),fps:Number.isFinite(a.fps)?a.fps:null};
+     const item={id:f.file_id,name,release:clean(a.release),language:lang,hearingImpaired:!!a.hearing_impaired,hashMatch:a.moviehash_match===true,downloads:Math.max(0,Math.min(1e9,Number(a.download_count)||0)),fps:Number.isFinite(a.fps)?a.fps:null};
      results.set(item.id,item);
     }
    }
@@ -65,4 +83,4 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
   clear(){if(busy)return false;key='';token='';results.clear();return true;}
  };
 }
-module.exports={createProvider,downloadUrl,boundedBody};
+module.exports={createProvider,downloadUrl,boundedBody,movieHash};

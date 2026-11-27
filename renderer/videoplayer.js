@@ -430,12 +430,12 @@
     $('vpSubSearch').addEventListener('click',async()=>{
       const g=generation,n=++searchGeneration;
       $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubSearch').disabled=true;
-      const req={query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value};
+      const req={query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashPath:$('vpSubHash').checked&&current()&&!VP.isUrl(current())?current():null};
       $('vpSubKey').value='';$('vpSubPassword').value='';$('vpSubUser').value='';onlineStatus('Searching…');
       try{
         const r=await api.vpSubSearch(req);if(g!==generation||n!==searchGeneration)return;
         if(!r?.ok){onlineStatus(r?.code||'Search failed');return;}
-        for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'');$('vpSubResults').append(o);}
+        for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':'');$('vpSubResults').append(o);}
         $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα');
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
     });

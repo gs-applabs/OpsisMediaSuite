@@ -11,7 +11,7 @@ const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
-const { createProvider }=require('./subtitle-provider.js');
+const { createProvider,movieHash }=require('./subtitle-provider.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -144,7 +144,20 @@ function init({ getMainWin, resolveFfmpegPath }) {
     try { return readSubtitle(f); } catch (_) { return null; }
   });
   let subtitleProvider=createProvider({decode:decodeText});
-  ipcMain.handle('vp:sub-search',async(e,req)=>trusted(e)?subtitleProvider.search(req):{ok:false,code:'denied'});
+  let hashBusy=false;
+  ipcMain.handle('vp:sub-search',async(e,req)=>{
+    if(!trusted(e)||!req||typeof req!=='object')return {ok:false,code:'denied'};
+    // Do not accept renderer-supplied hash/path as a general read primitive.
+    let hash=null;
+    if(req.hashPath){
+      if(hashBusy)return {ok:false,code:'busy'};
+      const p=allowedFile(req.hashPath,PLAY_EXTS);
+      if(!p||!approved.has(p))return {ok:false,code:'denied'};
+      hashBusy=true;try{hash=await movieHash(p);}catch{}finally{hashBusy=false;}
+      if(!trusted(e))return {ok:false,code:'denied'};
+    }
+    return subtitleProvider.search({query:req.query,language:req.language,apiKey:req.apiKey,username:req.username,password:req.password,moviehash:hash});
+  });
   ipcMain.handle('vp:sub-download',async(e,id)=>trusted(e)?subtitleProvider.download(id):{ok:false,code:'denied'});
   ipcMain.handle('vp:sub-disconnect',e=>trusted(e)?subtitleProvider.clear():false);
   let subtitleSaveBusy=false;
