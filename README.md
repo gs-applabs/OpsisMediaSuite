@@ -6,27 +6,22 @@
 
 <p align="center"><strong>A media workspace with real-time audio enhancement, playback and conversion.</strong><br/>Ήχος και βίντεο σε ένα ενιαίο περιβάλλον.</p>
 
-<p align="center"><a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe"><img alt="Download v2.4.2" src="https://img.shields.io/badge/DOWNLOAD-v2.4.2-087EA4?style=for-the-badge"/></a> <a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/latest"><img alt="Release notes" src="https://img.shields.io/badge/RELEASE-NOTES-334155?style=for-the-badge"/></a></p>
+<p align="center"><a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/latest"><img alt="Download latest published release" src="https://img.shields.io/badge/DOWNLOAD-LATEST%20RELEASE-087EA4?style=for-the-badge"/></a> <a href="docs/SHOWCASE.md"><img alt="Explore screenshots" src="https://img.shields.io/badge/EXPLORE-SCREENSHOTS-334155?style=for-the-badge"/></a></p>
 
 <p align="center"><a href="#at-a-glance--με-μια-ματιά">Overview / Επισκόπηση</a> · <a href="#full-documentation--αναλυτική-τεκμηρίωση">Full documentation / Τεκμηρίωση</a> · <a href="https://github.com/gs-applabs/OpsisMediaSuite/issues">Support / Υποστήριξη</a> · <a href="https://github.com/gs-applabs">GS App Labs</a></p>
 
-## Current screenshot gallery / Νέα στιγμιότυπα
+## Visual showcase / Οπτική παρουσίαση
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="docs/product-snapshots/0-midnight-enhance.png"><img src="docs/product-snapshots/0-midnight-enhance.png" width="100%" alt="Audio enhancement / Ενίσχυση ήχου"/></a><br/><sub>Audio enhancement / Ενίσχυση ήχου</sub></td>
-<td width="50%" valign="top"><a href="docs/product-snapshots/1-light-video.png"><img src="docs/product-snapshots/1-light-video.png" width="100%" alt="Video player / Αναπαραγωγή βίντεο"/></a><br/><sub>Video player / Αναπαραγωγή βίντεο</sub></td>
+<td width="50%" valign="top"><a href="docs/SHOWCASE.md"><img src="docs/product-snapshots/demo-audio-enhancement.png" alt="demo audio enhancement" width="100%"/></a><br/><sub>demo audio enhancement</sub></td>
+<td width="50%" valign="top"><a href="docs/SHOWCASE.md"><img src="docs/product-snapshots/1-light-video.png" alt="light · video" width="100%"/></a><br/><sub>light · video</sub></td>
 </tr>
 </table>
 
-**[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)** · [Capture workflow / Μηχανισμός λήψης](../../actions/workflows/product-snapshots.yml)
+**[Explore 34 screenshots / Εξερεύνηση στιγμιοτύπων](docs/SHOWCASE.md)** · [Original capture index](docs/product-snapshots/README.md) · [Media kit](https://github.com/gs-applabs/gs-applabs/tree/main/assets/showcase)
 
-**[30-second video tour](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/media.mp4) · [Animated screenshot preview](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/media.gif) · [Social preview](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/media-social.png)**
-
-<sub>Real screenshot slideshows, not live recordings. / Παρουσιάσεις πραγματικών στιγμιοτύπων, όχι ζωντανή καταγραφή.</sub>
-
-
-<sub>Actual application rendering on Windows CI. / Πραγματική απεικόνιση σε Windows CI.</sub>
+<sub>Actual UI previews from development commit `65170072f69e`; may differ from the latest published installer. / Πραγματικές εικόνες συγκεκριμένου build ανάπτυξης, ενδέχεται να διαφέρουν από τη δημοσιευμένη έκδοση.</sub>
 
 ## At a glance / Με μια ματιά
 
@@ -37,6 +32,8 @@
 | **Create / Δημιουργία** | Audio and video conversion, visualizers / Μετατροπές και οπτικοποιήσεις |
 
 ### Get started / Ξεκίνημα
+
+For the newest installer always use [latest published release](https://github.com/gs-applabs/OpsisMediaSuite/releases/latest). Version-specific links below are retained as reference. / Για τη νεότερη έκδοση χρησιμοποίησε τον σύνδεσμο τελευταίας δημοσιευμένης έκδοσης.
 
 - **Installer:** [OpsisMediaSuite-Setup-2.4.2.exe](https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe) · [SHA-256](https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe.sha256)
 - **Requirements / Απαιτήσεις:** Windows 10/11 · Electron / Web Audio.
