@@ -100,7 +100,7 @@ test('UTF-16 big endian Greek subtitles decode and SSA is recognized', () => {
   const b = Buffer.from('Καλημέρα','utf16le').swap16();
   assert.equal(M.decodeText(Buffer.concat([Buffer.from([0xfe,0xff]),b])), 'Καλημέρα');
   assert.ok(M.SUB_EXTS.includes('ssa'));
-  assert.ok(!M.SUB_EXTS.includes('sub'));
+  assert.ok(M.SUB_EXTS.includes('sub')); // text MicroDVD only; binary is rejected
 });
 test('subtitle blank-line whitespace and VTT NOTE blocks', () => {
   const r = V.srtToVtt('WEBVTT\n\nNOTE ignore\n00:00:01.000 --> 00:00:02.000\nno\n\n00:00:01.000 --> 00:00:02.000\nyes\n \n00:00:02.000 --> 00:00:03.000\nnext',0);
@@ -198,4 +198,12 @@ test('codec inventory recognizes alternate K-Lite product labels and keeps regis
  const {normalize}=require('../codec-inventory');
  const r=normalize({packs:[{name:'K-Lite Mega Codec Pack',version:'20.1.0',view:'32'},{name:'K-Lite Codec Pack',version:'20.1.0',view:'64',source:'product-registry'}]});
  assert.equal(r.packs.length,2);assert.ok(r.packs.some(x=>x.source==='product-registry'));
+});
+
+test('MicroDVD uses explicit or declared FPS and refuses unknown timing',()=>{
+ const r=V.subtitleToVtt('{1}{1}25\n{25}{50}Καλημέρα|κόσμε','sub',0);
+ assert.equal(r.cues,1);assert.equal(r.entries[0].start,1);assert.equal(r.entries[0].end,2);assert.equal(r.entries[0].text,'Καλημέρα\nκόσμε');
+ assert.equal(V.subtitleToVtt('{24}{48}text','sub',0).needsFps,true);
+ assert.equal(V.subtitleToVtt('{24}{48}text','sub',0,1,24).entries[0].end,2);
+ assert.equal(V.subtitleToVtt('{24}{12}bad','sub',0,1,24).cues,0);
 });

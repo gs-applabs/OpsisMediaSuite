@@ -14,7 +14,7 @@ const { createNativeHost } = require('./native-host.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
-const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa'];
+const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub'];
 const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
 const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS, ...SUB_EXTS]);
 const MAX_SUB_BYTES = 5 * 1024 * 1024;
@@ -40,6 +40,12 @@ function decodeText(buf) {
   try { return new TextDecoder('windows-1253').decode(buf); } catch (_) { return buf.toString('latin1'); }
 }
 
+function readSubtitle(file){
+  const st=fs.statSync(file);if(!st.isFile()||st.size>MAX_SUB_BYTES)return null;
+  const text=decodeText(fs.readFileSync(file)),ext=extOf(file);
+  if(ext==='sub'&&(!/^\s*\{\d{1,9}\}\{\d{1,9}\}/m.test(text)||text.includes('\0')))return null;
+  return {name:path.basename(file),ext,text};
+}
 function siblingSubtitles(video) {
   const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase();
   let names = [];
@@ -51,7 +57,7 @@ function siblingSubtitles(video) {
     const stem = path.basename(n, path.extname(n)).toLowerCase();
     if (stem !== base && !stem.startsWith(base + '.')) continue; // "movie.srt", "movie.el.srt"
     const f = path.join(dir, n);
-    try { const st = fs.statSync(f); if (isFile(f) && st.isFile() && st.size <= MAX_SUB_BYTES) out.push({ name: n, ext: e, text: decodeText(fs.readFileSync(f)) }); } catch (_) { /* skip */ }
+    try { if(isFile(f)){const sub=readSubtitle(f);if(sub)out.push(sub);} } catch (_) { /* skip */ }
     if (out.length >= 8) break;
   }
   return out;
@@ -133,7 +139,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Subtitles', extensions: SUB_EXTS }] });
     if (r.canceled || !allowedFile(r.filePaths[0], new Set(SUB_EXTS))) return null;
     const f = r.filePaths[0];
-    try { const st = fs.statSync(f); if (st.size > MAX_SUB_BYTES) return null; return { name: path.basename(f), ext: extOf(f), text: decodeText(fs.readFileSync(f)) }; } catch (_) { return null; }
+    try { return readSubtitle(f); } catch (_) { return null; }
   });
   ipcMain.handle('vp:exists', (e, list) => (trusted(e) && Array.isArray(list) ? list.slice(0, 500).map((p) => isFile(p)) : []));
 

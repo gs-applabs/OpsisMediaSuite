@@ -15,7 +15,7 @@
   let session = null, playbackEngine = null;
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
   let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null, nativeSubtitleTrack = null;
-  let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, subScale = 1, saveTimer = 0, built = false, fx = null;
+  let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, subScale = 1, subFps=0, saveTimer = 0, built = false, fx = null;
 
   const say = (text) => { const e = $('vpStatus'); if (e) e.textContent = text || ''; };
   const current = () => (idx >= 0 ? list[idx] : null);
@@ -129,7 +129,7 @@
   }
 
   /* ---------------- subtitles ---------------- */
-  function clearSubs() { ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;$('vpSubFps').value='1'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -145,8 +145,8 @@
       nativeSubtitleTrack.mode = 'disabled';
     }
     if (subSel < 0 || !subSrc[subSel]) return;
-    const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale);
-    if (!r.cues) { say(t('vp.subEmpty')); return; }
+    const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps);
+    if (!r.cues) { say(r.needsFps?'MicroDVD: choose source FPS / Επιλέξτε αρχικά FPS':t('vp.subEmpty')); return; }
     if (!nativeSubtitleTrack) nativeSubtitleTrack = video.addTextTrack('subtitles','OPSIS subtitles');
     // Hidden mode allows cues to be populated before native rendering begins.
     nativeSubtitleTrack.mode = 'hidden';
@@ -391,6 +391,7 @@
     $('vpSubLoad').addEventListener('click', loadSubFile);
     $('vpSubReset').addEventListener('click',()=>setDelay(0));
     $('vpSubFps').addEventListener('change',()=>{subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
+    $('vpMicroFps').addEventListener('change',()=>{subFps=Number($('vpMicroFps').value)||0;rebuildTrack();});
     $('vpSubMinus').addEventListener('click', () => setDelay(subDelay - 0.5));
     $('vpSubPlus').addEventListener('click', () => setDelay(subDelay + 0.5));
     $('vpSubSize').addEventListener('input', applySubStyle);

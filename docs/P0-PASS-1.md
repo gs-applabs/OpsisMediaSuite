@@ -69,3 +69,6 @@ Pass 18 native CI 45940154870 succeeded: Media Foundation decoded 8 PCM samples 
 
 ## Pass 21 — converter scoped local I/O
 Session-bounded picker grants for input/subtitles, explicit native confirmation for drag/drop files, separate output-folder grants and reconfirmation for restored custom directories, output reveal restricted to produced files. Capped single raw read and predecode, canonical paths, before/after stat, job reservation before FFmpeg resolution, real renderer negative grant check. TOCTOU and nested demuxer file access remain limitations; not a sandbox. New CI pending.
+
+## Pass 22 — MicroDVD text subtitles
+Frame-number MicroDVD .sub parser, declared or explicitly selected FPS, multiline and simple style stripping, shift/scale reuse, bounded cues and binary VobSub rejection in Chromium. Never infer 25 FPS silently. Bitmap VobSub and PGS still belong to native engines; this is text-only. New UI label translations and CI pending.

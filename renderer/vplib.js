@@ -79,8 +79,27 @@
     return out.join('\n');
   }
 
-  function subtitleToVtt(text, ext, shiftMs, scale=1) {
+  // MicroDVD text uses frame numbers; optional {1}{1} header supplies FPS.
+  // Never treat image-based VobSub .sub as text.
+  function microDvdToVtt(text,shiftMs,scale=1,fps=0) {
+    const lines=String(text||'').replace(/^\uFEFF/,'').split(/\r?\n/);
+    let rate=Number(fps),start=0;
+    const header=/^\{(?:0|1)\}\{(?:0|1)\}(\d+(?:\.\d+)?)\s*$/.exec(lines[0]||'');
+    if(header){if(!(rate>0))rate=Number(header[1]);start=1;}
+    if(!Number.isFinite(rate)||rate<10||rate>120)return {vtt:'WEBVTT\n\n',cues:0,entries:[],needsFps:true};
+    const out=[];
+    for(let i=start;i<lines.length&&out.length<LIMITS.cues;i++){
+      const match=/^\{(\d{1,9})\}\{(\d{1,9})\}(.*)$/.exec(lines[i]);
+      if(!match)continue;
+      const a=Number(match[1]),b=Number(match[2]);if(b<=a||b/rate>3600000)continue;
+      const body=match[3].replace(/\{[a-zA-Z]:[^}]{0,80}\}/g,'').replace(/\|/g,'\n').trim();
+      if(body)out.push(vttTime(a*1000/rate)+' --> '+vttTime(b*1000/rate)+'\n'+body+'\n');
+    }
+    return srtToVtt(out.join('\n'),shiftMs,scale);
+  }
+  function subtitleToVtt(text, ext, shiftMs, scale=1, fps=0) {
     const e = String(ext || '').toLowerCase();
+    if(e==='sub')return microDvdToVtt(text,shiftMs,scale,fps);
     return srtToVtt(e === 'ass' || e === 'ssa' ? assToSrt(text) : text, shiftMs, scale);
   }
 
