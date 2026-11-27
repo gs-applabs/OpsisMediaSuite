@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19D.2
+- Stop alternate audio sources when selecting a music track, pause Chromium video when selecting audio sources, prevent overlapping custom dialogs from losing the first resolver, update in-app history and welcome guide. Native arbitration and modal feedback for suppressed messages remain pending.
+
 ## Unreleased — Ultra Mega Pass 19C–19D.1
 - Expanded guide to 90 routes and recorded source control inventory. Scoped shortcuts to owning playback tab; preserve native keyboard activation in controls and dialogs. Cancel stale microphone permission results and stop alternate sound sources when video begins, including successful native handoff. Full native/HTML source arbitration still pending.
 

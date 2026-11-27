@@ -749,6 +749,7 @@ inputModalField.addEventListener('keydown', (e) => {
 });
 
 function showInputDialog(title, initial = '') {
+  if(modalResolver)return Promise.resolve(null);
   inputModalTitle.textContent = title;
   inputModalMessage.style.display = 'none';
   inputModalField.style.display = 'block';
@@ -760,6 +761,7 @@ function showInputDialog(title, initial = '') {
 }
 
 function showAlertDialog(title, message) {
+  if(modalResolver)return Promise.resolve();
   inputModalTitle.textContent = title;
   inputModalMessage.textContent = message;
   inputModalMessage.style.display = 'block';
@@ -1374,6 +1376,8 @@ async function analyzeLoudness(item) {
 
 function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
+  engine.stopAlternateSources();
+  window.WaveframeVideoPlayer?.pause();
   currentTrackIndex = index;
   const item = playlist[index];
   engine.switchTrack((slotIndex) => {
@@ -1652,10 +1656,12 @@ els.btnUrl.addEventListener('click', async () => {
   if (wasEmpty) playTrackAt(playlist.length - 1);
 });
 els.btnMic.addEventListener('click', async () => {
+  window.WaveframeVideoPlayer?.pause();
   try { if(await engine.startMic())els.trackName.textContent = t('player.micLabel'); }
   catch (err) { await showAlertDialog(t('player.micErrorTitle'), err.message); }
 });
 els.btnTestTone.addEventListener('click', () => {
+  window.WaveframeVideoPlayer?.pause();
   engine.playTestTone();
   els.trackName.textContent = t('player.toneLabel');
 });
