@@ -10,15 +10,19 @@ const path = require('path');
 const crypto = require('crypto');
 const L = require('./renderer/convlib.js');
 const V = require('./renderer/vidlib.js');
-const { runFfmpeg,publishOutput } = require('./conv-engine.js');
+const { runFfmpeg,publishOutput,ensureRunning } = require('./conv-engine.js');
 
 const encoderCache = new Map(),encoderPending=new Map(),auxChildren=new Set();
+let shuttingDown=false;
+function beginShutdown(){shuttingDown=true;cancelAuxiliary();}
+function activeAuxCount(){return auxChildren.size;}
 function trackAux(child){auxChildren.add(child);child.once('close',()=>auxChildren.delete(child));child.once('error',()=>auxChildren.delete(child));}
 function cancelAuxiliary(){for(const child of auxChildren)try{child.kill();}catch{}}
 
 
 // Runs ffmpeg and returns ALL of stdout + stderr (capped at 1 MB): the encoder list is longer than runFfmpeg's progress tail.
 function capture(ffmpegPath, args, timeoutMs = 15000) {
+  if(shuttingDown)return Promise.resolve('');
   return new Promise((resolve) => {
     let out = ''; let child;
     try { child = spawn(ffmpegPath, args, { windowsHide: true }); } catch (_) { return resolve(''); }
@@ -50,6 +54,7 @@ async function probeVideo(ffmpegPath, file) {
 
 // One frame as a small PNG data URL (preview of the file). stdout is captured and capped at 2 MB.
 function thumbnail(ffmpegPath, file, atSec = 1) {
+  if(shuttingDown)return Promise.resolve(null);
   return new Promise((resolve) => {
     const at = Number.isFinite(atSec) && atSec >= 0 ? atSec : 1;
     const chunks = []; let n = 0; let child;
@@ -70,8 +75,8 @@ const lastLines = (text) => String(text).split(/\r?\n/).filter(Boolean).slice(-3
 // Encodes one video (or extracts its audio / makes a GIF). Tries the available encoders of the chosen codec in order (hardware first, then
 // software): a failing hardware encoder (no GPU, missing driver) falls through to the next one. Two passes run only for encoders that
 // support -pass. Returns { promise -> { output, encoder, fellBackFrom }, cancel() }; a half-written file is removed on error and on cancel.
-async function encodeVideo({ ffmpegPath, input, options, available, onProgress, outDir }) {
-  const info = await probeVideo(ffmpegPath, input);
+async function encodeVideo({ ffmpegPath, input, options, available, onProgress, outDir, ensureActive=()=>{} }) {
+  ensureRunning();ensureActive();const info = await probeVideo(ffmpegPath, input);ensureRunning();ensureActive();
   if (!info.video && !options.audioOnly) throw Object.assign(new Error('no-video'), { code: 'no-video' });
   if (options.audioOnly && !info.audio.length) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
   const needsEncoder = !options.audioOnly && !options.gif;
@@ -85,6 +90,8 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   let current = null, cancelled = false, tmp = null, passLog = null, passScratch=null;
   const cleanup = () => { if (tmp) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } } if(passScratch)passScratch.release();passScratch=null;tmp=null;passLog=null; };
   const run = (args, scale, offset) => {
+    ensureRunning();ensureActive();
+    if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
     args.splice(args.indexOf('-i'),0,'-protocol_whitelist','file,pipe');
     current = runFfmpeg(ffmpegPath, args, { duration, onProgress: (p) => { if (onProgress) onProgress(offset + p * scale); } });
     return current.promise;
@@ -108,6 +115,7 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
           if (r.code !== 0 || !fs.existsSync(tmp)) throw new Error(lastLines(r.stderr) || `ffmpeg exited with code ${r.code}`);
         }
         if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
+        ensureRunning();ensureActive();
         const out=publishOutput(tmp,{input,ext,suffix:options.suffix,outDir});
         try{fs.unlinkSync(tmp);}catch{}
         if(passScratch)passScratch.release();
@@ -129,4 +137,4 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   return { promise, cancel() { cancelled = true; if (current) current.cancel(); } };
 }
 
-module.exports = { capture, detectEncoders, probeVideo, thumbnail, encodeVideo, cancelAuxiliary };
+module.exports = { capture, detectEncoders, probeVideo, thumbnail, encodeVideo, cancelAuxiliary, beginShutdown, activeAuxCount };

@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.10
+- Converter shutdown closes admission to new work, cancels active FFmpeg/auxiliary jobs and allows up to four seconds for cleanup before exit. Cancellation is rechecked after preparation and before publication; audio/video probes and thumbnails have separate bounded admission. Per-job progress notifications limited to roughly 10/s plus terminal completion, with no pending-message buffer. Previous 20B.8 CI passed 278 tests and renderer release checks; hourly runs still executing. New shutdown behavior pending Windows CI.
+
 ## Unreleased — Ultra Mega Pass 20B.9
 - Conversion WAV/predecode and two-pass statistics use isolated owned scratch directories with bounded cleanup retries; no broad deletion of user or legacy temp files. Bound crash log writes, suppress duplicate reports, stop appending on rotation failure. Debounce accent preference writes and skip unchanged appearance settings. Add scratch/log/preference regressions. Hour-long 20B.8 Windows soak is running; newest changes await CI.
 

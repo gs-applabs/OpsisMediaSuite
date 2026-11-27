@@ -16,13 +16,28 @@ const SUB_TYPES = new Set(['srt','ass','ssa','vtt','sub']);
 const MAX_READ = 600 * 1024 * 1024; // the renderer decodes the whole file in memory
 
 function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
+  const trusted = (e) => { const w = getMainWin(); return !closing && !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
   const jobs = new Map(); // id -> { cancel }
   const cancelledEarly = new Set();
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
-  let closing=false;
-  app.once('before-quit',()=>{closing=true;for(const id of pending)cancelledEarly.add(id);for(const job of jobs.values())try{job.cancel();}catch{}E.cancelActiveRuns();EV.cancelAuxiliary();});
-  const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
+  let closing=false,quitAllowed=false;
+  const progressGate=require('./resource-diagnostics').createProgressGate();
+  let probeBusy=false,thumbBusy=false;
+  const busy=()=>pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy;
+  app.on('before-quit',event=>{
+    if(quitAllowed)return;
+    event.preventDefault();
+    if(closing)return;
+    closing=true;
+    for(const id of pending)cancelledEarly.add(id);
+    for(const job of jobs.values())try{job.cancel();}catch{}
+    E.beginShutdown();EV.beginShutdown();
+    // Bound the wait; normal cancellation must finish its cleanup before exit.
+    const deadline=Date.now()+4000;
+    const finish=()=>{if(busy()&&Date.now()<deadline){setTimeout(finish,50);return;}quitAllowed=true;app.quit();};
+    setTimeout(finish,0);
+  });
+  const sendProgress = (payload) => { if(closing)return;if(payload.id&&(!pending.has(payload.id)||!progressGate.allow(payload.id,payload.pct)))return;const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
   const okFile = p => !!localPath(p);
   const sourceGrants=new Set(),subtitleGrants=new Set(),directoryGrants=new Set(),outputGrants=new Set();
   const boundedAdd=(set,p,limit=4096)=>{if(set.size>=limit)set.delete(set.values().next().value);set.add(p);return p;};
@@ -75,9 +90,8 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   });
 
   ipcMain.handle('conv:probe', async (e, p) => {
-    if (!trusted(e) || !inputFile(p)) return null;
-    const ff = await resolveFfmpegPath();
-    const f=inputFile(p);return ff&&f ? E.probe(ff, f) : null;
+    if (!trusted(e) || !inputFile(p)||probeBusy) return null;
+    probeBusy=true;try{const ff=await resolveFfmpegPath(),f=inputFile(p);return !closing&&ff&&f?await E.probe(ff,f):null;}catch{return null;}finally{probeBusy=false;}
   });
 
   ipcMain.handle('conv:read', async (e, p) => {
@@ -89,7 +103,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('conv:predecode', async (e, p, sampleRate) => {
     if (!trusted(e) || !inputFile(p)||decodeBusy) return null;
     decodeBusy=true;try{
-      const ff=await resolveFfmpegPath(),f=inputFile(p);if(!ff||!f)return null;
+      const ff=await resolveFfmpegPath(),f=inputFile(p);if(closing||!ff||!f)return null;
       return { bytes: await E.predecodeToWav({ ffmpegPath: ff, input: f, sampleRate: Number.isFinite(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate : 0 }) };
     } catch (_) { return null; }finally{decodeBusy=false;}
   });
@@ -114,7 +128,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       const r = await job.promise;
       const output=localPath(r.output);if(output)boundedAdd(outputGrants,output);
       return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
-    } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); pending.delete(id); }
+    } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); pending.delete(id);progressGate.release(id); }
   }
 
   ipcMain.handle('conv:direct', async (e, req) => {
@@ -124,7 +138,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     return track(req.id,async ensureActive=>{
       if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});ensureActive();
       const ff=await resolveFfmpegPath(),f=inputFile(req.path);if(!ff||!f)throw Object.assign(Error('source or ffmpeg unavailable'),{code:ff?'denied':'no-ffmpeg'});
-      ensureActive();return E.convertDirect({ffmpegPath:ff,input:f,options:v.options,onProgress:p=>sendProgress({id:req.id,pct:p}),outDir:resolveOutDir(req,true)});
+      ensureActive();return E.convertDirect({ffmpegPath:ff,input:f,options:v.options,ensureActive,onProgress:p=>sendProgress({id:req.id,pct:p}),outDir:resolveOutDir(req,true)});
     });
   });
 
@@ -172,21 +186,20 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('vid:encoders', async (e) => {
     if (!trusted(e)) return { ffmpeg: false };
     const ff = await resolveFfmpegPath();
-    if (!ff) return { ffmpeg: false };
+    if (closing||!ff) return { ffmpeg: false };
     const d = await EV.detectEncoders(ff);
+    if(closing)return {ffmpeg:false};
     const known = new Set([...d.encoders].filter((x) => KNOWN_ENCODERS.has(x)));
     return { ffmpeg: true, hwaccels: d.hwaccels.slice(0, 30), encoders: [...known], summary: V.summarize(known) };
   });
 
   ipcMain.handle('vid:probe', async (e, p) => {
-    if (!trusted(e) || !okMedia(p)) return null;
-    const ff = await resolveFfmpegPath();
-    const f=inputFile(p);return ff&&f ? EV.probeVideo(ff, f) : null;
+    if (!trusted(e) || !okMedia(p)||probeBusy) return null;
+    probeBusy=true;try{const ff=await resolveFfmpegPath(),f=inputFile(p);return !closing&&ff&&f?await EV.probeVideo(ff,f):null;}catch{return null;}finally{probeBusy=false;}
   });
   ipcMain.handle('vid:thumb', async (e, p, at) => {
-    if (!trusted(e) || !okMedia(p)) return null;
-    const ff = await resolveFfmpegPath();
-    const f=inputFile(p);return ff&&f ? EV.thumbnail(ff, f, Number(at) || 1) : null;
+    if (!trusted(e) || !okMedia(p)||thumbBusy) return null;
+    thumbBusy=true;try{const ff=await resolveFfmpegPath(),f=inputFile(p);return !closing&&ff&&f?await EV.thumbnail(ff,f,Number(at)||1):null;}catch{return null;}finally{thumbBusy=false;}
   });
 
   ipcMain.handle('vid:encode', async (e, req) => {
@@ -200,7 +213,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       const d=await EV.detectEncoders(ff);
       const outDir=resolveOutDir(req,true,defaultVideoOutDir);
       if(v.options.subtitleFile){const sub=allowedFile(v.options.subtitleFile,SUB_TYPES);if(!sub||!subtitleGrants.has(sub))throw Object.assign(Error('subtitle not approved'),{code:'denied'});v.options.subtitleFile=sub;}
-      ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
+      ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,ensureActive,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
     });
   });
 

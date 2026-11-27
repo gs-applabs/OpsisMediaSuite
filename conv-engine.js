@@ -13,10 +13,13 @@ const {createScratch}=require('./resource-diagnostics');
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif', 'alac', 'ape', 'wv', 'mka', 'mp2', 'ac3', 'amr'];
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mpg', 'mpeg', '3gp'];
 
-const activeRuns=new Set();
+const activeRuns=new Set();let shuttingDown=false;
+function beginShutdown(){shuttingDown=true;cancelActiveRuns();}
+function ensureRunning(){if(shuttingDown)throw Object.assign(Error('cancelled'),{code:'cancelled'});}
 function cancelActiveRuns(){for(const run of activeRuns)run.cancel();}
 function activeRunCount(){return activeRuns.size;}
 function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 * 60 * 60 * 1000 } = {}) {
+  ensureRunning();
   let child = null, cancelled = false, timedOut = false;
   const promise = new Promise((resolve, reject) => {
     let tail = '';
@@ -90,20 +93,23 @@ function finalize(tmp,input,options,outDir){
   return publishOutput(tmp,{input,ext:L.FORMATS[options.format].ext,suffix:options.suffix,outDir});
 }
 async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir }) {
+  ensureRunning();
   const { tmp } = planOutput(input, options, fs.existsSync, outDir);
   const args = L.buildFfmpegArgs({ input: source, output: tmp, options, mode });
   args.splice(args.indexOf('-i'), 0, '-protocol_whitelist','file,pipe');
   const run = runFfmpeg(ffmpegPath, args, { duration, onProgress });
   const promise = run.promise.then((r) => {
     if(r.code!==0||!fs.existsSync(tmp))throw Error(r.stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(' ')||'ffmpeg exited with code '+r.code);
-    return {output:finalize(tmp,input,options,outDir)};
+    ensureRunning();return {output:finalize(tmp,input,options,outDir)};
   }).finally(()=>{try{fs.unlinkSync(tmp);}catch{} });
   return { promise, cancel: run.cancel };
 }
 
 // ffmpeg reads the original and does everything (decode any audio / video audio track, trim, rate, channels, codec).
-async function convertDirect({ ffmpegPath, input, options, onProgress, outDir }) {
+async function convertDirect({ ffmpegPath, input, options, onProgress, outDir, ensureActive=()=>{} }) {
+  ensureRunning();ensureActive();
   const info = await probe(ffmpegPath, input);
+  ensureRunning();ensureActive();
   if (!info.hasAudio) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
   const span = (options.trimEnd > 0 ? Math.min(options.trimEnd, info.duration || options.trimEnd) : info.duration) - options.trimStart;
   return runToTemp({ ffmpegPath, input, options, mode: 'direct', source: input, duration: span > 0 ? span : info.duration, onProgress, outDir });
@@ -111,6 +117,7 @@ async function convertDirect({ ffmpegPath, input, options, onProgress, outDir })
 
 // The renderer already applied trim/rate/channels/effects/gain and sent a WAV: for WAV output it is written as is, otherwise ffmpeg encodes it.
 async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress, duration, outDir }) {
+  ensureRunning();
   if (wavBytes instanceof ArrayBuffer) wavBytes=Buffer.from(wavBytes);
   if (!ArrayBuffer.isView(wavBytes)) throw Object.assign(new Error('invalid WAV byte payload'),{code:'invalid-wav'});
   if (options.format === 'wav') {
@@ -141,6 +148,7 @@ async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress
 
 // ffmpeg decodes anything it knows to 32-bit float WAV when the renderer's own decoder cannot (WMA, AIFF, some video containers).
 async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
+  ensureRunning();
   const scratch=createScratch('opsis-predecode-');
   const tmp=path.join(scratch.dir,'decoded.wav');
   const args = ['-hide_banner', '-nostdin', '-y', '-protocol_whitelist','file,pipe','-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-f', 'wav', tmp];
@@ -155,4 +163,4 @@ async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
   } finally { scratch.release(); }
 }
 
-module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelActiveRuns, activeRunCount, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };
+module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelActiveRuns, activeRunCount, beginShutdown, ensureRunning, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };

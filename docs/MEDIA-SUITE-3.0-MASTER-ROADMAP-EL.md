@@ -134,3 +134,6 @@ Prior 20B.5: 275/275 tests, real playback 20/20, idle CPU 0.29%, startup 538746.
 
 ## 20B.9
 SSD/temporary resource hygiene: owned scratch directories for WAV/predecode/pass stats, retry cleanup, no indiscriminate temp purge. Crash log cap 512 KiB plus rotated file; up to 12 entries/minute and duplicate suppression. Appearance preference deduplication and 500 ms accent debounce, flush on change/blur/unload. Physical SSD writes not measured. Hour-long prior-commit run 46002506246 in progress; new CI pending.
+
+## 20B.10
+Converter shutdown gate, active-run cancellation, bounded cleanup grace (4 seconds), recheck before starting a new pass or publishing, probe/thumb admission guards, progress notification deduplication (100 ms, terminal always). No guarantee of recovery from forced process kill or OS crash; no deletion of completed outputs. New CI pending.

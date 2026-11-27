@@ -44,4 +44,14 @@ function appendBoundedLog(file,line,max=512*1024){
   fs.appendFileSync(file,bytes);return true;
  }catch{return false;}
 }
-module.exports={summarizeMetrics,aggregateSamples,createScratch,appendBoundedLog};
+// Per-job throttle, no timers or buffered messages. Terminal progress is
+// always forwarded; release the key when the owning job finishes.
+function createProgressGate(interval=100,clock=Date.now){
+ const last=new Map();
+ return {allow(key,pct){
+  const now=clock(),before=last.get(key);
+  if(pct!==1&&before!==undefined&&now-before<interval)return false;
+  last.set(key,now);return true;
+ },release(key){last.delete(key);},size(){return last.size;}};
+}
+module.exports={summarizeMetrics,aggregateSamples,createScratch,appendBoundedLog,createProgressGate};
