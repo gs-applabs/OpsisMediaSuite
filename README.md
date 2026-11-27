@@ -1,5 +1,9 @@
 <p align="center"><img src="https://raw.githubusercontent.com/gs-applabs/gs-applabs/main/assets/projects/media.svg" width="100%" alt="OPSIS Media Suite — Listen. Watch. Create."/></p>
 
+<p align="center"><a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/latest"><img alt="Latest published release" src="https://img.shields.io/github/v/release/gs-applabs/OpsisMediaSuite?label=release"/></a> <a href="https://github.com/gs-applabs/OpsisMediaSuite/releases"><img alt="All release asset downloads, not unique users" src="https://img.shields.io/github/downloads/gs-applabs/OpsisMediaSuite/total?label=asset%20downloads"/></a> <a href="https://github.com/gs-applabs/OpsisMediaSuite/actions/workflows/ci.yml"><img alt="CI workflow status" src="https://github.com/gs-applabs/OpsisMediaSuite/actions/workflows/ci.yml/badge.svg"/></a> <a href="https://github.com/gs-applabs/OpsisMediaSuite/actions/workflows/product-snapshots.yml"><img alt="Screenshot workflow status" src="https://github.com/gs-applabs/OpsisMediaSuite/actions/workflows/product-snapshots.yml/badge.svg"/></a></p>
+
+<p align="center"><a href="docs/GS-APP-LABS-FAQ.md">FAQ / Συχνές ερωτήσεις</a> · <a href="https://github.com/gs-applabs/OpsisMediaSuite/issues/new/choose">Feedback / Προτάσεις</a></p>
+
 <p align="center"><strong>A media workspace with real-time audio enhancement, playback and conversion.</strong><br/>Ήχος και βίντεο σε ένα ενιαίο περιβάλλον.</p>
 
 <p align="center"><a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe"><img alt="Download v2.4.2" src="https://img.shields.io/badge/DOWNLOAD-v2.4.2-087EA4?style=for-the-badge"/></a> <a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/latest"><img alt="Release notes" src="https://img.shields.io/badge/RELEASE-NOTES-334155?style=for-the-badge"/></a></p>
