@@ -70,6 +70,7 @@ class AudioEngine {
     ];
     this.activeSlot = 0;
     this.crossfadeSeconds = 0;
+    this.transitionEpoch=0;this.transitionTimer=null;this.pendingTransition=null;
 
     this.micStream = null;
     this.micSource = null;
@@ -312,6 +313,7 @@ class AudioEngine {
   get activeEl() { return this.slots[this.activeSlot].el; }
 
   play() {
+    this.cancelCrossfade(true);
     this.resume();
     this.stopAlternateSources();
     const slot = this.slots[this.activeSlot];
@@ -321,7 +323,7 @@ class AudioEngine {
     return slot.el.play().catch((e) => { if (e && e.name !== 'AbortError') throw e; });
   }
 
-  pauseActive() { this.slots.forEach((s) => s.el.pause()); }
+  pauseActive() { this.cancelCrossfade(true);this.slots.forEach((s) => s.el.pause()); }
 
   togglePlay() {
     if (this.activeEl.paused) return this.play();
@@ -378,44 +380,60 @@ class AudioEngine {
     this.slots.forEach((s) => { s.el.preservesPitch = on; });
   }
 
-  switchTrack(loader, onReady) {
-    const nextSlotIndex = this.crossfadeSeconds > 0 ? 1 - this.activeSlot : this.activeSlot;
-    const prevSlotIndex = this.activeSlot;
-    const nextSlot = this.slots[nextSlotIndex];
+  cancelCrossfade(notify=false){
+    ++this.transitionEpoch;
+    clearTimeout(this.transitionTimer);this.transitionTimer=null;
+    const pending=this.pendingTransition;this.pendingTransition=null;
+    const now=this.ctx.currentTime;
+    this.slots.forEach((slot,i)=>{
+      slot.gain.gain.cancelScheduledValues(now);
+      slot.gain.gain.setValueAtTime(i===this.activeSlot?1:0,now);
+      if(i!==this.activeSlot)slot.el.pause();
+    });
+    if(notify&&pending?.onReady)pending.onReady(this.slots[this.activeSlot],false);
+  }
 
-    if (nextSlotIndex === prevSlotIndex) {
-      loader(nextSlotIndex);
-      nextSlot.gain.gain.value = 1;
-      this.resume();
-      nextSlot.el.playbackRate = this.state.tempo;
-      nextSlot.el.preservesPitch = this.state.preservePitch;
-      nextSlot.el.play().catch(() => {});
-      if (onReady) onReady(nextSlot);
+  switchTrack(loader, onReady) {
+    this.cancelCrossfade();
+    const epoch=this.transitionEpoch,prevSlotIndex=this.activeSlot;
+    const dur=Math.max(0,Math.min(30,Number(this.crossfadeSeconds)||0));
+    const nextSlotIndex=dur>0&&!this.activeEl.paused?1-prevSlotIndex:prevSlotIndex;
+    const nextSlot=this.slots[nextSlotIndex],prevSlot=this.slots[prevSlotIndex];
+    const now=this.ctx.currentTime;
+    loader(nextSlotIndex);
+    nextSlot.gain.gain.setValueAtTime(nextSlotIndex===prevSlotIndex?1:0,now);
+    this.resume();
+    nextSlot.el.playbackRate=this.state.tempo;
+    nextSlot.el.preservesPitch=this.state.preservePitch;
+    if(nextSlotIndex===prevSlotIndex){
+      nextSlot.el.play().catch(()=>{});
+      if(onReady)onReady(nextSlot,true);
       return;
     }
-
-    loader(nextSlotIndex);
-    nextSlot.gain.gain.value = 0;
-    this.resume();
-    nextSlot.el.playbackRate = this.state.tempo;
-    nextSlot.el.preservesPitch = this.state.preservePitch;
-
-    const doCrossfade = () => {
-      const now = this.ctx.currentTime;
-      const dur = this.crossfadeSeconds;
-      const prevSlot = this.slots[prevSlotIndex];
-      nextSlot.gain.gain.cancelScheduledValues(now);
-      nextSlot.gain.gain.setValueAtTime(0, now);
-      nextSlot.gain.gain.linearRampToValueAtTime(1, now + dur);
-      prevSlot.gain.gain.cancelScheduledValues(now);
-      prevSlot.gain.gain.setValueAtTime(prevSlot.gain.gain.value, now);
-      prevSlot.gain.gain.linearRampToValueAtTime(0, now + dur);
-      setTimeout(() => prevSlot.el.pause(), dur * 1000 + 50);
-      this.activeSlot = nextSlotIndex;
-    };
-
-    nextSlot.el.play().then(doCrossfade).catch(doCrossfade);
-    if (onReady) onReady(nextSlot);
+    this.pendingTransition={onReady};
+    // Never commit a rejected or superseded play promise.
+    Promise.resolve(nextSlot.el.play()).then(()=>{
+      if(epoch!==this.transitionEpoch)return;
+      this.pendingTransition=null;
+      const at=this.ctx.currentTime;
+      nextSlot.gain.gain.cancelScheduledValues(at);
+      nextSlot.gain.gain.setValueAtTime(0,at);
+      nextSlot.gain.gain.linearRampToValueAtTime(1,at+dur);
+      prevSlot.gain.gain.cancelScheduledValues(at);
+      prevSlot.gain.gain.setValueAtTime(1,at);
+      prevSlot.gain.gain.linearRampToValueAtTime(0,at+dur);
+      this.activeSlot=nextSlotIndex;
+      this.transitionTimer=setTimeout(()=>{
+        if(epoch===this.transitionEpoch&&this.activeSlot!==prevSlotIndex){
+          prevSlot.el.pause();this.transitionTimer=null;
+        }
+      },dur*1000+50);
+      if(onReady)onReady(nextSlot,true);
+    },()=>{
+      if(epoch!==this.transitionEpoch)return;
+      this.cancelCrossfade();
+      if(onReady)onReady(prevSlot,false);
+    });
   }
 
   setEqBand(index, db) {
@@ -1188,8 +1206,8 @@ function syncPlayButton() {
   }
 }
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => engine.togglePlay().then(syncPlayButton));
-  navigator.mediaSession.setActionHandler('pause', () => engine.togglePlay().then(syncPlayButton));
+  navigator.mediaSession.setActionHandler('play', () => {if(engine.activeEl.paused)engine.play().then(syncPlayButton).catch(()=>{});});
+  navigator.mediaSession.setActionHandler('pause', () => {engine.pauseActive();syncPlayButton();});
   navigator.mediaSession.setActionHandler('previoustrack', () => goPrev());
   navigator.mediaSession.setActionHandler('nexttrack', () => goNext());
 }
@@ -1237,16 +1255,25 @@ function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
   currentTrackIndex = index;
   const item = playlist[index];
-  engine.setNormalizationGain(1);
-  showLoudnessInfo(null);
-  analyzeLoudness(item).then((gain) => {
-    if (playlist[currentTrackIndex] === item) { engine.setNormalizationGain(gain); showLoudnessInfo(item); }
-  });
   engine.switchTrack((slotIndex) => {
-    const slot = engine.slots[slotIndex];
-    slot.el.src = item.file ? URL.createObjectURL(item.file) : item.url;
-    slot.name = item.name;
-  }, () => { updateTrackNameUi(); syncPlayButton(); renderPlaylist(); });
+    const slot=engine.slots[slotIndex],old=slot.objectUrl;
+    slot.objectUrl=item.file?URL.createObjectURL(item.file):null;
+    slot.el.src=slot.objectUrl||item.url;
+    if(old)URL.revokeObjectURL(old);
+    slot.item=item;slot.name=item.name;
+  },(slot,ok)=>{
+    // On failed or cancelled crossfade keep the previous active track.
+    const selected=ok?item:slot.item;
+    currentTrackIndex=playlist.indexOf(selected);
+    engine.setNormalizationGain(typeof selected?.normGain==='number'?selected.normGain:1);
+    showLoudnessInfo(selected);
+    if(selected&&ok)analyzeLoudness(selected).then(gain=>{
+      if(playlist[currentTrackIndex]===selected&&engine.slots[engine.activeSlot].item===selected){
+        engine.setNormalizationGain(gain);showLoudnessInfo(selected);
+      }
+    });
+    updateTrackNameUi();syncPlayButton();renderPlaylist();
+  });
 }
 function showLoudnessInfo(item) {
   const el = document.getElementById('loudnessInfo');
@@ -2608,6 +2635,21 @@ window.__selfTest = async function () {
   const out = [];
   const check = (name, ok, extra) => out.push({ name, ok: !!ok, extra: extra === undefined ? '' : String(extra) });
   try {
+    // Exercise the real transition methods without opening an audio device.
+    const fake=Object.create(AudioEngine.prototype);
+    const makeSlot=()=>({el:{paused:false,pause(){this.paused=true;},play(){this.paused=false;return new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});}},gain:{gain:{cancelScheduledValues(){},setValueAtTime(){},linearRampToValueAtTime(){}}}});
+    Object.assign(fake,{slots:[makeSlot(),makeSlot()],activeSlot:0,crossfadeSeconds:1,transitionEpoch:0,transitionTimer:null,pendingTransition:null,ctx:{currentTime:0},state:{tempo:1,preservePitch:true},resume(){}});
+    let committed=0,rejected=0;
+    const ready=(_,ok)=>ok?committed++:rejected++;
+    fake.switchTrack(()=>{},ready);const stale=fake.slots[1].el.resolve;
+    fake.switchTrack(()=>{},ready);stale();await Promise.resolve();
+    check('superseded crossfade cannot commit',fake.activeSlot===0&&committed===0);
+    fake.slots[1].el.reject();await Promise.resolve();
+    check('rejected crossfade keeps previous slot',fake.activeSlot===0&&rejected===1);
+    fake.switchTrack(()=>{},ready);fake.slots[1].el.resolve();await Promise.resolve();
+    check('successful crossfade commits only once',fake.activeSlot===1&&committed===1&&fake.transitionTimer!==null);
+    fake.pauseActive();
+    check('pause cancels crossfade timer and both slots',fake.transitionTimer===null&&fake.slots.every(s=>s.el.paused));
     check('audiolib loaded', typeof WaveframeAudio === 'object' && typeof WaveframeAudio.integratedLufs === 'function');
     engine.setPresence(100);engine.setBalance(-50);syncProfessionalFx();
     const response=new Float32Array(1),phase=new Float32Array(1);const testFilter=new OfflineAudioContext(2,480,48000).createBiquadFilter();

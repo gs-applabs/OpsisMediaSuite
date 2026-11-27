@@ -39,6 +39,11 @@ void opsis_dsp_reset(opsis_dsp* dsp);
 // Invalid args fail without modification. Enabled path uses sample peak
 // clipping protection only (not a true-peak limiter or full DSP parity).
 int opsis_dsp_process(opsis_dsp* dsp,float* samples,uint32_t frames);
+// Callback-friendly planar PCM, same state/algorithms as interleaved.
+// One writable non-overlapping array per channel, 0..2048 frames.
+// No allocation, locks, I/O or format conversion; caller owns buffers.
+// Configure/reset between calls on the SAME thread, not concurrently.
+int opsis_dsp_process_planar(opsis_dsp* dsp,float* const* channels,uint32_t frames);
 #ifdef __cplusplus
 }
 #endif

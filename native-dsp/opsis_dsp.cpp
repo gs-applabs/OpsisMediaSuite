@@ -202,22 +202,51 @@ extern "C" void opsis_dsp_reset(opsis_dsp* p){
     bank.dynamics.envelope=0;bank.dynamics.gain=1;bank.dynamics.target=1;bank.dynamics.tick=0;
     p->banks[1-p->active]={};
 }
+namespace {
+void processFrame(opsis_dsp* p,Frame& input){
+    Frame output=input;
+    p->banks[p->active].sample(output,p->channels,p->lfe);
+    if(p->fade){
+        p->banks[1-p->active].sample(input,p->channels,p->lfe);
+        const double mix=double(p->length-p->fade+1)/p->length;
+        for(uint32_t ch=0;ch<p->channels;++ch)output[ch]=output[ch]*(1-mix)+input[ch]*mix;
+        if(--p->fade==0)p->active=1-p->active;
+    }
+    input=output;
+}
+}
 extern "C" int opsis_dsp_process(opsis_dsp* p,float* samples,uint32_t frames){
     if(!p||(!samples&&frames)||frames>65536)return 0;
     for(uint32_t i=0;i<frames;++i){
         auto* f=samples+size_t(i)*p->channels;
-        // Exact finite bypass, sanitizes invalid PCM. Not a recording path.
         Frame input{};
         for(uint32_t ch=0;ch<p->channels;++ch)input[ch]=std::isfinite(f[ch])?f[ch]:0;
-        Frame output=input;
-        p->banks[p->active].sample(output,p->channels,p->lfe);
-        if(p->fade){
-            p->banks[1-p->active].sample(input,p->channels,p->lfe);
-            const double mix=double(p->length-p->fade+1)/p->length;
-            for(uint32_t ch=0;ch<p->channels;++ch)output[ch]=output[ch]*(1-mix)+input[ch]*mix;
-            if(--p->fade==0)p->active=1-p->active;
+        processFrame(p,input);
+        for(uint32_t ch=0;ch<p->channels;++ch)f[ch]=float(input[ch]);
+    }
+    return 1;
+}
+extern "C" int opsis_dsp_process_planar(opsis_dsp* p,float* const* channels,uint32_t frames){
+    if(!p||frames>2048||(!channels&&frames))return 0;
+    if(!frames)return 1;
+    // Reject overlapping planes before touching PCM or DSP state.
+    const auto bytes=uintptr_t(frames)*sizeof(float);
+    for(uint32_t ch=0;ch<p->channels;++ch){
+        if(!channels[ch])return 0;
+        const auto addr=reinterpret_cast<uintptr_t>(channels[ch]);
+        if(addr>std::numeric_limits<uintptr_t>::max()-bytes)return 0;
+        for(uint32_t prev=0;prev<ch;++prev){
+            const auto other=reinterpret_cast<uintptr_t>(channels[prev]);
+            if(addr<other+bytes&&other<addr+bytes)return 0;
         }
-        for(uint32_t ch=0;ch<p->channels;++ch)f[ch]=float(output[ch]);
+    }
+    for(uint32_t i=0;i<frames;++i){
+        Frame input{};
+        for(uint32_t ch=0;ch<p->channels;++ch){
+            const float x=channels[ch][i];input[ch]=std::isfinite(x)?x:0;
+        }
+        processFrame(p,input);
+        for(uint32_t ch=0;ch<p->channels;++ch)channels[ch][i]=float(input[ch]);
     }
     return 1;
 }

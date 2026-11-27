@@ -63,6 +63,41 @@ int main(){
     }
     auto* mono=opsis_dsp_create(48000,1);float signal[]{.2f,.3f};check(mono&&opsis_dsp_process(mono,signal,2)&&signal[1]==.3f,"mono");
     opsis_dsp_destroy(mono);
+    // Compare identical states using interleaved and callback-sized planar PCM.
+    for(unsigned rate:{44100u,48000u,96000u}){
+        auto* p=opsis_dsp_create(rate,2);auto* q=opsis_dsp_create(rate,2);
+        check(p&&q,"planar create");
+        opsis_dsp_config_v2 cfg{};cfg.version=2;cfg.base.version=1;cfg.base.enabled=1;
+        cfg.base.eq_db[5]=6;cfg.base.bass_db=3;cfg.base.surround_percent=50;
+        cfg.compressor_mode=2;cfg.ambience_percent=50;cfg.exciter_percent=30;cfg.limiter=1;
+        check(opsis_dsp_configure_v2(p,&cfg)&&opsis_dsp_configure_v2(q,&cfg),"planar config");
+        constexpr unsigned size=128;
+        std::array<float,size> l{},r{};
+        std::array<float,size*2> inter{};
+        float* planes[]{l.data(),r.data()};
+        float* alias[]{l.data(),l.data()+1};
+        check(!opsis_dsp_process_planar(q,alias,size)&&!opsis_dsp_process_planar(q,planes,2049),"reject overlap and oversized");
+        check(opsis_dsp_process_planar(q,nullptr,0),"zero frames");
+        double maxMs=0,sumMs=0;
+        const unsigned blocks=rate*10/size;
+        for(unsigned b=0;b<blocks;++b){
+            if(b==100){cfg.base.enabled=0;check(opsis_dsp_configure_v2(p,&cfg)&&opsis_dsp_configure_v2(q,&cfg),"transition bypass");}
+            if(b==200){cfg.base.enabled=1;check(opsis_dsp_configure_v2(p,&cfg)&&opsis_dsp_configure_v2(q,&cfg),"transition enable");}
+            for(unsigned i=0;i<size;++i){
+                const auto n=b*size+i;
+                l[i]=float(.1*std::sin(2*pi*1000*n/rate));r[i]=float(.2*std::sin(2*pi*440*n/rate));
+                inter[i*2]=l[i];inter[i*2+1]=r[i];
+            }
+            check(opsis_dsp_process(p,inter.data(),size),"interleaved callback");
+            const auto begin=std::chrono::steady_clock::now();
+            check(opsis_dsp_process_planar(q,planes,size),"planar callback");
+            const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+            sumMs+=ms;maxMs=std::max(maxMs,ms);
+            for(unsigned i=0;i<size;++i)check(l[i]==inter[i*2]&&r[i]==inter[i*2+1],"planar exact parity");
+        }
+        std::cout<<"Planar "<<rate<<" Hz: "<<blocks<<" blocks of "<<size<<" frames, average "<<sumMs/blocks<<" ms, max "<<maxMs<<" ms; CPU wall time only, no device latency\n";
+        opsis_dsp_destroy(p);opsis_dsp_destroy(q);
+    }
     check(!opsis_dsp_create_layout(48000,0x33)&&!opsis_dsp_create_layout(48000,0x603),"reject unspecified layouts");
     for(unsigned mask:{0x3fu,0x60fu,0x63fu}){
         const unsigned channels=mask==0x63f?8:6;
