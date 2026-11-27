@@ -308,3 +308,13 @@ test('native control accepts only bounded fixed commands',()=>{
 });
 
 test('TTML simple media times reject unsupported frames and malformed units',()=>{assert.equal(V.ttmlSeconds('00:01:02.500'),62.5);assert.equal(V.ttmlSeconds('250ms'),.25);assert.equal(V.ttmlSeconds('1.5m'),90);assert.equal(V.ttmlSeconds('12f'),null);assert.equal(V.ttmlSeconds('00:00:99'),null);});
+
+
+test('native stdout framing recovers after oversized lines and preserves subsequent acknowledgments',()=>{
+ const {createLineFramer}=require('../native-host'),lines=[];
+ const feed=createLineFramer(s=>lines.push(s));
+ feed('{"event":"rea');feed('dy"}\r\n'+'x'.repeat(20000)+'\n{"event":"ack","id":1,"ok":true}\n');
+ feed('x'.repeat(1025));feed('{"event":"ready"}\n');feed('{"event":"position"}\n');
+ assert.deepEqual(lines,['{"event":"ready"}','{"event":"ack","id":1,"ok":true}','{"event":"position"}']);
+ const burst='{}\n'.repeat(6000);feed(burst);assert.equal(lines.length,6003);
+});

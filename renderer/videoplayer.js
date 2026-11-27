@@ -69,7 +69,7 @@
     const wasPlaying=!video.paused,pos=Number.isFinite(video.currentTime)?Math.round(video.currentTime*1000):0;
     const resume=pos||Number(get(K.resume,{})[p])||0;
     saveResume();video.pause();
-    const marker={p,g,session:null};handoff=marker;
+    const marker={p,g,session:null,commands:[],dispatching:false};handoff=marker;
     $('vpNativeStop').hidden=false;
     say(engine+' — opening native player…');
     const sub=subSrc[subSel];
@@ -85,12 +85,31 @@
       if(handoff!==marker)return;
       if(s?.session===marker.session&&s.durationMs>0){const map=get(K.resume,{}),act=VP.resumeAction(s.positionMs,s.durationMs);if(act==='save'){map[p]=Math.round(s.positionMs);put(K.resume,VP.limitResume(map));}else if(act==='clear'){delete map[p];put(K.resume,map);}}
       if(s?.session===marker.session){marker.status=s;syncTime();syncTransport();if(!seeking&&Number.isFinite(s.volume))$('vpVolume').value=String(s.volume);}
-      if(!s||s.phase==='closed'||s.phase==='error'||s.session!==marker.session){handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;say(engine+' — native window closed');return;}
+      if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
       nativePoll=setTimeout(poll,1000);
     };
     poll();return true;
   }
-  function nativeCommand(name,value){if(!handoff?.session)return;api.vpNativeCommand(handoff.session,name,value).then(r=>{if(!r?.ok&&r?.code!=='busy')say('Native command unavailable');}).catch(()=>{});}
+  // Serialize transport commands per handoff instead of silently dropping fast clicks.
+  async function drainNativeCommands(marker){
+    if(marker.dispatching)return;marker.dispatching=true;
+    try{
+      while(handoff===marker&&marker.commands.length){
+        const {name,value}=marker.commands.shift();
+        const r=await api.vpNativeCommand(marker.session,name,value).catch(()=>null);
+        if(handoff!==marker)return;
+        if(!r?.ok){say('Native command unavailable');if(!r||['timeout','unavailable','pipe-error','native-closed','native-playback-failed'].includes(r.code)){marker.commands.length=0;break;}}
+      }
+    }finally{marker.dispatching=false;}
+  }
+  function nativeCommand(name,value){
+    const marker=handoff;if(!marker?.session)return;
+    const queue=marker.commands,last=queue[queue.length-1];
+    if(last?.name===name&&['seek','volume','rate'].includes(name))last.value=value;
+    else if(queue.length<8)queue.push({name,value});
+    else{say('Native command queue full');return;}
+    drainNativeCommands(marker);
+  }
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
