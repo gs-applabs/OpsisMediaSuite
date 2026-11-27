@@ -711,6 +711,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
       await js("document.getElementById('phHistMode').value='rgb';document.getElementById('phHistMode').dispatchEvent(new Event('change'));1");
       check('photo RGB histogram and clipping statistics render',await until("document.getElementById('phClipping').textContent.includes('%')&&document.getElementById('phHistMode').value==='rgb'",3000));
       await js("document.getElementById('phReset').click();1");
+      await js("document.getElementById('phCloseMedia').click();document.getElementById('inputModalCancel').click();1");
+      check('photo close cancellation retains open image',await js("document.getElementById('phDrop').classList.contains('has-media')"));
+      await js("document.getElementById('phCloseMedia').click();document.getElementById('inputModalOk').click();1");
+      check('confirmed photo close releases preview surface',await until("document.getElementById('phCanvas').width===0&&document.getElementById('phCloseMedia').disabled&&!document.getElementById('phDrop').classList.contains('has-media')",3000));
+      await js("document.getElementById('vpCloseMedia').click();1");
+      check('video close releases media element and retains playlist',await js("!document.getElementById('vpVideo').getAttribute('src')&&!document.getElementById('vpFrame').classList.contains('has-media')"));
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     try {
       /* layout of the three new areas in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */

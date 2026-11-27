@@ -12,7 +12,7 @@
   const put = (k, v) => { try { const encoded=JSON.stringify(v);if(localStorage.getItem(k)!==encoded)localStorage.setItem(k,encoded); } catch (_) { /* storage unavailable */ } };
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let session = null, playbackEngine = null;
+  let session = null, playbackEngine = null,fxClosing=null;
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
   let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null, nativeSubtitleTrack = null;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, subScale = 1, subFps=0, saveTimer = 0, built = false, fx = null;
@@ -61,7 +61,9 @@
     };
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
-  function stop() { stopNative();saveResume(); releaseTicket(); ++generation; if(session)session.stop().catch(()=>{}); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
+  function disposeSession(){const previous=session;session=null;if(previous)previous.stop().catch(()=>{});}
+  function stop() { stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
+  function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
 
   let handoff=null,nativePoll=null,viewportTimer=null;
   function clearViewport(){clearInterval(viewportTimer);viewportTimer=null;}
@@ -166,7 +168,7 @@
     if (i < 0 || i >= list.length) return;
     stopNative();saveResume(); releaseTicket();
     const g = ++generation;
-    if(session)session.stop().catch(()=>{}); playbackEngine=null;
+    disposeSession(); playbackEngine=null;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
     idx = i; const p = list[i];
     clearSubs();
@@ -322,13 +324,16 @@
     if(fx.presence)fx.presence.gain.value=on&&typeof engine!=='undefined'?WaveframeAudio.presenceParams(engine.state.presence).gain:0;
     if(fx.balance)fx.balance.pan.value=on&&typeof engine!=='undefined'?WaveframeAudio.balanceValue(engine.state.balance):0;
   }
-  function toggleFx() {
+  async function toggleFx() {
     if (!current() || !video.getAttribute('src')) return;
     const btn = $('vpFx'), on = btn.getAttribute('aria-pressed') !== 'true';
     if (on && VP.isUrl(current())) { say(t('vp.fxLocalOnly')); return; }
     if (!fx) {
+      const expected=video,g=generation;
+      if(fxClosing){await fxClosing;if(expected!==video||g!==generation||!current())return;if(fx)return;}
+      let ctx;
       try {
-        const ctx = new AudioContext(), src = ctx.createMediaElementSource(video), freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+        ctx = new AudioContext();const src = ctx.createMediaElementSource(video), freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
         const filters = freqs.map((f, i) => { const n = ctx.createBiquadFilter(); n.type = i === 0 ? 'lowshelf' : i === 9 ? 'highshelf' : 'peaking'; n.frequency.value = f; n.Q.value = 1; return n; });
         const bass = ctx.createBiquadFilter(); bass.type = 'lowshelf'; bass.frequency.value = 100;
         const presence=ctx.createBiquadFilter();presence.type='peaking';presence.frequency.value=2800;presence.Q.value=.85;
@@ -336,7 +341,7 @@
         let node = src; for (const f of [...filters, bass,presence,balance]) { node.connect(f); node = f; }
         node.connect(ctx.destination);
         fx = { ctx, filters, bass,presence,balance };
-      } catch (_) { say(t('vp.fxFailed')); return; }
+      } catch (_) { if(ctx)ctx.close().catch(()=>{});say(t('vp.fxFailed')); return; }
     }
     btn.setAttribute('aria-pressed', String(on)); btn.classList.toggle('active', on);
     if (fx.ctx.state === 'suspended') fx.ctx.resume().catch(() => say(t('vp.fxFailed')));
@@ -463,7 +468,7 @@
     const old = video, volume = old.volume, muted = old.muted;
     if (eventController) eventController.abort();
     old.pause(); old.removeAttribute('src'); old.load(); $('vpFrame').classList.remove('has-media');
-    if (fx) { fx.ctx.close().catch(() => {}); fx = null; }
+    if (fx) { const closing=fx.ctx.close().catch(()=>{});fxClosing=closing;closing.finally(()=>{if(fxClosing===closing)fxClosing=null;});fx=null; }
     const fresh = old.cloneNode(false);
     fresh.removeAttribute('crossorigin');
     old.replaceWith(fresh); video = fresh; nativeSubtitleTrack = null;
@@ -487,6 +492,7 @@
     renderList(); fillPlaylists(); fillRecent(); fillSubSelect();
 
     $('vpOpen').addEventListener('click', async () => addPaths(await api.vpPick('files'), true));
+    $('vpCloseMedia').addEventListener('click',closeMedia);
     $('vpOpenFolder').addEventListener('click', async () => addPaths(await api.vpPick('folder'), true));
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
@@ -830,7 +836,7 @@
       if(!built)return;
       if(handoff){stopNative();return;}
       // Cancel an unresolved video open as well as an already-playing element.
-      if(current()&&!playbackEngine){++generation;releaseTicket();if(session)session.stop().catch(()=>{});video.pause();return;}
+      if(current()&&!playbackEngine){++generation;releaseTicket();disposeSession();video.pause();return;}
       if(video&&!video.paused)video.pause();
     },
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },

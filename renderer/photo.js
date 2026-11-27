@@ -55,6 +55,13 @@
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
     $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png');$('phMatteField').hidden=$('phFormat').value!=='jpeg'; });
     $('phSave').addEventListener('click', save);
+    $('phCloseMedia').addEventListener('click',async()=>{
+      if(!bmp||busy||opening)return;
+      const current=bmp;
+      const greek=document.documentElement.lang==='el';
+      if(!await showConfirmDialog(greek?'Κλείσιμο φωτογραφίας':'Close photo',greek?'Οι μη αποθηκευμένες αλλαγές θα χαθούν. Το αρχικό αρχείο δεν επηρεάζεται.':'Unsaved edits will be discarded. The original file is unaffected.'))return;
+      if(bmp===current&&!busy&&!opening)releasePhoto();
+    });
     $('phResize').addEventListener('change',exportSize);
     const drop = $('phDrop');
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
@@ -69,6 +76,16 @@
     document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone');if(orig)schedule(); });
   }
 
+  function releasePhoto(){
+    ++openGeneration;if(raf)cancelAnimationFrame(raf);raf=0;
+    bmp?.close();bmp=null;orig=null;preview=null;comparing=false;
+    name='photo';params=P.defaults();cropKey='none';history=P.createHistory({params,cropKey});
+    $('phCanvas').width=0;$('phCanvas').height=0;
+    const hist=$('phHist');hist.getContext('2d').clearRect(0,0,hist.width,hist.height);
+    $('phDrop').classList.remove('has-media');$('phCloseMedia').disabled=true;
+    $('phCrop').value='none';syncCrop();syncSliders();updateHistory();
+    $('phClipping').textContent='';$('phDimensions').textContent='';$('phSave').title='';info('');
+  }
   function syncCrop(){ $('phCropX').value=String(params.anchorX??50);$('phCropY').value=String(params.anchorY??50);$('phCropX').disabled=$('phCropY').disabled=cropKey==='none'; }
   function syncSliders() {
     for (const [key] of SLIDERS) {
@@ -116,7 +133,7 @@
       name=nm||'photo';params=P.defaults();cropKey='none';$('phCrop').value='none';syncCrop();syncSliders();
       orig = { data: d.data, width: d.width, height: d.height };
       preview = orig; history=P.createHistory({params,cropKey});comparing=false;updateHistory();
-      $('phDrop').classList.add('has-media');
+      $('phDrop').classList.add('has-media');$('phCloseMedia').disabled=false;
       info(fmt(t('ph.opened'), { name, w: b.width, h: b.height, mp: (b.width * b.height / 1e6).toFixed(1) }));
       schedule();
     } catch (_) { if (generation === openGeneration && !busy) info(t('ph.cantOpen')); }finally{candidate?.close();}
@@ -133,7 +150,7 @@
   function render() {
     if (!orig) return;
     const out = comparing ? P.geometry(orig, { ...P.defaults(), rotate: params.rotate, flipH: params.flipH, flipV: params.flipV, crop: cropParams() }) : P.process(orig, full());
-    const c = $('phCanvas'); c.width = out.width; c.height = out.height;
+    const c = $('phCanvas'); if(c.width!==out.width||c.height!==out.height){c.width=out.width;c.height=out.height;}
     c.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
     drawHist(out.data);
     exportSize();

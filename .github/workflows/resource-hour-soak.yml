@@ -1,0 +1,54 @@
+name: Hour-long resource soak (test only)
+on:
+  pull_request:
+    paths: ['.github/workflows/resource-hour-soak.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hour-soak-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  soak:
+    runs-on: windows-latest
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: JavaScript syntax gate
+        shell: pwsh
+        run: |
+          git ls-files '*.js' | ForEach-Object { node --check $_; if ($LASTEXITCODE) { throw "Syntax error: $_" } }
+      - name: Install dependencies
+        run: npm ci
+      - name: Dependency audit (production and development)
+        run: npm audit --audit-level=high
+      - name: FFmpeg for the real-conversion tests and the converter self-test
+        shell: pwsh
+        run: ./.github/scripts/ensure-ffmpeg.ps1
+      - name: Build experimental native DSP adapter for integration tests
+        shell: pwsh
+        run: |
+          cmake -S native-dsp -B native-dsp-build -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE) { throw 'native DSP configure failed' }
+          cmake --build native-dsp-build --config Release
+          if ($LASTEXITCODE) { throw 'native DSP build failed' }
+          if (-not (Test-Path native-dsp-build/Release/opsis_dsp_pcm.exe)) { throw 'adapter missing' }
+      - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
+        env:
+          OPSIS_RESOURCE_PROFILE: '1'
+          OPSIS_RESOURCE_SOAK: '1'
+          OPSIS_SOAK_CYCLES: '1200'
+        run: |
+          npm run selftest 2>&1 | Tee-Object -FilePath selftest-resource.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload resource sampling and renderer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hour-soak-resource-profile
+          path: selftest-resource.log
+          if-no-files-found: warn

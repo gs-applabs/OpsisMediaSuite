@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.8
+- Explicit close media controls: photo close confirms discarded edits and releases bitmap, canvas and history; video close disposes session, media element, ticket and DSP context without deleting playlist. Serialize video DSP context replacement. Add feature guide entries and renderer regressions. Dedicated hour-long Windows resource soak workflow (1,200 cycles), separate from normal CI. Previous 278/278 and 20/20 playback verified; new workflow not yet complete.
+
 ## Unreleased — Ultra Mega Pass 20B.7 anti-pile-up
 - One metadata scan with revision coalescing, a bounded 64-key serial queue, deduplicated active requests and cancellation of removed tracks. Remember missing covers, bound returned tag text, prevent concurrent main metadata reads. Manual Windows CI soak choice 20/120/1200 cycles; bounded test stdout and failure diagnostics. Prior 20B.5 Windows CI 275/275 and 20/20 real playback advancement, idle CPU 0.29%; current changes and extended soak not yet verified.
 

@@ -777,6 +777,14 @@ function showInputDialog(title, initial = '') {
   return new Promise((resolve) => { modalResolver = resolve; });
 }
 
+function showConfirmDialog(title,message){
+  if(modalResolver)return Promise.resolve(false);
+  inputModalTitle.textContent=title;inputModalMessage.textContent=message;
+  inputModalMessage.style.display='block';inputModalField.style.display='none';
+  inputModalCancel.style.display='inline-block';inputModalOverlay.classList.add('open');
+  inputModalCancel.focus();
+  return new Promise(resolve=>{modalResolver=value=>resolve(value===true);});
+}
 function showAlertDialog(title, message) {
   if(modalResolver)return Promise.resolve();
   inputModalTitle.textContent = title;
