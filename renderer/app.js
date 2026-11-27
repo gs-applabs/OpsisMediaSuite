@@ -1727,7 +1727,7 @@ window.waveframe.onMetadataProgress(p=>{if(metadataUiBusy&&Number.isInteger(p.do
 async function completeMusicTags(mode){
   if(metadataUiBusy)return;
   metadataUiBusy=true;
-  const buttons=['metadataAuto','metadataManual','metadataOnline','metadataFingerprint'].map(id=>document.getElementById(id));
+  const buttons=['metadataAuto','metadataManual','metadataOnline','metadataFingerprint','metadataCover'].map(id=>document.getElementById(id));
   buttons.forEach(b=>b.disabled=true);
   try{
   const values={};
@@ -1739,7 +1739,7 @@ async function completeMusicTags(mode){
     }
   }
   metadataProgress.textContent='';
-  metadataCancel.hidden=mode!=='auto';metadataCancel.disabled=false;
+  metadataCancel.hidden=false;metadataCancel.disabled=false;
     const result=await window.waveframe.completeMetadata(mode,values);
     if(result.cancelled)return;
     if(result.error){await showAlertDialog('Metadata',result.error);return;}
@@ -1755,6 +1755,7 @@ document.getElementById('metadataAuto').addEventListener('click',()=>completeMus
 document.getElementById('metadataManual').addEventListener('click',()=>completeMusicTags('manual'));
 document.getElementById('metadataOnline').addEventListener('click',()=>completeMusicTags('online'));
 document.getElementById('metadataFingerprint').addEventListener('click',()=>completeMusicTags('fingerprint'));
+document.getElementById('metadataCover').addEventListener('click',()=>completeMusicTags('cover'));
 
 const metadataReads=new WeakMap(),musicArtCache=new Map(),noArtwork=new WeakSet();
 let metadataRenderTimer=0,metadataSaveTimer=0,metadataScanBusy=false,metadataScanRevision=0;

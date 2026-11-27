@@ -479,15 +479,31 @@ function createWindow() {
   });
 
   let metadataBusy=false, metadataCancelled=false;
+  win.once('closed',()=>{metadataCancelled=true;});
   ipcMain.handle('metadata:cancel',e=>{if(!fromMain(e)||!metadataBusy)return false;metadataCancelled=true;return true;});
   ipcMain.handle('metadata:complete',async(event,mode,values)=>{
-    if(!fromMain(event)||metadataBusy||!['auto','manual','online','fingerprint'].includes(mode))return {error:'busy or denied'};
+    if(!fromMain(event)||metadataBusy||!['auto','manual','online','fingerprint','cover'].includes(mode))return {error:'busy or denied'};
     metadataBusy=true;metadataCancelled=false;
     try{
       const tags=require('./music-tags');
       const picked=await dialog.showOpenDialog(win,{title:'Select MP3 / FLAC files',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3 / FLAC',extensions:['mp3','flac']}]});
-      if(picked.canceled)return {cancelled:true};
+      if(picked.canceled||metadataCancelled||win.isDestroyed())return {cancelled:true};
       if(picked.filePaths.length>50)return {error:'Maximum 50 files per batch'};
+      if(mode==='cover'){
+        const file=picked.filePaths[0];
+        const image=await dialog.showOpenDialog(win,{title:'Select local cover (JPEG / PNG)',properties:['openFile'],filters:[{name:'JPEG / PNG',extensions:['jpg','jpeg','png']}]});
+        if(image.canceled||metadataCancelled||win.isDestroyed())return {cancelled:true};
+        const safe=localPath(image.filePaths[0]);if(!safe)return {error:'Unsafe image path'};
+        const h=await fs.promises.open(safe,'r');let cover;
+        try{const st=await h.stat();if(st.size>2*1024*1024||st.size<24)return {error:'Cover must be at most 2 MiB'};
+          const data=Buffer.alloc(st.size);if((await h.read(data,0,data.length,0)).bytesRead!==data.length)return {error:'Image read failed'};
+          cover=tags.validateCover({data});
+        }finally{await h.close();}
+        if(!cover||nativeImage.createFromBuffer(cover.data).isEmpty())return {error:'Invalid JPEG / PNG cover (maximum 4096 px)'};
+        const confirm=await dialog.showMessageBox(win,{type:'question',message:'Add missing cover only? / Προσθήκη μόνο αν λείπει εξώφυλλο;',detail:path.basename(file)+' — '+cover.width+' × '+cover.height+' px. Original backup retained; existing artwork is never replaced.',buttons:['Cancel / Ακύρωση','Add cover / Προσθήκη'],defaultId:0,cancelId:0});
+        if(confirm.response!==1||metadataCancelled||win.isDestroyed())return {cancelled:true};
+        return {rows:[{file,...await tags.complete(file,{}, {cover,cancelled:()=>metadataCancelled||win.isDestroyed()})}]};
+      }
       if(mode==='online'||mode==='fingerprint'){
         const file=picked.filePaths[0], stat=await fs.promises.lstat(file);
         if(!stat.isFile()||stat.size>512*1024*1024||/^(\\\\|\/\/)/.test(file))return {error:'Unsupported local file'};
@@ -502,16 +518,18 @@ function createWindow() {
           if(!ffmpeg)return {error:'FFmpeg is not installed'};
           if(!Number.isFinite(m.format.duration))return {error:'Audio duration unavailable'};
           const consent=await dialog.showMessageBox(win,{type:'question',message:'Send acoustic fingerprint and duration to AcoustID?',detail:'The fingerprint is derived locally from up to 120 seconds. No audio file, file name or path is uploaded.',buttons:['Cancel / Ακύρωση','Identify / Αναγνώριση'],defaultId:0,cancelId:0});
-          if(consent.response!==1)return {cancelled:true};
+          if(consent.response!==1||metadataCancelled||win.isDestroyed())return {cancelled:true};
           const fp=await lookup.fingerprint(ffmpeg,file);
+          if(metadataCancelled||win.isDestroyed())return {cancelled:true};
           choices=await lookup.acousticSearch(fp,m.format.duration,key);
         }else{
           const guessed=tags.infer(file), artist=m.common.artist||guessed.artist, title=m.common.title||guessed.title;
           if(!artist||!title)return {error:'Artist and title needed / Απαιτούνται καλλιτέχνης και τίτλος'};
           const consent=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Search MusicBrainz'],defaultId:0,cancelId:0,message:'Send artist and title to MusicBrainz?',detail:artist+' — '+title+'\nNo file, path or audio is uploaded.'});
-          if(consent.response!==1)return {cancelled:true};
+          if(consent.response!==1||metadataCancelled||win.isDestroyed())return {cancelled:true};
           choices=await lookup.search({artist,title});
         }
+        if(metadataCancelled||win.isDestroyed())return {cancelled:true};
         if(!choices.length)return {error:'No matches / Χωρίς αποτελέσματα'};
         // Native dialog buttons are intentionally limited to five candidates per page.
         let selected=null;
@@ -519,14 +537,14 @@ function createWindow() {
           const page=choices.slice(i,i+5),more=i+5<choices.length;
           const labels=page.map((r,j)=>(i+j+1)+'. '+r.title+' — '+r.artist+' | '+(r.album||'—')+' '+r.year);
           const answer=await dialog.showMessageBox(win,{type:'question',message:'Choose exact recording and album / Επιλέξτε έκδοση',detail:'Search scores are not proof of identity. Existing tags will not be overwritten.',buttons:['Cancel / Ακύρωση',...labels,...(more?['More / Περισσότερα']:[])],defaultId:0,cancelId:0,noLink:true});
-          if(answer.response===0)return {cancelled:true};
+          if(answer.response===0||metadataCancelled||win.isDestroyed())return {cancelled:true};
           if(answer.response<=page.length){selected=page[answer.response-1];break;}
         }
         if(!selected)return {cancelled:true};
         const ok=await dialog.showMessageBox(win,{type:'question',message:'Fill only missing tags?',detail:[selected.title,selected.artist,selected.album,selected.year].filter(Boolean).join(' — '),buttons:['Cancel / Ακύρωση','Save tags / Αποθήκευση','View cover online / Εξώφυλλο'],defaultId:0,cancelId:0});
         if(ok.response===2){const link=lookup.coverURL(selected.releaseId);if(link)await require('electron').shell.openExternal(link);return {cancelled:true};}
-        if(ok.response!==1)return {cancelled:true};
-        return {rows:[{file,...await tags.complete(file,selected)}]};
+        if(ok.response!==1||metadataCancelled||win.isDestroyed())return {cancelled:true};
+        return {rows:[{file,...await tags.complete(file,selected,{cancelled:()=>metadataCancelled||win.isDestroyed()})}]};
       }
       const planned=picked.filePaths.map(file=>({file,values:mode==='auto'?tags.clean(tags.infer(file)):tags.clean(values)}));
       const usable=planned.filter(row=>Object.keys(row.values).length);
@@ -537,10 +555,10 @@ function createWindow() {
       const rows=[];
       for(const row of planned){
         const {file,values}=row;
-        if(metadataCancelled){rows.push({file,status:'cancelled'});continue;}
+        if(metadataCancelled||win.isDestroyed()){rows.push({file,status:'cancelled'});continue;}
         if(!Object.keys(values).length)rows.push({file,status:'skipped'});
-        else try{rows.push({file,...await tags.complete(file,values)});}
-        catch(err){rows.push({file,status:'failed',error:String(err.message).slice(0,250)});}
+        else try{rows.push({file,...await tags.complete(file,values,{cancelled:()=>metadataCancelled||win.isDestroyed()})});}
+        catch(err){rows.push({file,status:err.code==='cancelled'?'cancelled':'failed',error:String(err.message).slice(0,250)});}
         if(!win.isDestroyed())win.webContents.send('metadata:progress',{done:rows.length,total:planned.length});
       }
       return {rows};
@@ -553,7 +571,7 @@ function createWindow() {
     metadataReadBusy=true;
     try {
       // tags are only read from absolute paths of real audio files
-      if (!fromMain(event) || typeof filePath !== 'string' || !path.isAbsolute(filePath) || !AUDIO_FILE_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) || !fs.statSync(filePath).isFile()) return null;
+      if (!fromMain(event) || typeof filePath !== 'string' || !path.isAbsolute(filePath) || !AUDIO_FILE_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) || !localPath(filePath) || fs.statSync(filePath).size>512*1024*1024) return null;
       const mm = await import('music-metadata');
       const meta = await mm.parseFile(filePath, { duration: false, skipCovers: false });
       const { common } = meta;

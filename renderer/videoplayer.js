@@ -94,7 +94,7 @@
     tick();viewportTimer=setInterval(tick,500);
   }
   async function nativeHandoff(engine,p,g,embedded=false){
-    if(handoff||!p||VP.isUrl(p))return false;
+    if(handoff||!p||VP.isUrl(p)||g!==generation)return false;
     window.dispatchEvent(new CustomEvent('waveframe:video-intent'));
     const wasPlaying=!video.paused,pos=Number.isFinite(video.currentTime)?Math.round(video.currentTime*1000):0;
     const resume=pos||Number(get(K.resume,{})[p])||0;

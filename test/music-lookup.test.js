@@ -15,3 +15,5 @@ test('AcoustID lookup sends fingerprint not file and rejects weak matches',async
  });
  assert.equal(result[0].title,'Song');assert.equal(result[0].score,95);
 });
+
+test('provider malformed entries and duplicate release identities are ignored',()=>{const r={id,title:'Song','artist-credit':[null,{name:'Artist',joinphrase:' & '},{name:'Other'}],releases:[null,{id,title:'Album'},{id,title:'Album'}]};const out=rows({recordings:[null,r,r]});assert.equal(out.length,1);assert.match(out[0].artist,/Artist.*Other/);assert.deepEqual(require('../music-lookup').acousticRows({status:'ok',results:[null,{score:.9,recordings:[null]}]}),[]);});

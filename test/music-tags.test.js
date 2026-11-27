@@ -43,3 +43,29 @@ test('real FLAC preserves all encoded audio bytes and original tags',async(t)=>{
  assert.equal(r.status,'updated');assert.deepEqual(await fs.readFile(r.backup),before);assert.deepEqual(payload(await fs.readFile(file)),payload(before));
  const m=await (await import('music-metadata')).parseFile(file);assert.equal(m.common.album,'Keep me');assert.equal(m.common.title,'Ελληνικός τίτλος');
 });
+
+
+test('local cover rejects unknown or excessive dimensions',()=>{
+ const {validateCover}=require('../music-tags');
+ assert.equal(validateCover({data:Buffer.from('not an image')}),null);
+ const b=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(b);b.write('IHDR',12);b.writeUInt32BE(5000,16);b.writeUInt32BE(100,20);
+ assert.equal(validateCover({data:b}),null);
+});
+test('real local MP3 and FLAC cover preserves audio and existing artwork',async(t)=>{
+ const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip('ffmpeg unavailable');return;}
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-cover-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const data=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1sAAAAASUVORK5CYII=','base64');
+ const {complete}=require('../music-tags');const mm=await import('music-metadata');
+ for(const ext of ['mp3','flac']){
+  const file=path.join(dir,'sample.'+ext);
+  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=1','-c:a',ext==='mp3'?'libmp3lame':'flac',file]);
+  const before=await fs.readFile(file);
+  const payload=b=>{if(ext==='mp3')return b.subarray(b.toString('ascii',0,3)==='ID3'?10+b.subarray(6,10).reduce((a,x)=>a*128+x,0):0);let i=4;while(true){const done=b[i]&128;i+=4+b.readUIntBE(i+1,3);if(done)return b.subarray(i);}};
+  const r=await complete(file,{}, {cover:{data}});assert.equal(r.coverApplied,true);
+  assert.deepEqual(await fs.readFile(r.backup),before);assert.deepEqual(payload(await fs.readFile(file)),payload(before));
+  const m=await mm.parseFile(file);assert.deepEqual(Buffer.from(m.common.picture[0].data),data);
+  assert.equal((await complete(file,{}, {cover:{data}})).status,'skipped');
+  await assert.rejects(complete(file,{title:'new'},{cancelled:()=>true}),/cancelled/);
+ }
+});

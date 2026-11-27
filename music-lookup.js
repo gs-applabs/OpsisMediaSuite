@@ -6,13 +6,14 @@ let tail=Promise.resolve(),last=0;
 function text(v){return typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,250):'';}
 function phrase(v){return '"'+text(v).replace(/[\\"]/g,'\\$&')+'"';}
 function query(tags){const title=text(tags?.title),artist=text(tags?.artist);if(!title||!artist)throw Error('Both artist and title are required');return 'recording:'+phrase(title)+' AND artist:'+phrase(artist);}
-function rows(data){const out=[];for(const r of (Array.isArray(data?.recordings)?data.recordings:[]).slice(0,8)){
- if(!uuid.test(r.id||''))continue;
- const artist=(Array.isArray(r['artist-credit'])?r['artist-credit']:[]).slice(0,8).map(a=>text(a.name||a.artist?.name)+text(a.joinphrase)).join(' ').trim();
+function rows(data){const out=[],seen=new Set();for(const r of (Array.isArray(data?.recordings)?data.recordings:[]).slice(0,8)){
+ if(!r||!uuid.test(r.id||''))continue;
+ const artist=(Array.isArray(r['artist-credit'])?r['artist-credit']:[]).slice(0,8).filter(Boolean).map(a=>text(a.name||a.artist?.name)+(typeof a.joinphrase==='string'?a.joinphrase.slice(0,40):'')).join(' ').trim();
  const title=text(r.title);if(!title||!artist)continue;
- const releases=(Array.isArray(r.releases)?r.releases:[]).filter(a=>uuid.test(a.id||'')&&text(a.title)).slice(0,4);
+ const releases=(Array.isArray(r.releases)?r.releases:[]).filter(a=>a&&uuid.test(a.id||'')&&text(a.title)).slice(0,4);
  for(const a of releases.length?releases:[{}]){
- const year=/^\d{4}(?:-|$)/.test(a.date||'')?a.date.slice(0,4):'';
+ const key=r.id+'|'+(a.id||'');if(seen.has(key))continue;seen.add(key);
+ const year=typeof a.date==='string'&&/^\d{4}(?:-|$)/.test(a.date)?a.date.slice(0,4):'';
  out.push({recordingId:r.id,releaseId:a.id||null,title,artist,album:text(a.title),year,score:Number.isFinite(+r.score)?Math.max(0,Math.min(100,+r.score)):0,durationMs:Number.isFinite(r.length)?r.length:null});
  if(out.length>=12)return out;
  }
@@ -44,15 +45,16 @@ async function fingerprint(ffmpeg,file){
 let acousticTail=Promise.resolve(),acousticLast=0;
 function acousticRows(data){
  if(data?.status!=='ok')throw Error('AcoustID lookup rejected');
- const out=[];
+ const out=[],seen=new Set();
  for(const a of (Array.isArray(data.results)?data.results:[]).slice(0,8)){
-  if(typeof a.score!=='number'||a.score<0.7||a.score>1)continue;
+  if(!a||typeof a.score!=='number'||a.score<0.7||a.score>1)continue;
   for(const r of (Array.isArray(a.recordings)?a.recordings:[]).slice(0,8)){
-   if(!uuid.test(r.id||''))continue;
-   const title=text(r.title),artist=(Array.isArray(r.artists)?r.artists:[]).slice(0,8).map(x=>text(x.name)).filter(Boolean).join(' / ');
+   if(!r||!uuid.test(r.id||''))continue;
+   const title=text(r.title),artist=(Array.isArray(r.artists)?r.artists:[]).slice(0,8).map(x=>text(x?.name)).filter(Boolean).join(' / ');
    if(!title||!artist)continue;
-   const releases=(Array.isArray(r.releases)?r.releases:[]).filter(x=>uuid.test(x.id||'')&&text(x.title)).slice(0,4);
+   const releases=(Array.isArray(r.releases)?r.releases:[]).filter(x=>x&&uuid.test(x.id||'')&&text(x.title)).slice(0,4);
    for(const rel of releases.length?releases:[{}]){
+    const key=r.id+'|'+(rel.id||'');if(seen.has(key))continue;seen.add(key);
     out.push({recordingId:r.id,releaseId:rel.id||null,title,artist,album:text(rel.title),year:'',score:Math.round(a.score*100)});
     if(out.length>=12)return out;
    }

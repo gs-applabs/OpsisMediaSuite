@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 2A — local cover metadata, cancellation and provider robustness (2026-11-27)
+
+- Prior 21C/22A and ULTRA 1 CI still running at inspection; no new green aggregate claim.
+- Extend existing lossless MP3 ID3 APIC / FLAC PICTURE implementation, local JPEG/PNG only (2 MiB, 4096 px, 16 MP); validate dimensions and decode in native dialog path; no replace of existing cover, no re-encode, exact payload hash and read-back picture verification, original backup. Explicit file and image selection and confirmation; no network upload. Reuse existing metadata IPC and guide (93 entries). Real MP3/FLAC cover fixtures and cancellation tests added.
+- Cancellation checks before online transmission/selection/write and while streaming copy, before replacement; close cancels, read paths use existing local path policy and 512 MiB bound. Atomic rename already underway cannot be undone by cancellation; backup may be retained after cancellation.
+- Online candidate parser rejects malformed rows and duplicate recording/release identities; separate release IDs retained. Native video handoff rejects stale generation. Existing subtitle and codec functionality preserved; larger P3/P4 and new format gates still open. No real provider credentials, no M4A/Ogg/Opus writer or full native parity claim. New CI pending.
+
 ## ULTRA 1 — shared shutdown and bounded resource trends (2026-11-27)
 
 - Prior head `6333d4836635b13cfc5bf4e2e887717236b7aef2`: RAR, AudioWorklet and plugin CI PASS at inspection, other six pending; 21B.2 remains last complete 9/9. No pending runs counted as green.
