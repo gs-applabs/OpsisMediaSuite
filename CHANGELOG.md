@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 18H (format foundation)
+- Native lossless FLAC Vorbis comment completion, preserving STREAMINFO, pictures and encoded audio; MP3 and FLAC composer, lyricist and album artist fields; added fixture tests. No fingerprint recognition yet.
+
 ## Unreleased — Ultra Mega Pass 18G
 - Explicit MusicBrainz search from existing tags or Artist - Title names; one-second request spacing, bounded response, native candidate review and separate write confirmation. Cover Art Archive link for chosen release, no automatic artwork embedding. No audio or path uploaded.
 

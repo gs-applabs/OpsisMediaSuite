@@ -4,7 +4,7 @@
 const fs=require('node:fs/promises'), F=require('node:fs'), path=require('node:path');
 const {randomUUID,createHash}=require('node:crypto'),{pipeline}=require('node:stream/promises');
 const {Readable}=require('node:stream');
-const fields={title:'TIT2',artist:'TPE1',album:'TALB',genre:'TCON',year:'TYER'};
+const fields={title:'TIT2',artist:'TPE1',album:'TALB',genre:'TCON',year:'TYER',composer:'TCOM',lyricist:'TEXT',albumartist:'TPE2'};
 const maxTag=8*1024*1024, maxFile=512*1024*1024;
 function syncRead(b){if(b.length!==4||b.some(x=>x>127))throw Error('invalid synchsafe size');return b.reduce((a,x)=>a*128+x,0);}
 function syncWrite(n){return Buffer.from([(n>>>21)&127,(n>>>14)&127,(n>>>7)&127,n&127]);}
@@ -37,16 +37,56 @@ function patchTag(header,body,values,common={}){
  if(next.length>maxTag)throw Error('tag too large');
  return {bytes:Buffer.concat([Buffer.from([73,68,51,version,0,0]),syncWrite(next.length),next]),applied};
 }
+// FLAC metadata blocks are copied verbatim except for the Vorbis comment block.
+const flacFields={title:'TITLE',artist:'ARTIST',album:'ALBUM',genre:'GENRE',year:'DATE',composer:'COMPOSER',lyricist:'LYRICIST',albumartist:'ALBUMARTIST'};
+function parseComments(b){
+ let i=0;function u32(){if(i+4>b.length)throw Error('truncated comment');const n=b.readUInt32LE(i);i+=4;return n;}
+ function take(n){if(n>b.length-i)throw Error('truncated comment');const x=b.subarray(i,i+n);i+=n;return x;}
+ const vendor=take(u32()),count=u32();if(count>10000)throw Error('too many comments');
+ const comments=[];for(let j=0;j<count;j++)comments.push(take(u32()));if(i!==b.length)throw Error('unexpected comment suffix');
+ return {vendor,comments};
+}
+function commentBlock(vendor,comments){
+ const len=n=>{const b=Buffer.alloc(4);b.writeUInt32LE(n);return b;};
+ return Buffer.concat([len(vendor.length),vendor,len(comments.length),...comments.flatMap(c=>[len(c.length),c])]);
+}
+function patchFlac(blocks,values,common={}){
+ if(!blocks.length||blocks[0].type!==0||blocks[0].data.length!==34||blocks.slice(1).some(b=>b.type===0)||blocks.filter(b=>b.type===4).length>1)throw Error('invalid FLAC metadata layout');
+ const index=blocks.findIndex(b=>b.type===4);
+ const {vendor,comments}=index<0?{vendor:Buffer.from('Opsis Media Suite'),comments:[]}:parseComments(blocks[index].data);
+ const keys=new Set(comments.map(c=>c.toString('utf8').split('=',1)[0].toUpperCase()));
+ const applied={};
+ for(const [k,v] of Object.entries(clean(values))){const key=flacFields[k];if(common[k]||keys.has(key)||(k==='year'&&keys.has('YEAR')))continue;comments.push(Buffer.from(key+'='+v));applied[k]=v;}
+ if(!Object.keys(applied).length)return null;
+ const next=blocks.slice(), replacement={type:4,data:commentBlock(vendor,comments)};
+ if(index<0)next.splice(1,0,replacement);else next[index]=replacement;
+ const pieces=[Buffer.from('fLaC')];let total=4;
+ next.forEach((b,i)=>{if(b.type<0||b.type>6||b.data.length>0xffffff)throw Error('unsupported FLAC block');const h=Buffer.alloc(4);h[0]=b.type|(i===next.length-1?128:0);h.writeUIntBE(b.data.length,1,3);pieces.push(h,b.data);total+=4+b.data.length;});
+ if(total>maxTag)throw Error('FLAC metadata too large');
+ return {bytes:Buffer.concat(pieces),applied};
+}
+async function readFlac(h,stat,values,common){
+ const magic=Buffer.alloc(4);if((await h.read(magic,0,4,0)).bytesRead!==4||magic.toString()!=='fLaC')throw Error('invalid FLAC signature');
+ let skip=4,done=false;const blocks=[];
+ while(!done){
+  const b=Buffer.alloc(4);if((await h.read(b,0,4,skip)).bytesRead!==4)throw Error('truncated FLAC block');
+  const type=b[0]&127,n=b.readUIntBE(1,3);done=!!(b[0]&128);skip+=4;
+  if(type>6||skip+n>maxTag||skip+n>=stat.size||blocks.length>=256)throw Error('unsupported FLAC metadata');
+  const data=Buffer.alloc(n);if((await h.read(data,0,n,skip)).bytesRead!==n)throw Error('truncated FLAC block');
+  blocks.push({type,data});skip+=n;
+ }
+ return {skip,patch:patchFlac(blocks,values,common)};
+}
 async function complete(file,values){
- if(!path.isAbsolute(file)||path.extname(file).toLowerCase()!=='.mp3'||/^(\\\\|\/\/)/.test(file))throw Error('local MP3 only');
+ const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('local MP3 or FLAC only');
  const stat=await fs.lstat(file);if(!stat.isFile()||stat.nlink!==1||stat.size>maxFile||stat.size<10)throw Error('unsupported file');
  const real=await fs.realpath(file);if(path.resolve(file).toLowerCase()!==real.toLowerCase())throw Error('redirected path');
  const mm=await import('music-metadata');const meta=await mm.parseFile(file,{duration:false,skipCovers:true});
- if(meta.format.codec!=='MPEG 1 Layer 3'&&!/layer 3/i.test(meta.format.codec||''))throw Error('not verified MP3');
- const h=await fs.open(file,'r');let header,body,skip;
- try{header=Buffer.alloc(10);await h.read(header,0,10,0);const has=header.subarray(0,3).toString()==='ID3';const size=has?syncRead(header.subarray(6)):0;if(size>maxTag||size+10>stat.size)throw Error('tag too large');body=Buffer.alloc(size);if(size&&(await h.read(body,0,size,10)).bytesRead!==size)throw Error('truncated tag');skip=has?10+size:0;}finally{await h.close();}
- const patch=patchTag(header,body,values,meta.common);if(!patch)return {status:'skipped'};
- const tmp=path.join(path.dirname(file),'.opsis-'+randomUUID()+'.mp3');
+ if(ext==='.mp3'&&!/layer 3/i.test(meta.format.codec||''))throw Error('not verified MP3');if(ext==='.flac'&&!/FLAC/i.test(meta.format.codec||'')&&meta.format.container!=='FLAC')throw Error('not verified FLAC');
+ const h=await fs.open(file,'r');let header,body,skip,patch;
+ try{if(ext==='.flac'){({skip,patch}=await readFlac(h,stat,values,meta.common));}else{header=Buffer.alloc(10);await h.read(header,0,10,0);const has=header.subarray(0,3).toString()==='ID3';const size=has?syncRead(header.subarray(6)):0;if(size>maxTag||size+10>stat.size)throw Error('tag too large');body=Buffer.alloc(size);if(size&&(await h.read(body,0,size,10)).bytesRead!==size)throw Error('truncated tag');skip=has?10+size:0;patch=patchTag(header,body,values,meta.common);}}finally{await h.close();}
+ if(!patch)return {status:'skipped'};
+ const tmp=path.join(path.dirname(file),'.opsis-'+randomUUID()+ext);
  const backup=file+'.opsis-'+randomUUID()+'.bak';
  try{
   const originalHash=createHash('sha256');
@@ -55,11 +95,11 @@ async function complete(file,values){
   const copiedHash=createHash('sha256');for await(const chunk of F.createReadStream(tmp,{start:patch.bytes.length}))copiedHash.update(chunk);
   if(originalHash.digest('hex')!==copiedHash.digest('hex'))throw Error('audio byte verification failed');
   const check=await mm.parseFile(tmp,{duration:false,skipCovers:true});
-  for(const [k,v] of Object.entries(patch.applied))if(k==='genre'?!(Array.isArray(check.common.genre)&&check.common.genre.includes(v)):String(check.common[k])!==v)throw Error('tag verification failed: '+k);
+  for(const [k,v] of Object.entries(patch.applied))if(Array.isArray(check.common[k])?!check.common[k].includes(v):String(check.common[k])!==v)throw Error('tag verification failed: '+k);
   const same=async()=>{const s=await fs.lstat(file);if(s.size!==stat.size||s.mtimeMs!==stat.mtimeMs||s.ino!==stat.ino||!s.isFile())throw Error('file changed during operation');};
   await same();await fs.copyFile(file,backup,F.constants.COPYFILE_EXCL);await same();
   await fs.rename(tmp,file);
   return {status:'updated',backup,applied:patch.applied};
  }finally{await fs.unlink(tmp).catch(()=>{});}
 }
-module.exports={infer,clean,patchTag,complete,syncWrite};
+module.exports={infer,clean,patchTag,complete,syncWrite,patchFlac};

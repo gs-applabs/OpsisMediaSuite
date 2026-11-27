@@ -1501,7 +1501,7 @@ function addFilesToPlaylist(files) {
 async function completeMusicTags(mode){
   const values={};
   if(mode==='manual'){
-    for(const [key,label] of Object.entries({title:'Title / Τίτλος',artist:'Artist / Καλλιτέχνης',album:'Album / Άλμπουμ',genre:'Genre / Είδος',year:'Year / Έτος'})){
+    for(const [key,label] of Object.entries({title:'Title / Τίτλος',artist:'Artist / Καλλιτέχνης',album:'Album / Άλμπουμ',genre:'Genre / Είδος',year:'Year / Έτος',composer:'Composer / Συνθέτης',lyricist:'Lyricist / Στιχουργός',albumartist:'Album artist / Καλλιτέχνης άλμπουμ'})){
       const value=await showInputDialog(label+' (blank = skip / κενό = παράλειψη)','');
       if(value===null||value===undefined)return;
       if(value)values[key]=value;

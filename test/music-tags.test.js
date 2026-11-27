@@ -23,3 +23,23 @@ test('real MP3 completion preserves payload and original backup',async(t)=>{
  assert.equal(m.common.title,'Ελληνικός τίτλος');assert.equal(m.common.album,'Existing album');
  assert.equal((await complete(file,{title:'Other'})).status,'skipped');
 });
+
+test('FLAC comment insertion preserves STREAMINFO and unknown existing comment',()=>{
+ const {patchFlac}=require('../music-tags');
+ const stream=Buffer.alloc(34,7),p=patchFlac([{type:0,data:stream}],{title:'Τίτλος',albumartist:'Artist'});
+ assert.equal(p.bytes.toString('ascii',0,4),'fLaC');assert.deepEqual(p.bytes.subarray(8,42),stream);
+ const comments=p.bytes.subarray(46);
+ const q=patchFlac([{type:0,data:stream},{type:4,data:comments}],{title:'No',composer:'Composer'});
+ assert.deepEqual(q.applied,{composer:'Composer'});assert.ok(q.bytes.includes(Buffer.from('TITLE=Τίτλος')));
+});
+test('real FLAC preserves all encoded audio bytes and original tags',async(t)=>{
+ const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip('ffmpeg unavailable');return;}
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-flac-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'sample.flac');
+ execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=1','-c:a','flac','-metadata','album=Keep me',file]);
+ const before=await fs.readFile(file);const payload=b=>{let i=4;while(true){const done=b[i]&128;i+=4+b.readUIntBE(i+1,3);if(done)return b.subarray(i);}};
+ const r=await require('../music-tags').complete(file,{title:'Ελληνικός τίτλος',album:'No',composer:'Composer'});
+ assert.equal(r.status,'updated');assert.deepEqual(await fs.readFile(r.backup),before);assert.deepEqual(payload(await fs.readFile(file)),payload(before));
+ const m=await (await import('music-metadata')).parseFile(file);assert.equal(m.common.album,'Keep me');assert.equal(m.common.title,'Ελληνικός τίτλος');
+});

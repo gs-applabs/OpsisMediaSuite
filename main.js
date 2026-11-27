@@ -468,7 +468,7 @@ function createWindow() {
     metadataBusy=true;
     try{
       const tags=require('./music-tags');
-      const picked=await dialog.showOpenDialog(win,{title:'Select MP3 files / Επιλογή MP3',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3',extensions:['mp3']}]});
+      const picked=await dialog.showOpenDialog(win,{title:'Select MP3 / FLAC files',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3 / FLAC',extensions:['mp3','flac']}]});
       if(picked.canceled)return {cancelled:true};
       if(picked.filePaths.length>50)return {error:'Maximum 50 files per batch'};
       if(mode==='online'){
@@ -496,7 +496,7 @@ function createWindow() {
         if(ok.response!==1)return {cancelled:true};
         return {rows:[{file,...await tags.complete(file,selected)}]};
       }
-      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Automatic mode uses Artist - Title filenames only. Close any player using these files.'});
+      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 / FLAC tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Automatic mode uses Artist - Title filenames only. Close any player using these files.'});
       if(confirm.response!==1)return {cancelled:true};
       const rows=[];
       for(const file of picked.filePaths){
