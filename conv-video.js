@@ -10,7 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const L = require('./renderer/convlib.js');
 const V = require('./renderer/vidlib.js');
-const { runFfmpeg } = require('./conv-engine.js');
+const { runFfmpeg,publishOutput } = require('./conv-engine.js');
 
 const encoderCache = new Map();
 
@@ -94,8 +94,8 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
     for (const enc of order) {
       if (cancelled) break;
       const twoPass = !!enc && options.passes === 2 && V.canTwoPass(enc);
-      tmp = path.join(path.dirname(finalPath()), `.waveframe-${process.pid}-${crypto.randomBytes(4).toString('hex')}.${ext}`);
-      passLog = twoPass ? path.join(os.tmpdir(), `waveframe-pass-${process.pid}-${crypto.randomBytes(4).toString('hex')}`) : null;
+      tmp = path.join(path.dirname(finalPath()), `.waveframe-${process.pid}-${crypto.randomBytes(16).toString('hex')}.${ext}`);
+      passLog = twoPass ? path.join(os.tmpdir(), `waveframe-pass-${process.pid}-${crypto.randomBytes(16).toString('hex')}`) : null;
       try {
         if (twoPass) {
           const r1 = await run(V.buildArgs({ input, output: tmp, options, encoder: enc, pass: 1, passLog, info }), 0.5, 0);
@@ -106,8 +106,9 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
           const r = await run(V.buildArgs({ input, output: tmp, options, encoder: enc, info }), 1, 0);
           if (r.code !== 0 || !fs.existsSync(tmp)) throw new Error(lastLines(r.stderr) || `ffmpeg exited with code ${r.code}`);
         }
-        const out = finalPath();
-        fs.renameSync(tmp, out);
+        if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
+        const out=publishOutput(tmp,{input,ext,suffix:options.suffix,outDir});
+        try{fs.unlinkSync(tmp);}catch{}
         if (passLog) removePassFiles(passLog);
         tmp = null; passLog = null;
         if (onProgress) onProgress(1);
@@ -115,6 +116,8 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
       } catch (e) {
         cleanup();
         if (cancelled || (e && e.code === 'cancelled')) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
+        // A filesystem publication failure is not an encoder failure.
+        if(['publish-failed','denied','invalid-output'].includes(e?.code))throw e;
         lastError = e;
         if (!firstTried) firstTried = enc;
       }

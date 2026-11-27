@@ -281,7 +281,7 @@
     syncVisibility();
 
     btnAdd.addEventListener('click', async () => addPaths(await api.convPick()));
-    btnClear.addEventListener('click', () => { if (!running) { files = []; renderList(); } });
+    btnClear.addEventListener('click', () => { if (!running&&!starting) { files = []; renderList(); } });
     drop.addEventListener('click', async () => addPaths(await api.convPick()));
     drop.addEventListener('keydown', async (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addPaths(await api.convPick()); } });
     for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
@@ -296,6 +296,7 @@
   }
 
   function addTracks() {
+    if(starting||running)return;
     const list = typeof playlist !== 'undefined' ? playlist : [];
     for (const t0 of list) {
       if (!files.some((f) => f.track === t0)) files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'track', track: t0, name: t0.name || 'track', path: '', state: 'wait', pct: 0 });
@@ -304,6 +305,7 @@
   }
 
   function addPaths(paths) {
+    if(starting||running)return;
     for (const p of paths || []) {
       if (typeof p === 'string' && !files.some((f) => f.path === p)) files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'file', path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0 });
     }
@@ -323,7 +325,7 @@
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `bar-${f.id}` })]),
       ]);
       if (f.state === 'done' && f.out) row.append(h('button', { class: 'small-btn', text: t('conv.reveal'), onclick: () => api.convReveal(f.out) }));
-      else if (!running) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { files = files.filter((x) => x !== f); renderList(); } }));
+      else if (!running&&!starting) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(starting||running)return;files = files.filter((x) => x !== f); renderList(); } }));
       list.append(row);
       const bar = $(`bar-${f.id}`);
       if (bar) bar.style.width = `${Math.round((f.state === 'done' ? 1 : f.pct) * 100)}%`;
@@ -359,7 +361,7 @@
     finally{
       starting=false;running=null;current=null;
       $('convStart').disabled=false;
-      $('convStart').classList.remove('dep-hidden');$('convCancel').classList.add('dep-hidden');
+      $('convStart').classList.remove('dep-hidden');$('convCancel').classList.add('dep-hidden');renderList();
     }
   }
   async function startQueue() {
@@ -401,6 +403,7 @@
     }, (p) => { $('convFill').style.width = `${Math.round(p.overall * 100)}%`; });
     running = queue;
     const results = await queue.start();
+    for(const result of results)if(result.status==='cancelled'&&result.item.state!=='done')result.item.state='cancelled';
     running = null; current = null;
     $('convStart').classList.remove('dep-hidden'); $('convCancel').classList.add('dep-hidden');
     const ok = results.filter((r) => r.status === 'done').length;
@@ -420,5 +423,5 @@
   document.addEventListener('waveframe:language-changed', () => { if (!running&&!starting) { if ($('convFormat')) collect(); build(); } });
   // addPaths / showRunning are exposed for the layout self-test (every language x zoom, with files in the list and while converting)
   function showRunning(on) { $('convStart').classList.toggle('dep-hidden', on); $('convCancel').classList.toggle('dep-hidden', !on); $('convTrack').classList.toggle('dep-hidden', !on); }
-  window.WaveframeConverter = { processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { files = []; renderList(); } };
+  window.WaveframeConverter = { processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { if(starting||running)return;files = []; renderList(); } };
 })();

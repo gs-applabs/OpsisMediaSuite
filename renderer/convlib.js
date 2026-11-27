@@ -207,15 +207,23 @@
 
   // run(item, { report(pct 0..1), cancelled() }) -> Promise<any>. Resolves to [{ item, status: done|error|cancelled, result?, error? }].
   function createQueue(items, run, onProgress) {
-    let cancelled = false;
-    const results = [];
-    const notify = (i, pct) => { if (onProgress) onProgress({ index: i, itemPct: pct, overall: items.length ? (i + pct) / items.length : 1 }); };
+    items=Array.from(items);
+    let cancelled=false,started=false,highest=0;
+    const results=[];
+    const notify=(i,pct)=>{
+      if(!Number.isFinite(pct))return;
+      const overall=items.length?(i+pct)/items.length:1;
+      if(overall<highest)return;
+      highest=overall;
+      if(onProgress)onProgress({index:i,itemPct:pct,overall});
+    };
     return {
       cancel() { cancelled = true; },
       get isCancelled() { return cancelled; },
       async start() {
+        if(started)throw Error('queue-already-started');started=true;
         for (let i = 0; i < items.length; i++) {
-          if (cancelled) { results.push({ item: items[i], status: 'cancelled' }); continue; }
+          if (cancelled) { results.push({ item: items[i], status: 'cancelled' });notify(i,1);continue; }
           notify(i, 0);
           try {
             const result = await run(items[i], { report: (p) => notify(i, Math.max(0, Math.min(1, p))), cancelled: () => cancelled });

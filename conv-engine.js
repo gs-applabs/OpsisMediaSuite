@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const L = require('./renderer/convlib.js');
+const {localDirectory}=require('./local-media-policy');
 
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif', 'alac', 'ape', 'wv', 'mka', 'mp2', 'ac3', 'amr'];
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mpg', 'mpeg', '3gp'];
@@ -55,27 +56,42 @@ function planOutput(input, options, exists = fs.existsSync, outDir) {
   const spec = L.FORMATS[options.format];
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   const out = L.buildOutputPath({ inputPath: input, ext: spec.ext, suffix: options.suffix, pathApi: path, exists, dir: outDir || undefined });
-  const tmp = path.join(path.dirname(out), `.waveframe-${process.pid}-${crypto.randomBytes(4).toString('hex')}.${spec.ext}`);
+  const tmp = path.join(path.dirname(out), `.waveframe-${process.pid}-${crypto.randomBytes(16).toString('hex')}.${spec.ext}`);
   return { out, tmp };
 }
 
-// Moves the finished temp file to its final name; if that name got taken meanwhile, picks the next free one.
-function finalize(tmp, input, options, outDir) {
-  const spec = L.FORMATS[options.format];
-  const out = L.buildOutputPath({ inputPath: input, ext: spec.ext, suffix: options.suffix, pathApi: path, exists: fs.existsSync, dir: outDir || undefined });
-  fs.renameSync(tmp, out);
-  return out;
+// Publish an already completed file without replacing a competing destination.
+// Same-volume hard link is atomic and exclusive. Unsupported filesystems fail
+// closed rather than exposing partial final output or overwriting another file.
+function publishOutput(tmp,{input,ext,suffix,outDir}){
+  const parent=localDirectory(outDir||path.dirname(input));
+  if(!parent||localDirectory(path.dirname(tmp))!==parent)throw Object.assign(Error('output folder changed'),{code:'denied'});
+  const st=fs.lstatSync(tmp);
+  if(!st.isFile()||st.isSymbolicLink()||!st.size)throw Object.assign(Error('invalid output'),{code:'invalid-output'});
+  for(let tries=0;tries<128;tries++){
+    const out=L.buildOutputPath({inputPath:input,ext,suffix,pathApi:path,exists:fs.existsSync,dir:parent});
+    if(localDirectory(parent)!==parent)throw Object.assign(Error('output folder changed'),{code:'denied'});
+    try{fs.linkSync(tmp,out);}
+    catch(err){if(err.code==='EEXIST')continue;throw Object.assign(Error('cannot safely publish output: '+err.code),{code:'publish-failed'});}
+    // The final file is now complete. Cleanup failure must not report a
+    // failed conversion or retry publishing the same bytes under another name.
+    try{fs.unlinkSync(tmp);}catch{}
+    return out;
+  }
+  throw Object.assign(Error('output name contention'),{code:'publish-failed'});
 }
-
+function finalize(tmp,input,options,outDir){
+  return publishOutput(tmp,{input,ext:L.FORMATS[options.format].ext,suffix:options.suffix,outDir});
+}
 async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir }) {
   const { tmp } = planOutput(input, options, fs.existsSync, outDir);
   const args = L.buildFfmpegArgs({ input: source, output: tmp, options, mode });
   args.splice(args.indexOf('-i'), 0, '-protocol_whitelist','file,pipe');
   const run = runFfmpeg(ffmpegPath, args, { duration, onProgress });
   const promise = run.promise.then((r) => {
-    if (r.code !== 0 || !fs.existsSync(tmp)) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } throw new Error(r.stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(' ') || `ffmpeg exited with code ${r.code}`); }
-    return { output: finalize(tmp, input, options, outDir) };
-  }, (e) => { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } throw e; });
+    if(r.code!==0||!fs.existsSync(tmp))throw Error(r.stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(' ')||'ffmpeg exited with code '+r.code);
+    return {output:finalize(tmp,input,options,outDir)};
+  }).finally(()=>{try{fs.unlinkSync(tmp);}catch{} });
   return { promise, cancel: run.cancel };
 }
 
@@ -91,13 +107,22 @@ async function convertDirect({ ffmpegPath, input, options, onProgress, outDir })
 async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress, duration, outDir }) {
   if (options.format === 'wav') {
     const { tmp } = planOutput(input, options, fs.existsSync, outDir);
-    fs.writeFileSync(tmp, Buffer.from(wavBytes));
-    if (onProgress) onProgress(1);
-    return { promise: Promise.resolve({ output: finalize(tmp, input, options, outDir) }), cancel() {} };
+    let created=false;
+    try{
+      const handle=fs.openSync(tmp,'wx',0o600);created=true;
+      try{fs.writeFileSync(handle,wavBytes);}finally{fs.closeSync(handle);}
+      const output=finalize(tmp,input,options,outDir);
+      if(onProgress)onProgress(1);
+      return {promise:Promise.resolve({output}),cancel(){}};
+    }finally{if(created)try{fs.unlinkSync(tmp);}catch{}}
   }
   if (!ffmpegPath) throw Object.assign(new Error('no-ffmpeg'), { code: 'no-ffmpeg' });
-  const wavTmp = path.join(require('os').tmpdir(), `waveframe-conv-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
-  fs.writeFileSync(wavTmp, Buffer.from(wavBytes));
+  const wavTmp = path.join(require('os').tmpdir(), `waveframe-conv-${process.pid}-${crypto.randomBytes(16).toString('hex')}.wav`);
+  let created=false;
+  try{
+    const handle=fs.openSync(wavTmp,'wx',0o600);created=true;
+    try{fs.writeFileSync(handle,wavBytes);}finally{fs.closeSync(handle);}
+  }catch(err){if(created)try{fs.unlinkSync(wavTmp);}catch{}throw err;}
   let job;
   try { job = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: wavTmp, duration, onProgress, outDir }); }
   catch (e) { try { fs.unlinkSync(wavTmp); } catch (_) {} throw e; }
@@ -107,7 +132,7 @@ async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress
 
 // ffmpeg decodes anything it knows to 32-bit float WAV when the renderer's own decoder cannot (WMA, AIFF, some video containers).
 async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
-  const tmp = path.join(require('os').tmpdir(), `waveframe-pre-${process.pid}-${crypto.randomBytes(4).toString('hex')}.wav`);
+  const tmp = path.join(require('os').tmpdir(), `waveframe-pre-${process.pid}-${crypto.randomBytes(16).toString('hex')}.wav`);
   const args = ['-hide_banner', '-nostdin', '-y', '-protocol_whitelist','file,pipe','-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-f', 'wav', tmp];
   try {
     const max = 600 * 1024 * 1024;
@@ -120,4 +145,4 @@ async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
   } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
 }
 
-module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, probe, verifyDecodes, planOutput, convertDirect, convertFromWav, predecodeToWav };
+module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };
