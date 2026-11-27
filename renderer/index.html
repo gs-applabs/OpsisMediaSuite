@@ -204,11 +204,11 @@
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.reverb">Αντήχηση / Ατμόσφαιρα</div><div class="switch-sub" data-i18n="enhance.reverbSub">Χωρική αντήχηση — Κινηματογραφική &amp; Αίθουσας</div></div>
-                <button class="switch" id="swReverb"></button>
+                <button class="switch" id="swReverb"></button><label for="fx_reverbAmount">Mix</label><input id="fx_reverbAmount" type="range" min="0" max="100" value="100"><output id="fx_reverbValue">100%</output>
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.exciter">Διεγέρτης Αρμονικών / Πιστότητα</div><div class="switch-sub" data-i18n="enhance.exciterSub">Αντιγραφή αρμονικών — Ζωντάνια και καθαρότητα</div></div>
-                <button class="switch" id="swExciter"></button>
+                <button class="switch" id="swExciter"></button><label for="fx_exciterAmount">Mix</label><input id="fx_exciterAmount" type="range" min="0" max="100" value="100"><output id="fx_exciterValue">100%</output>
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.normalize">Εξομάλυνση Έντασης</div><div class="switch-sub" data-i18n="enhance.normalizeSub">Ίδια αντιληπτή ένταση σε όλα τα κομμάτια, αυτόματα</div></div>
@@ -415,6 +415,8 @@
               <label class="vp-inline"><span data-i18n="ph.crop">Περικοπή</span>
                 <select id="phCrop"></select></label>
             </div>
+            <div class="vp-bar"><label>Crop X <input id="phCropX" type="range" min="0" max="100" value="50"></label><label>Crop Y <input id="phCropY" type="range" min="0" max="100" value="50"></label><label>Histogram <select id="phHistMode"><option value="luma">Luma</option><option value="rgb">RGB</option></select></label></div>
+            <p class="hint" id="phClipping"></p>
             <canvas id="phHist" class="ph-hist" width="256" height="64" role="img" aria-label="Histogram"></canvas>
             <p class="hint" id="phInfo" role="status" aria-live="polite"></p>
           </div>

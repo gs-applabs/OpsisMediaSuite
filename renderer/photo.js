@@ -20,7 +20,7 @@
   let history=P.createHistory({params,cropKey});
   function updateHistory(){ $('phUndo').disabled=!history.canUndo();$('phRedo').disabled=!history.canRedo(); }
   function checkpoint(){if(!orig)return;history.push({params,cropKey});updateHistory();}
-  function restore(snapshot){params=snapshot.params;cropKey=snapshot.cropKey;$('phCrop').value=cropKey;syncSliders();updateHistory();schedule();}
+  function restore(snapshot){params=snapshot.params;cropKey=snapshot.cropKey;$('phCrop').value=cropKey;syncCrop();syncSliders();updateHistory();schedule();}
   const info = (text) => { $('phInfo').textContent = text || ''; };
 
   function build() {
@@ -38,14 +38,16 @@
     }
     for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k; $('phCrop').append(o); }
     $('phOpen').addEventListener('click', async () => { const p = await api.photoPick(); if (p) openPath(p); });
-    $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params=P.applyLook(params,$('phLook').value,Number($('phLookStrength').value));syncSliders();checkpoint();schedule();});
+    $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params={...P.applyLook(params,$('phLook').value,Number($('phLookStrength').value)),anchorX:params.anchorX,anchorY:params.anchorY};syncSliders();checkpoint();schedule();});
     $('phAuto').addEventListener('click', () => { if (!preview) return; params = P.applyAuto(preview,params); syncSliders(); checkpoint(); schedule(); });
-    $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders(); checkpoint(); schedule(); });
+    $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders(); checkpoint(); schedule(); });
     $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; checkpoint(); schedule(); });
     $('phRotR').addEventListener('click', () => { params.rotate = (params.rotate + 90) % 360; checkpoint(); schedule(); });
     $('phFlipH').addEventListener('click', () => { params.flipH = !params.flipH; checkpoint(); schedule(); });
     $('phFlipV').addEventListener('click', () => { params.flipV = !params.flipV; checkpoint(); schedule(); });
-    $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value; checkpoint(); schedule(); });
+    $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value;syncCrop();checkpoint();schedule(); });
+    for(const [id,key] of [['phCropX','anchorX'],['phCropY','anchorY']]){ $(id).addEventListener('input',()=>{params[key]=Number($(id).value);schedule();});$(id).addEventListener('change',checkpoint);}
+    $('phHistMode').addEventListener('change',schedule);syncCrop();
     $('phUndo').addEventListener('click',()=>{if(orig)restore(history.undo());});$('phRedo').addEventListener('click',()=>{if(orig)restore(history.redo());});updateHistory();
     const cmp = $('phCompare');
     const down = () => { comparing = true; schedule(); }, up = () => { comparing = false; schedule(); };
@@ -67,6 +69,7 @@
     document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone'); });
   }
 
+  function syncCrop(){ $('phCropX').value=String(params.anchorX??50);$('phCropY').value=String(params.anchorY??50);$('phCropX').disabled=$('phCropY').disabled=cropKey==='none'; }
   function syncSliders() {
     for (const [key] of SLIDERS) {
       const i = $(`ph_${key}`); i.value = String(params[key]);
@@ -92,7 +95,7 @@
       if (generation !== openGeneration || busy) { b.close(); return; }
       if (b.width * b.height > P.LIMITS.maxPixels) { b.close(); info(t('ph.tooLarge')); return; }
       if (bmp) bmp.close();
-      bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders();
+      bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders();
       const sz = P.previewSize(b.width, b.height);
       const c = document.createElement('canvas'); c.width = sz.width; c.height = sz.height;
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0, sz.width, sz.height);
@@ -108,9 +111,7 @@
   // Centered crop of the wanted aspect ratio, in the orientation of the ORIGINAL (rotation happens after the crop).
   function cropParams() {
     const e = CROPS.find((c) => c[0] === cropKey); if (!e || !e[1] || !orig) return null;
-    const turned = params.rotate === 90 || params.rotate === 270, want = turned ? 1 / e[1] : e[1], ar = orig.width / orig.height;
-    if (Math.abs(ar - want) < 0.001) return null;
-    return ar > want ? { x: (1 - want / ar) / 2, y: 0, w: want / ar, h: 1 } : { x: 0, y: (1 - ar / want) / 2, w: 1, h: ar / want };
+    return P.aspectCrop(bmp.width,bmp.height,e[1],params.rotate,params.anchorX??50,params.anchorY??50);
   }
   const full = () => ({ ...params, crop: cropParams() });
 
@@ -127,11 +128,14 @@
     $('phSave').title = fmt(t('ph.outputSize'), { w: o.width, h: o.height });
   }
   function drawHist(data) {
-    const c = $('phHist'), g = c.getContext('2d'), bins = P.histogram(data);
-    let max = 1; for (let i = 1; i < 255; i++) max = Math.max(max, bins[i]);
-    g.clearRect(0, 0, c.width, c.height);
-    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c6cf0';
-    for (let i = 0; i < 256; i++) { const h = Math.round(Math.min(1, bins[i] / max) * (c.height - 2)); g.fillRect(i, c.height - h, 1, h); }
+    const c=$('phHist'),g=c.getContext('2d'),stats=P.colorHistogram(data);
+    const mode=$('phHistMode').value,channels=mode==='rgb'?[[stats.red,'#ef5350'],[stats.green,'#4caf50'],[stats.blue,'#42a5f5']]:[[stats.luma,getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#7c6cf0']];
+    let max=1;for(const [bins] of channels)for(let i=1;i<255;i++)max=Math.max(max,bins[i]);
+    g.clearRect(0,0,c.width,c.height);g.globalAlpha=mode==='rgb'?.65:1;
+    for(const [bins,color] of channels){g.fillStyle=color;for(let i=0;i<256;i++){const height=Math.round(Math.min(1,bins[i]/max)*(c.height-2));g.fillRect(i,c.height-height,1,height);}}
+    g.globalAlpha=1;
+    const pct=n=>stats.total?(100*n/stats.total).toFixed(1)+'%':'—';
+    $('phClipping').textContent='Near black / Σκιές: '+pct(stats.shadow)+' · Near saturation / Κορεσμός: '+pct(stats.highlight);
   }
 
   function processExport(img,snapshot,maxEdge) {

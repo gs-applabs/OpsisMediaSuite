@@ -129,3 +129,6 @@ Pass 39 all CI green (190/190, native seek 1500 ms, plugin 12/12, LAV installed 
 
 ## Pass 41 — real redirected native pipe test and new UI checks
 Separate process Node-to-LibVLC stdin/stdout test: real ready, pause/seek, correlated acknowledgments, actual seek verification and rejection of negative/missing seek and unknown verb. Uses dummy sinks and the production parser/actions; not a full WinForms display test. Add real renderer checks for photo look strength/geometry and night compressor selection. CI pending.
+
+## Pass 42 — photo crop positioning/RGB analysis and adjustable audio effects
+Public Sintel CI 45953965247 confirmed both original and artificially shifted captions abstain (weak match), correcting known false positive; no successful automatic dialogue alignment claimed. Add original-coordinate X/Y crop anchor controls, shared preview/export ratio from original dimensions, RGB histogram and near-black/near-channel-saturation percentages excluding transparent pixels; auto levels ignore transparent pixels. Adjustable reverb/exciter wet levels in live/offline DSP, legacy default unchanged, presets/reset. New tests; latest UI and CI pending. Bilingual labels pending full localization.

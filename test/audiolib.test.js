@@ -126,3 +126,5 @@ test('presence and stereo balance are bounded and neutral by default',()=>{
 });
 
 test('compressor modes retain legacy standard and bound all parameters',()=>{assert.equal(lib.compressorParams('standard').ratio,8);assert.equal(lib.compressorParams('gentle').ratio,2);assert.equal(lib.compressorParams('night').threshold,-32);assert.deepEqual(lib.compressorParams('__proto__'),lib.compressorParams('standard'));});
+
+test('effect mix is bounded and retains legacy defaults',()=>{assert.equal(lib.effectMix(100,.28),.28);assert.equal(lib.effectMix(50,.28),.14);assert.equal(lib.effectMix(-1,.35),0);assert.equal(lib.effectMix(200,.35),.35);assert.equal(lib.effectMix(undefined,.28),.28);});

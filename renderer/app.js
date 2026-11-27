@@ -78,6 +78,7 @@ class AudioEngine {
     this.state = {
       eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       bassBoost: 0,
+      reverbAmount:100,exciterAmount:100,
       compressorMode:'standard',
       presence:0,
       balance:0,
@@ -473,16 +474,21 @@ class AudioEngine {
     this.compWet.gain.setTargetAtTime(on ? 1 : 0, tt, 0.05);
     this.compDry.gain.setTargetAtTime(on ? 0 : 1, tt, 0.05);
   }
+  setEffectAmount(kind,value){
+    if(!['reverb','exciter'].includes(kind))return;
+    this.state[kind+'Amount']=Math.max(0,Math.min(100,Number.isFinite(Number(value))?Number(value):100));
+    if(kind==='reverb')this.setReverb(this.state.reverb);else this.setExciter(this.state.exciter);
+  }
   setReverb(on) {
     this.state.reverb = on;
     const tt = this.ctx.currentTime;
-    this.reverbWet.gain.setTargetAtTime(on ? 0.28 : 0, tt, 0.05);
+    this.reverbWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.reverbAmount,.28) : 0, tt, 0.05);
     this.reverbDry.gain.setTargetAtTime(1, tt, 0.05);
   }
   setExciter(on) {
     this.state.exciter = on;
     const tt = this.ctx.currentTime;
-    this.exciterWet.gain.setTargetAtTime(on ? 0.35 : 0, tt, 0.05);
+    this.exciterWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.exciterAmount,.35) : 0, tt, 0.05);
     this.exciterDry.gain.setTargetAtTime(1, tt, 0.05);
   }
   resetEffects() {
@@ -490,8 +496,8 @@ class AudioEngine {
     this.setVolumeBoostDb(0);
     this.setSurround(0);
     this.setCompressor(false);this.setCompressorMode('standard');
-    this.setReverb(false);
-    this.setExciter(false);
+    this.setReverb(false);this.setEffectAmount('reverb',100);
+    this.setExciter(false);this.setEffectAmount('exciter',100);
   }
 
   // opts.tempo / opts.rate override the live tempo and the buffer's rate (the converter renders at tempo 1 and at the chosen sample rate).
@@ -555,7 +561,7 @@ class AudioEngine {
       const conv = offline.createConvolver();
       conv.buffer = this._makeImpulseResponse(2.2, 2.0);
       const dry = offline.createGain(); dry.gain.value = 1;
-      const wet = offline.createGain(); wet.gain.value = 0.28;
+      const wet = offline.createGain(); wet.gain.value = WaveframeAudio.effectMix(this.state.reverbAmount,.28);
       const sum = offline.createGain();
       chainEnd.connect(dry); dry.connect(sum);
       chainEnd.connect(conv); conv.connect(wet); wet.connect(sum);
@@ -566,7 +572,7 @@ class AudioEngine {
       shaper.curve = this._makeSaturationCurve();
       shaper.oversample = '4x';
       const dry = offline.createGain(); dry.gain.value = 1;
-      const wet = offline.createGain(); wet.gain.value = 0.35;
+      const wet = offline.createGain(); wet.gain.value = WaveframeAudio.effectMix(this.state.exciterAmount,.35);
       const sum = offline.createGain();
       chainEnd.connect(dry); dry.connect(sum);
       chainEnd.connect(shaper); shaper.connect(wet); wet.connect(sum);
@@ -1061,7 +1067,7 @@ function renderUserPresets() {
 function applyUserPreset(p) {
   engine.applyEqBands(p.bands);
   setEqUi(p.bands);
-  engine.setPresence(p.presence??0);engine.setBalance(p.balance??0);engine.setCompressorMode(p.compressorMode);syncProfessionalFx();
+  engine.setPresence(p.presence??0);engine.setBalance(p.balance??0);engine.setCompressorMode(p.compressorMode);engine.setEffectAmount('reverb',p.reverbAmount??100);engine.setEffectAmount('exciter',p.exciterAmount??100);syncProfessionalFx();
   if (typeof p.bassBoost === 'number') {
     engine.setBassBoost(p.bassBoost);
     els.bassBoost.value = String(p.bassBoost);
@@ -1095,7 +1101,7 @@ els.btnSavePreset.addEventListener('click', async () => {
     name,
     bands: [...engine.state.eqBands],
     bassBoost: engine.state.bassBoost,
-    presence:engine.state.presence,balance:engine.state.balance,compressorMode:engine.state.compressorMode,
+    presence:engine.state.presence,balance:engine.state.balance,compressorMode:engine.state.compressorMode,reverbAmount:engine.state.reverbAmount,exciterAmount:engine.state.exciterAmount,
     volumeBoost: engine.state.volumeBoost,
     surround: engine.state.surround,
     compressor: engine.state.compressor,
@@ -1510,10 +1516,11 @@ els.volBoost.addEventListener('input', () => {
 });
 function syncProfessionalFx(){
   const p=document.getElementById('fxPresence'),b=document.getElementById('fxBalance');
-  p.value=String(engine.state.presence);b.value=String(engine.state.balance);document.getElementById('fxCompressorMode').value=engine.state.compressorMode;
+  p.value=String(engine.state.presence);b.value=String(engine.state.balance);document.getElementById('fxCompressorMode').value=engine.state.compressorMode;for(const k of ['reverb','exciter']){document.getElementById('fx_'+k+'Amount').value=String(engine.state[k+'Amount']);document.getElementById('fx_'+k+'Value').textContent=engine.state[k+'Amount']+'%';}
   document.getElementById('fxPresenceValue').textContent=WaveframeAudio.presenceParams(engine.state.presence).gain.toFixed(1)+' dB';
   document.getElementById('fxBalanceValue').textContent=String(engine.state.balance);
 }
+for(const k of ['reverb','exciter'])document.getElementById('fx_'+k+'Amount').addEventListener('input',e=>{engine.setEffectAmount(k,e.target.value);syncProfessionalFx();});
 document.getElementById('fxCompressorMode').addEventListener('change',e=>{engine.setCompressorMode(e.target.value);syncProfessionalFx();});
 document.getElementById('fxPresence').addEventListener('input',e=>{engine.setPresence(e.target.value);syncProfessionalFx();});
 document.getElementById('fxBalance').addEventListener('input',e=>{engine.setBalance(e.target.value);syncProfessionalFx();});

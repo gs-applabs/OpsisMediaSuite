@@ -189,9 +189,28 @@
     return bins;
   }
 
+  // Channel histograms and clipping counts ignore fully transparent pixels.
+  function colorHistogram(data){
+    const red=new Uint32Array(256),green=new Uint32Array(256),blue=new Uint32Array(256),luma=new Uint32Array(256);
+    let total=0,shadow=0,highlight=0;
+    for(let i=0;i+3<data.length;i+=4){
+      if(!data[i+3])continue;
+      const r=data[i],g=data[i+1],b=data[i+2];red[r]++;green[g]++;blue[b]++;
+      luma[Math.round(.2126*r+.7152*g+.0722*b)]++;
+      total++;if(Math.max(r,g,b)<=5)shadow++;if(Math.max(r,g,b)>=250)highlight++;
+    }
+    return {red,green,blue,luma,total,shadow,highlight};
+  }
+  function aspectCrop(w,h,ratio,rotate=0,anchorX=50,anchorY=50){
+    if(![w,h,ratio].every(Number.isFinite)||w<=0||h<=0||ratio<=0)return null;
+    const target=rotate===90||rotate===270?1/ratio:ratio,ar=w/h;
+    const x=Math.max(0,Math.min(100,Number(anchorX)||0))/100,y=Math.max(0,Math.min(100,Number(anchorY)||0))/100;
+    if(Math.abs(ar-target)<.001)return null;
+    return ar>target?{x:(1-target/ar)*x,y:0,w:target/ar,h:1}:{x:0,y:(1-ar/target)*y,w:1,h:ar/target};
+  }
   // "Auto": stretch the levels to the 0.5 % / 99.5 % percentiles and move the mean towards the middle with gamma.
   function autoParams(img) {
-    const bins = histogram(img.data), total = img.width * img.height, lo = total * 0.005, hi = total * 0.995;
+    const stats=colorHistogram(img.data),bins=stats.luma,total=stats.total;if(!total)return defaults();const lo=total*.005,hi=total*.995;
     let acc = 0, black = 0, white = 255;
     for (let i = 0; i < 256; i++) { acc += bins[i]; if (acc >= lo) { black = i; break; } }
     acc = 0; for (let i = 0; i < 256; i++) { acc += bins[i]; if (acc >= hi) { white = i; break; } }
@@ -257,5 +276,5 @@
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { applyLook, clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

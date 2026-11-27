@@ -148,3 +148,5 @@ test('RGB channels and clarity preserve alpha and source data',()=>{
 });
 
 test('photo looks retain geometry and blend from neutral',()=>{const p={...P.defaults(),rotate:90,flipH:true,crop:{x:.1,y:.1,w:.5,h:.5}};const q=P.applyLook(p,'monochrome',50);assert.equal(q.saturation,-50);assert.equal(q.rotate,90);assert.equal(q.flipH,true);assert.deepEqual(q.crop,p.crop);assert.equal(p.saturation,0);assert.equal(P.applyLook(q,'portrait',0).contrast,0);});
+
+test('RGB histogram ignores transparent pixels and crop anchors stay inside original',()=>{const r=P.colorHistogram(new Uint8ClampedArray([0,0,0,255,255,0,0,255,0,0,255,0]));assert.equal(r.total,2);assert.equal(r.shadow,1);assert.equal(r.highlight,1);assert.equal(r.blue[255],0);const c=P.aspectCrop(400,200,1,0,100,50);assert.deepEqual(c,{x:.5,y:0,w:.5,h:1});assert.equal(P.aspectCrop(400,200,1,0,0,50).x,0);});
