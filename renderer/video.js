@@ -13,10 +13,12 @@
   let items = [];
   const previewQueue=new Set(),previewCache=new Map();
   let previewBusy=false,previewRender=0;
-  function refreshPreviews(){if(!previewRender)previewRender=setTimeout(()=>{previewRender=0;renderList();fillTracks();estimate();},200);}
+  const previewVisible=()=>!document.hidden&&$('tab-converter').classList.contains('active');
+  let previewDirty=false;
+  function refreshPreviews(){previewDirty=true;if(!previewRender&&previewVisible())previewRender=setTimeout(()=>{previewRender=0;if(!previewVisible())return;previewDirty=false;renderList();fillTracks();estimate();},200);}
   async function drainPreviews(){
-    if(previewBusy||!$('tab-converter').classList.contains('active'))return;previewBusy=true;
-    try{while(previewQueue.size&&$('tab-converter').classList.contains('active')){
+    if(previewBusy||!previewVisible())return;previewBusy=true;
+    try{while(previewQueue.size&&previewVisible()){
       const it=previewQueue.values().next().value;previewQueue.delete(it);
       if(!items.includes(it))continue;
       try{const info=await api.vidProbe(it.path);if(items.includes(it)&&info)it.info=info;}catch{}
@@ -25,11 +27,13 @@
       refreshPreviews();
     }}finally{previewBusy=false;}
   }
-  window.addEventListener('waveframe:tab-selected',e=>{if(e.detail==='converter')void drainPreviews();});
+  function syncPreviewVisibility(){if(!previewVisible()){clearTimeout(previewRender);previewRender=0;return;}if(previewDirty)refreshPreviews();void drainPreviews();}
+  window.addEventListener('waveframe:tab-selected',syncPreviewVisibility);
+  document.addEventListener('visibilitychange',syncPreviewVisibility);
   function forgetPreview(it){previewQueue.delete(it);previewCache.delete(it);}
   function clearPreviews(){previewQueue.clear();previewCache.clear();}
 
-  let running = null;
+  let running = null,starting=false;
   let current = null;
   let encInfo = null;      // result of vid:encoders (null until asked, { ffmpeg:false } when no ffmpeg)
   let mode = 'video';      // video | gif | audio (set by presets)
@@ -207,10 +211,14 @@
 
   /* ---------------- encoders ---------------- */
 
-  async function refreshEncoders() {
-    try { encInfo = await api.vidEncoders(); } catch (_) { encInfo = { ffmpeg: false }; }
-    renderEncoders();
-    if ($('vidCodec')) sync();
+  let encoderPending=null;
+  function refreshEncoders(){
+    if(encoderPending)return encoderPending;
+    encoderPending=(async()=>{
+      try{encInfo=await api.vidEncoders();}catch{encInfo={ffmpeg:false};}
+      renderEncoders();if($('vidCodec'))sync();
+    })().finally(()=>{encoderPending=null;});
+    return encoderPending;
   }
   function renderEncoders() {
     const el = $('vidEnc');
@@ -246,6 +254,7 @@
   /* ---------------- file list ---------------- */
 
   function addPaths(paths) {
+    if(starting||running)return;
     const added = [];
     for (const p of paths || []) {
       if (typeof p === 'string' && items.length < V.LIMITS.maxFiles && !items.some((f) => f.path === p)) {
@@ -275,7 +284,7 @@
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `vbar-${f.id}` })]),
       ]);
       if (f.state === 'done' && f.out) row.append(h('button', { class: 'small-btn', text: t('conv.reveal'), onclick: () => api.convReveal(f.out) }));
-      if (!running) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(running)return;forgetPreview(f);items = items.filter((x) => x !== f); renderList(); fillTracks(); estimate(); } }));
+      if (!running&&!starting) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(running||starting)return;forgetPreview(f);items = items.filter((x) => x !== f); renderList(); fillTracks(); estimate(); } }));
       list.append(row);
       const bar = $(`vbar-${f.id}`);
       if (bar) bar.style.width = `${Math.round((f.state === 'done' ? 1 : f.pct) * 100)}%`;
@@ -292,24 +301,34 @@
   }
 
   async function start() {
-    if (running) return;
+    if(running||starting)return;
+    starting=true;$('vidStart').disabled=true;
+    try{await startQueue();}
+    catch(error){$('vidStatus').textContent=String(error?.message||error).slice(0,200);}
+    finally{
+      starting=false;running=null;current=null;
+      $('vidStart').disabled=false;$('vidStart').classList.remove('dep-hidden');$('vidCancel').classList.add('dep-hidden');
+      renderList();document.dispatchEvent(new Event('waveframe:converter-idle'));
+    }
+  }
+  async function startQueue(){
     const status = $('vidStatus');
     if (!items.length) { status.textContent = t('conv.needFiles'); return; }
     const v = V.validateOptions(collect());
     if (!v.ok) { status.textContent = fmt(t('conv.invalid'), { what: v.errors.join(', ') }); return; }
     if ($('vidOut').value === 'custom' && !localStorage.getItem('waveframe.vidDestFolder')) { status.textContent = t('conv.out.needFolder'); return; }
+    const outMode=$('vidOut').value,outDir=localStorage.getItem('waveframe.vidDestFolder')||'';
     const st = await api.convStatus();
     if (!st.ffmpeg) {
       const r = await api.convEnsureFfmpeg();
       if (!r.ok) { status.textContent = r.declined ? t('vid.ffmpegNeeded') : fmt(t('conv.ffmpegFailed'), { why: r.error || '' }); return; }
       await refreshEncoders();
     } else if (!encInfo || !encInfo.ffmpeg) await refreshEncoders();
-    const needsEncoder = mode === 'video';
+    const needsEncoder = !v.options.gif&&!v.options.audioOnly;
     if (needsEncoder && encInfo && encInfo.summary && !encInfo.summary[v.options.codec].best) { status.textContent = fmt(t('vid.err.noEncoder'), { codec: V.CODECS[v.options.codec].label }); return; }
     for (const f of items) { f.state = 'wait'; f.pct = 0; f.err = ''; f.note = ''; f.out = ''; }
     $('vidStart').classList.add('dep-hidden'); $('vidCancel').classList.remove('dep-hidden'); $('vidTrack').classList.remove('dep-hidden');
     status.textContent = '';
-    const outMode = $('vidOut').value, outDir = localStorage.getItem('waveframe.vidDestFolder') || '';
     const queue = C.createQueue(items, async (item) => {
       current = item; item.state = 'work'; renderList();
       try {
@@ -327,6 +346,7 @@
     }, (p) => { const pct = Math.round(p.overall * 100); $('vidFill').style.width = `${pct}%`; $('vidTrack').setAttribute('aria-valuenow', String(pct)); });
     running = queue;
     const results = await queue.start();
+    for(const result of results)if(result.status==='cancelled'&&result.item.state!=='done')result.item.state='cancelled';
     running = null; current = null;
     $('vidStart').classList.remove('dep-hidden'); $('vidCancel').classList.add('dep-hidden');
     status.textContent = fmt(t('conv.summary'), { ok: results.filter((r) => r.status === 'done').length, n: results.length });
@@ -348,7 +368,7 @@
     for (const ev of ['dragenter', 'dragover']) $('vidDrop').addEventListener(ev, (e) => { e.preventDefault(); $('vidDrop').classList.add('over'); });
     $('vidDrop').addEventListener('dragleave', () => $('vidDrop').classList.remove('over'));
     $('vidDrop').addEventListener('drop', async (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[])); });
-    $('vidClear').addEventListener('click', () => { if (!running) { clearPreviews();items = []; renderList(); fillTracks(); estimate(); } });
+    $('vidClear').addEventListener('click', () => { if (!running&&!starting) { clearPreviews();items = []; renderList(); fillTracks(); estimate(); } });
     $('vidPresets').addEventListener('click', (e) => { const b = e.target.closest('button[data-preset]'); if (b) applyPreset(b.dataset.preset); });
     for (const id of ['vidCodec', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
       $(id).addEventListener('change', sync);
@@ -368,8 +388,8 @@
     if (!listening) { listening = true; api.onConvProgress(onProgress); }
   }
 
-  document.addEventListener('waveframe:converter-built', () => { if (!running) build(); });
+  document.addEventListener('waveframe:converter-built', () => { if (!running&&!starting) build(); });
   build();
   // exposed for the layout self-test (every language x zoom) and the unit-level checks
-  window.WaveframeVideoUi = { addPaths, clearItems: () => { clearPreviews();items = []; renderList(); }, showRunning: (on) => { $('vidStart').classList.toggle('dep-hidden', on); $('vidCancel').classList.toggle('dep-hidden', !on); $('vidTrack').classList.toggle('dep-hidden', !on); }, applyPreset, collect, getEncInfo: () => encInfo };
+  window.WaveframeVideoUi = { busy:()=>!!(running||starting), addPaths, clearItems: () => { if(running||starting)return;clearPreviews();items = []; renderList(); }, showRunning: (on) => { $('vidStart').classList.toggle('dep-hidden', on); $('vidCancel').classList.toggle('dep-hidden', !on); $('vidTrack').classList.toggle('dep-hidden', !on); }, applyPreset, collect, getEncInfo: () => encInfo };
 })();

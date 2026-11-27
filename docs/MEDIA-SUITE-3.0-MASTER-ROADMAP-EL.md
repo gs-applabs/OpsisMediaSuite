@@ -211,6 +211,15 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## 21C + 22A — integrated stability, selective resource release and independent jobs (2026-11-27)
+
+- Frozen 21B.2 head `6bfd202eaa51bdc709618286f7dc8f3e15520995`: nine of nine CI workflows passed; 46067019821 general 284/284, real Electron PASS, six live ownership checks and keyboard native park passed. Installer 46067019763 PASS. 21A 9/9; 21B.1 six PASS and three cancelled by subsequent commit (not failures). Five-sample 21B.2 startup CPU 0.08%, working set 523680.8 KiB; post-short-soak 0.05% / 563442.4 KiB. No controlled savings claim.
+- Consolidated lazy loader: one promise per group, preserve successfully loaded prefix on retry, remove failed script tag, report visible tab load errors; converter uses same loader. Three regression assertions for dedup/retry/cache.
+- Native open failure requests and awaits stop ACK before fallback. Loudness queue skips paused source and cannot apply stale results when normalization disabled.
+- Photo hidden canvas releases reconstructible rendered surface while retaining source bitmap, preview pixels and edits; render rebuilt when visible. Subtitle batch UI status stops polling when hidden but explicit batch continues; converter preview UI stops hidden renders and resumes on visibility.
+- Video converter takes synchronous preparation lock, immutable destination/options, blocks queue mutations/double start, clears cancelled state, shares encoder refresh and always recovers controls. Both converter cards defer language rebuild until both queues idle, preventing loss of active controls. No cross-tool cancellation.
+- Added real photo park/restore checks, real audio + FFmpeg conversion with tab changes and decode verification, real video queue double-start/language switch and output decode. New CI pending. Physical native audio timing, long candidate soak, private bytes/handle trend, security and remaining P2–P8 gates still open. No version release or merge. Batch compatible fixes in one commit; use targeted evidence, avoid redundant passes.
+
 ## 21B.2 — mutually exclusive live-source ownership (2026-11-27)
 
 - Prior 21A general run 46066296150 passed 282/282, real Electron and new DSP/transport assertions. Five-sample startup CPU 0.08%, working set 533505.6 KiB; post-short-soak 0.05% / 580451.2 KiB. Eight of nine workflows passed; installer 46066296253 was still running. 21B.1 initially four specialist workflows passed, five pending.

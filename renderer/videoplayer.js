@@ -118,7 +118,14 @@
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     const r=await api.vpNativeOpen(p,engine,resume,text||null,embedded,decode).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
-    if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
+    if(!r?.ok){
+      // A failed native open can still have a dying child. No Chromium
+      // fallback until the host acknowledges that the process is gone.
+      const stopped=stopNative(),ok=await stopped;
+      if(g!==generation||handoff)return false;
+      say(engine+' — '+(r?.code||'unavailable')+(!ok?' · Native stop not confirmed':''));
+      if(ok&&wasPlaying)video.play().catch(()=>{});return false;
+    }
     marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     if(marker.embedded)startViewport(marker);marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
@@ -583,6 +590,20 @@
       $('vpSubBatchOpen').disabled=!batchResults.options.length||batchBusy;
       batchStatus.textContent=(state.done??state.rows?.length??0)+' / '+state.total+(state.running?' · Searching…':'')+(state.stopped?' · '+state.stopped:'')+(Number.isInteger(state.offset)?' · Items '+(state.offset+1)+'–'+(state.offset+state.total)+' / '+state.seasonTotal:'')+(state.nextOffset!=null?' · Next starts at '+(state.nextOffset+1):'');
     }
+    const batchVisible=()=>!document.hidden&&$('tab-video').classList.contains('active');
+    function syncBatchPolling(){
+      clearTimeout(batchPoll);batchPoll=null;
+      if(!batchBusy||batchPolling||!batchVisible())return;
+      const epoch=batchEpoch;
+      batchPoll=setTimeout(async()=>{
+        batchPoll=null;if(!batchBusy||epoch!==batchEpoch||!batchVisible())return;
+        batchPolling=true;
+        try{const state=await api.vpSubBatchStatus();if(batchBusy&&epoch===batchEpoch&&batchVisible())showBatch(state);}
+        catch{}finally{batchPolling=false;syncBatchPolling();}
+      },750);
+    }
+    window.addEventListener('waveframe:tab-selected',syncBatchPolling);
+    document.addEventListener('visibilitychange',syncBatchPolling);
     $('vpSubBatchStart').addEventListener('click',async()=>{
       const anchor=current();
       if(batchBusy||$('vpSubProvider').value==='both'||!anchor||VP.isUrl(anchor)||VP.releaseInfo(anchor).season===null){batchStatus.textContent='Select a local single episode / Επιλέξτε επεισόδιο S01E01';return;}
@@ -593,15 +614,10 @@
       batchResults.textContent='';batchStatus.textContent='Preparing / Προετοιμασία…';
       const req={anchor,offset:Number($('vpSubBatchOffset').value)-1,videos:list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),provider:$('vpSubProvider').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashEnabled:$('vpSubHash').checked&&!$('vpSubHash').disabled,autoSave:$('vpSubBatchAuto').checked};
       for(const id of ['vpSubKey','vpSubUser','vpSubPassword'])$(id).value='';
-      batchPoll=setInterval(async()=>{
-        if(batchPolling||!batchBusy||epoch!==batchEpoch)return;
-        batchPolling=true;
-        try{const state=await api.vpSubBatchStatus();if(batchBusy&&epoch===batchEpoch)showBatch(state);}
-        catch{}finally{batchPolling=false;}
-      },750);
+      syncBatchPolling();
       try{const res=await api.vpSubBatchStart(req);if(res?.ok){showBatch(res);if(res.nextOffset!=null)$('vpSubBatchOffset').value=String(res.nextOffset+1);}else batchStatus.textContent=res?.code||'Batch failed';}
       catch{batchStatus.textContent='Batch failed';}
-      finally{++batchEpoch;clearInterval(batchPoll);batchPoll=null;batchBusy=false;
+      finally{++batchEpoch;clearTimeout(batchPoll);batchPoll=null;batchBusy=false;
         for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDisconnect','vpSubProvider'])$(id).disabled=false;
         $('vpSubBatchCancel').disabled=true;$('vpSubBatchOpen').disabled=!batchResults.options.length;
       }

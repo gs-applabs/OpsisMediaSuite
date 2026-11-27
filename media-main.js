@@ -704,6 +704,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
       await js("(() => { document.getElementById('phRotR').click(); return 1; })()");
       await new Promise((r) => setTimeout(r, 200));
       check('photo editor rotates 90 degrees (64x48 -> 48x64)', await js("document.getElementById('phCanvas').width === 48 && document.getElementById('phCanvas').height === 64"));
+      await js("showTab('settings');1");
+      check('hidden photo releases rendered preview but keeps edit state',await js("document.getElementById('phCanvas').width===0&&document.getElementById('phDrop').classList.contains('has-media')&&document.getElementById('ph_exposure').value==='1'"));
+      await js("showTab('photo');1");
+      check('visible photo reconstructs preview with retained rotation',await until("document.getElementById('phCanvas').width===48&&document.getElementById('phCanvas').height===64",3000));
       const workerOk=await js("(async()=>{const data=new Uint8ClampedArray([10,20,30,255,40,50,60,255]);const r=await WaveframePhotoUi.processExport({width:2,height:1,data},{rotate:90},0);return r.width===1&&r.height===2&&r.data[3]===255&&data.byteLength===0;})()");
       check('photo export worker transfers pixels and rotates',workerOk);
       const encoded=await js("(async()=>{const out={width:64,height:48,data:new Uint8ClampedArray(64*48*4)};const results=[];for(const f of ['png','jpeg','webp']){const r=await WaveframePhotoUi.encodeExport(out,f,.95,32,'#00ff00');const bmp=await createImageBitmap(r.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);const rgba=Array.from(c.getContext('2d').getImageData(16,12,1,1).data);results.push({f,w:bmp.width,h:bmp.height,mime:r.blob.type,rgba});bmp.close();c.width=0;c.height=0;}return results;})()");

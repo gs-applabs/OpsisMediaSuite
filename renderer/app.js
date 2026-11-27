@@ -1006,21 +1006,36 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === `tab-${btn.dataset.tab}`));
     if (btn.dataset.tab === 'player') resizeCanvas();
-    if (btn.dataset.tab === 'converter') loadConverter();
-    if (btn.dataset.tab === 'video') loadVideoPlayer();
-    if (btn.dataset.tab === 'photo') loadPhoto();
+    if (btn.dataset.tab === 'converter') loadConverter().catch(e=>reportTabLoad('converter',e));
+    if (btn.dataset.tab === 'video') loadVideoPlayer().catch(e=>reportTabLoad('video',e));
+    if (btn.dataset.tab === 'photo') loadPhoto().catch(e=>reportTabLoad('photo',e));
     if (btn.dataset.tab === 'settings') void refreshDepsStatus();
     window.dispatchEvent(new CustomEvent('waveframe:tab-selected',{detail:btn.dataset.tab}));
   });
 });
 
 /* Video player and photo editor are fetched the first time they are needed. */
-const lazyScripts = {};
-function loadScripts(key, files) {
-  if (lazyScripts[key]) return lazyScripts[key];
-  const load = (src) => new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
-  lazyScripts[key] = files.reduce((p, f) => p.then(() => load(f)), Promise.resolve()).catch((e) => { delete lazyScripts[key]; throw e; });
-  return lazyScripts[key];
+// One loader for all lazy modules. A failed tail must not re-execute already
+// loaded scripts (duplicate listeners, subscriptions and DOM owners).
+function createLazyLoader(load){
+  const groups=new Map(),loaded=new Set();
+  return (key,files)=>{
+    if(groups.has(key))return groups.get(key);
+    const pending=files.reduce((p,file)=>p.then(async()=>{
+      if(loaded.has(file))return;
+      await load(file);loaded.add(file);
+    }),Promise.resolve()).catch(error=>{groups.delete(key);throw error;});
+    groups.set(key,pending);return pending;
+  };
+}
+const loadScripts=createLazyLoader(src=>new Promise((resolve,reject)=>{
+  const el=document.createElement('script');el.src=src;
+  el.onload=()=>resolve();el.onerror=()=>{el.remove();reject(Error('Module load failed: '+src));};
+  document.head.appendChild(el);
+}));
+function reportTabLoad(tab,error){
+  if(document.querySelector('.tab-btn.active')?.dataset.tab!==tab)return;
+  void showAlertDialog(t('player.loadErrorTitle'),OpsisFeatureGuide.ui(localStorage.getItem('waveframe.lang')||'el').loadFailed);
 }
 function loadVideoPlayer() { return loadScripts('video', ['../playback-core.js', 'vplib.js', 'videoplayer.js']); }
 function loadPhoto() { return loadScripts('photo', ['photolib.js', 'photo.js']); }
@@ -1069,20 +1084,14 @@ function initFeatureGuide(){
 initFeatureGuide();
 document.getElementById('fileInputLabel').addEventListener('keydown',e=>{if(e.target.id==='fileInputLabel'&&(e.key==='Enter'||e.key===' ')){e.preventDefault();document.getElementById('fileInput').click();}});
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it
-window.waveframe.onOpenVideo((filePath) => { showTab('video'); loadVideoPlayer().then(() => window.WaveframeVideoPlayer.open(filePath)); });
+window.waveframe.onOpenVideo((filePath) => { showTab('video'); loadVideoPlayer().then(() => window.WaveframeVideoPlayer.open(filePath)).catch(()=>{}); });
 // Only live audio sources are mutually exclusive. A new video intent also
 // invalidates an audio start that is waiting for a native stop acknowledgement.
 window.addEventListener('waveframe:video-intent',()=>engine.cancelLiveStart());
 window.addEventListener('waveframe:video-playing', () => { try { engine.pauseActive();engine.stopAlternateSources();syncPlayButton(); } catch (_) { /* nothing playing */ } });
 
 /* The converter (UI + helpers) is only fetched and run the first time its tab is opened. */
-let converterLoading = null;
-function loadConverter() {
-  if (converterLoading) return converterLoading;
-  const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
-  converterLoading = load('convlib.js').then(() => load('vidlib.js')).then(() => load('converter.js')).then(() => load('video.js')).catch((e) => { converterLoading = null; throw e; });
-  return converterLoading;
-}
+function loadConverter() {return loadScripts('converter',['convlib.js','vidlib.js','converter.js','video.js']);}
 
 els.btnTogglePlaylist.addEventListener('click', () => {
   els.playlistDrawer.classList.toggle('open');
@@ -1498,9 +1507,9 @@ function requestLoudness(item){
 async function drainLoudness(){
   if(loudnessBusy)return;loudnessBusy=true;
   try{while(loudnessNext){const item=loudnessNext;loudnessNext=null;
-    if(playlist[currentTrackIndex]!==item||engine.slots[engine.activeSlot].item!==item||!engine.state.normalizationEnabled||typeof item.normGain==='number')continue;
+    if(engine.activeEl.paused||playlist[currentTrackIndex]!==item||engine.slots[engine.activeSlot].item!==item||!engine.state.normalizationEnabled||typeof item.normGain==='number')continue;
     const gain=await analyzeLoudness(item);
-    if(playlist[currentTrackIndex]===item&&engine.slots[engine.activeSlot].item===item){engine.setNormalizationGain(gain);showLoudnessInfo(item);}
+    if(playlist[currentTrackIndex]===item&&engine.slots[engine.activeSlot].item===item&&engine.state.normalizationEnabled){engine.setNormalizationGain(gain);showLoudnessInfo(item);}
   }}finally{loudnessBusy=false;}
 }
 async function boundedLoudnessBytes(item){
@@ -3070,6 +3079,15 @@ window.__selfTest = async function () {
   const check = (name, ok, extra) => out.push({ name, ok: !!ok, extra: extra === undefined ? '' : String(extra) });
   try {
     check('cold renderer does not initialize live audio',engine.ctx===null&&!engine.analyser);
+    const seen=[];let failTail=true;
+    const loader=createLazyLoader(async name=>{seen.push(name);if(name==='tail'&&failTail){failTail=false;throw Error('fixture');}});
+    const first=loader('fixture',['base','tail']);
+    check('concurrent lazy loads share one promise',first===loader('fixture',['base','tail']));
+    await first.catch(()=>{});
+    await loader('fixture',['base','tail']);
+    check('lazy module retry does not execute completed prefix twice',seen.join(',')==='base,tail,tail');
+    await loader('fixture',['base','tail']);
+    check('successful lazy module remains idempotent',seen.length===3);
     engine.setVolume(.65);engine.setBassBoost(3);
     check('inactive audio settings retain state without allocating device',engine.ctx===null&&engine.state.volume===.65&&engine.state.bassBoost===3);
     engine.ensureGraph();

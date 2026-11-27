@@ -13,7 +13,7 @@
   const root = document.getElementById('tab-converter');
   const $ = (id) => document.getElementById(id);
   let files = [];
-  let running = null,starting=false;
+  let running = null,starting=false,languagePending=false;
   let seq = 0,activeDspSession=null;
 
   const h = (tag, props = {}, kids = []) => {
@@ -362,6 +362,7 @@
       starting=false;running=null;current=null;
       $('convStart').disabled=false;
       $('convStart').classList.remove('dep-hidden');$('convCancel').classList.add('dep-hidden');renderList();
+      refreshLanguageWhenIdle();
     }
   }
   async function startQueue() {
@@ -420,8 +421,14 @@
 
   build();
   api.onConvProgress(onProgress);
-  document.addEventListener('waveframe:language-changed', () => { if (!running&&!starting) { if ($('convFormat')) collect(); build(); } });
+  // Both cards share the same root. Never rebuild it during either queue.
+  function refreshLanguageWhenIdle(){
+    if(!languagePending||running||starting||window.WaveframeVideoUi?.busy())return;
+    languagePending=false;if($('convFormat'))collect();build();
+  }
+  document.addEventListener('waveframe:language-changed',()=>{languagePending=true;refreshLanguageWhenIdle();});
+  document.addEventListener('waveframe:converter-idle',refreshLanguageWhenIdle);
   // addPaths / showRunning are exposed for the layout self-test (every language x zoom, with files in the list and while converting)
   function showRunning(on) { $('convStart').classList.toggle('dep-hidden', on); $('convCancel').classList.toggle('dep-hidden', !on); $('convTrack').classList.toggle('dep-hidden', !on); }
-  window.WaveframeConverter = { processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { if(starting||running)return;files = []; renderList(); } };
+  window.WaveframeConverter = { busy:()=>!!(running||starting), processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { if(starting||running)return;files = []; renderList(); } };
 })();

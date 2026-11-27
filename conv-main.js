@@ -299,6 +299,29 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
         const d = await run({ format: 'mp3', bitrate: 128, suffix: '-selftest-direct' });
         check('direct route (ffmpeg -> MP3) runs', d && d.output && !d.error, d && (d.error || path.basename(d.output)));
       }
+      // Real muted looping audio and a real conversion on the independent path.
+      // No persistent user playlist changes; CI uses an isolated profile.
+      if(ff){
+        const mixed=await win.webContents.executeJavaScript(`(async()=>{
+          const slot=engine.slots[engine.activeSlot],oldMute=slot.el.muted,oldLoop=slot.el.loop;
+          const rate=22050,samples=new Float32Array(rate*30);
+          for(let i=0;i<samples.length;i++)samples[i]=.02*Math.sin(2*Math.PI*440*i/rate);
+          const url=URL.createObjectURL(new Blob([WaveframeConv.writeWav([samples],rate,16)],{type:'audio/wav'}));
+          const wait=ms=>new Promise(r=>setTimeout(r,ms));
+          try{
+            engine.pauseActive();slot.el.src=url;slot.el.muted=true;slot.el.loop=true;await engine.play();
+            const until=performance.now()+4000;while(slot.el.currentTime<.05&&performance.now()<until)await wait(50);
+            const before=slot.el.currentTime;
+            const o=WaveframeConv.validateOptions({format:'mp3',bitrate:128,suffix:'-mixed-test'}).options;
+            const conversion=WaveframeConverter.convertFile({id:'mixed-self',path:${JSON.stringify(src)}},o,{ffmpeg:true,outMode:'source',cancelled:()=>false,report(){},setBase(){}});
+            showTab('converter');await wait(100);showTab('settings');const result=await conversion;
+            const after=slot.el.currentTime;
+            return {output:result.output,advanced:after>before,playing:!slot.el.paused};
+          }finally{engine.pauseActive();slot.el.removeAttribute('src');slot.el.load();slot.el.muted=oldMute;slot.el.loop=oldLoop;URL.revokeObjectURL(url);}
+        })()`);
+        check('real audio advances during independent conversion and tab changes',mixed.playing&&mixed.advanced&&!!mixed.output,JSON.stringify(mixed));
+        if(mixed.output){const decoded=await E.verifyDecodes(ff,mixed.output);check('concurrent conversion output decodes',decoded.ok);}
+      }
       check('original is untouched', fs.statSync(src).size === 44 + n * 4);
       // layout: no two controls of the Export / Convert tab overlap, in every language, at 100 % and 150 %, with files listed and while converting
       const AUDIT = `(() => {
@@ -355,6 +378,22 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
           const info = await require('./conv-video.js').probeVideo(ff, vr.output);
           check('encoded video decodes (h264, ~2 s, 320x180)', dec.ok && info.video && info.video.codec === 'h264' && info.video.height === 180 && Math.abs(dec.decodedSeconds - 2) < 0.3, JSON.stringify(info.video) + ' ' + dec.decodedSeconds);
         }
+        // Use the real queue and verify that changing language does not destroy
+        // its controls or allow another start during async preparation.
+        const queue=await win.webContents.executeJavaScript(`(async()=>{
+          const lang=document.documentElement.lang;
+          WaveframeVideoUi.clearItems();WaveframeVideoUi.addPaths([${JSON.stringify(vsrc)}]);WaveframeVideoUi.applyPreset('webSmall');
+          document.getElementById('vidOut').value='source';document.getElementById('vidOut').dispatchEvent(new Event('change'));
+          document.getElementById('vidSuffix').value='-queue-selftest';
+          const panel=document.getElementById('vidPanel'),start=document.getElementById('vidStart');
+          start.click();start.dispatchEvent(new Event('click'));const locked=WaveframeVideoUi.busy()&&start.disabled;
+          setLanguage(lang==='el'?'en':'el');const retained=panel===document.getElementById('vidPanel');
+          const end=performance.now()+60000;while(WaveframeVideoUi.busy()&&performance.now()<end)await new Promise(r=>setTimeout(r,100));
+          const done=!WaveframeVideoUi.busy();setLanguage(lang);return {locked,retained,done,panels:document.querySelectorAll('#vidPanel').length};
+        })()`);
+        check('video queue rejects duplicate start and survives language change',queue.locked&&queue.retained&&queue.done&&queue.panels===1,JSON.stringify(queue));
+        const queueOutput=path.join(dir,'clip-queue-selftest.mp4');
+        check('video queue produced a decodable output',fs.existsSync(queueOutput)&& (await E.verifyDecodes(ff,queueOutput)).ok);
         // the IPC refuses unvalidated input
         const bad = await win.webContents.executeJavaScript(`window.waveframe.vidEncode({ id: 'x1', path: 'relative.mp4', options: {}, outMode: 'source' })`);
         const bad2 = await win.webContents.executeJavaScript(`window.waveframe.vidEncode({ id: 'x2', path: ${JSON.stringify(vsrc)}, options: { subtitle: 'burn', subtitleFile: "C:\\\\a'b.srt" }, outMode: 'source' })`);

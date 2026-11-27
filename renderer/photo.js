@@ -149,7 +149,15 @@
   let previewDirty=false;
   function photoVisible(){return !document.hidden&&$('tab-photo').classList.contains('active');}
   function schedule(){previewDirty=true;if(!raf&&photoVisible())raf=requestAnimationFrame(()=>{raf=0;if(photoVisible()&&previewDirty){previewDirty=false;render();}});}
-  function syncPreviewVisibility(){if(!photoVisible()){if(raf)cancelAnimationFrame(raf);raf=0;}else if(previewDirty)schedule();}
+  function syncPreviewVisibility(){
+    if(!photoVisible()){
+      if(raf)cancelAnimationFrame(raf);raf=0;
+      // Retain original bitmap, edit history and preview source; only drop
+      // the reconstructible rendered surface while the tab is hidden.
+      const canvas=$('phCanvas');
+      if(orig&&(canvas.width||canvas.height)){canvas.width=0;canvas.height=0;previewDirty=true;}
+    }else if(previewDirty)schedule();
+  }
   window.addEventListener('waveframe:tab-selected',syncPreviewVisibility);
   document.addEventListener('visibilitychange',syncPreviewVisibility);
   function render() {
