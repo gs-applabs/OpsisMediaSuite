@@ -945,7 +945,7 @@ function initFeatureGuide(){
   const generation=++navGeneration;
   showTab(row.tab);
   try{if(row.tab==='converter')await loadConverter();if(row.tab==='video')await loadVideoPlayer();if(row.tab==='photo')await loadPhoto();}
-  catch{status.textContent=gr()?'Η καρτέλα δεν φορτώθηκε.':'Tab failed to load.';showTab('settings');return;}
+  catch{if(generation===navGeneration&&document.querySelector('.tab-btn.active')?.dataset.tab===row.tab){showTab('settings');status.textContent=OpsisFeatureGuide.ui(lang()).loadFailed;}return;}
   if(generation!==navGeneration||document.querySelector('.tab-btn.active')?.dataset.tab!==row.tab)return;
   if(row.tab==='player'&&(row.target?.startsWith('metadata')||row.target==='crossfade'))document.getElementById('playlistDrawer').classList.add('open');
   const target=row.target&&document.getElementById(row.target);
@@ -955,19 +955,21 @@ function initFeatureGuide(){
   const dest=visible?target:document.querySelector('.tab-btn[data-tab="'+row.tab+'"]');
   dest?.scrollIntoView({block:'nearest'});dest?.focus({preventScroll:true});
   if(visible){target.classList.add('feature-guide-highlight');setTimeout(()=>target.classList.remove('feature-guide-highlight'),1800);}
-  else if(row.target)await showAlertDialog(gr()?'Διαθεσιμότητα λειτουργίας':'Feature availability',row.description);
+  else if(row.target)await showAlertDialog(OpsisFeatureGuide.ui(lang()).availability,row.description);
  }
  function render(){
   const labels=OpsisFeatureGuide.ui(lang());document.getElementById('featureGuideTitle').textContent=labels.title;
-  document.getElementById('featureGuideHint').textContent=gr()?'Αναζήτησε μια δυνατότητα. Η επιλογή ανοίγει το υπάρχον εργαλείο χωρίς να εκτελεί ενέργειες.':'Search for a feature. Selecting a result opens the existing tool without running an action.';
-  input.placeholder=gr()?'π.χ. υπότιτλοι, metadata, GPU':'e.g. subtitles, metadata, GPU';
+  document.getElementById('featureGuideHint').textContent=labels.hint;
+  input.placeholder=labels.placeholder;
+  const clear=document.getElementById('featureGuideClear');clear.title=labels.clear;clear.setAttribute('aria-label',labels.clear);clear.disabled=!input.value;
   document.getElementById('featureGuideQuickLabel').textContent=labels.find;
   document.getElementById('featureGuideGroupLabel').textContent=labels.tab;
   quick.title=labels.title;quick.setAttribute('aria-label',quick.title);
   const rows=OpsisFeatureGuide.list(lang(),input.value,dictionary()).filter(r=>!group.value||r.tab===group.value);results.replaceChildren();
-  for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;if(row.controlLabel&&row.controlLabel!==row.title){const alias=document.createElement('span');alias.textContent=row.controlLabel;btn.append(alias);}const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
-  status.textContent=rows.length?(gr()?rows.length+' αποτελέσματα':rows.length+' results'):labels.empty;
+  for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.title;name.lang=row.descriptionLang;const category=document.createElement('span');category.className='feature-guide-category';category.textContent=row.category;btn.append(category,name);if(row.controlLabel&&row.controlLabel!==row.title){const alias=document.createElement('span');alias.textContent=row.controlLabel;btn.append(alias);}const d=document.createElement('span');d.textContent=row.description;d.lang=row.descriptionLang;btn.append(d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
+  status.textContent=rows.length?labels.results+': '+rows.length:labels.empty;
  }
+ document.getElementById('featureGuideClear').addEventListener('click',()=>{input.value='';render();input.focus();});
  input.addEventListener('input',render);group.addEventListener('change',render);document.addEventListener('waveframe:language-changed',()=>{renderGroups();render();});renderGroups();render();
  // The same clearly labelled entry point works from every tab, without intercepting right-click.
  quick.addEventListener('click',()=>{const active=document.querySelector('.tab-btn.active')?.dataset.tab;showTab('settings');group.value=active==='settings'?'':active||'';input.value='';render();input.focus();});

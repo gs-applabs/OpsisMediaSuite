@@ -462,8 +462,9 @@
         <div class="panel" id="featureGuidePanel">
           <h2 id="featureGuideTitle">Εύρεση λειτουργιών / Find features</h2>
           <p class="hint" id="featureGuideHint"></p>
-          <input type="search" id="featureGuideQuery" class="input-modal-field" aria-labelledby="featureGuideTitle" placeholder="Metadata, codecs, υπότιτλοι…" />
-          <label id="featureGuideGroupLabel" for="featureGuideGroup">Κατηγορία / Category</label> <select id="featureGuideGroup"></select>
+          <div class="feature-guide-toolbar"><input type="search" id="featureGuideQuery" class="input-modal-field" aria-labelledby="featureGuideTitle" placeholder="Metadata, codecs, υπότιτλοι…" />
+          <button type="button" class="small-btn" id="featureGuideClear" aria-label="Clear search">×</button>
+          <div class="feature-guide-filter"><label id="featureGuideGroupLabel" for="featureGuideGroup">Κατηγορία / Category</label> <select id="featureGuideGroup"></select></div></div>
           <div id="featureGuideResults" class="feature-guide-results"></div>
           <p id="featureGuideStatus" class="hint" role="status"></p>
         </div>

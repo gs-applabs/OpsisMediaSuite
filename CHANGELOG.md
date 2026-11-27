@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19E.2 / 19F.1
+- Eight more finder/help/welcome strings in 20 languages; five music metadata feature entries translated into French, German, Spanish and Italian (20 complete localized entries). Mark fallback language in markup. Refined finder layout with clear search, themed cards and responsive toolbar; Help search styling and accurate installer history. OpsisUI repository unavailable, so existing theme tokens retained. Full translations and visual acceptance pending.
+
 ## Unreleased — Ultra Mega Pass 19D.3 / 19E.1
 - Cancel pending video source opening when music takes over; stop native handoff instead of leaving external audio active; release microphone source connection; stop both audio slots and alternate sources on sleep/stop. Reuse existing translated control labels as searchable aliases in Help and feature finder. Correct Windows native realpath comparisons in conversion tests, and build the required DSP adapter in public subtitle CI. Full native process exit timing and complete guide translation remain pending.
 
