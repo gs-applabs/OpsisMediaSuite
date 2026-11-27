@@ -6,7 +6,7 @@ const { ipcMain, dialog, protocol, app, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const M3U = require('./m3u.js');
-const { localPath, allowedFile } = require('./local-media-policy.js');
+const { localPath, localDirectory, allowedFile } = require('./local-media-policy.js');
 const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
 const inventory=(...args)=>require('./codec-inventory.js').inventory(...args);
@@ -456,11 +456,11 @@ function init({ getMainWin, resolveFfmpegPath }) {
   const imageGrants=new Set();
   const imageTypes=new Set(IMG_EXTS);
   function approveImage(p){const f=allowedFile(p,imageTypes);if(!f)return null;if(imageGrants.size>=128)imageGrants.delete(imageGrants.values().next().value);imageGrants.add(f);return f;}
-  let imageReadBusy=false;
+  let imageReadBusy=false,imageSaveBusy=false;
   ipcMain.handle('photo:pick', async (e) => {
     if (!trusted(e)) return null;
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Images', extensions: IMG_EXTS }] });
-    return r.canceled ? null : approveImage(r.filePaths[0]);
+    return r.canceled||!trusted(e)?null:approveImage(r.filePaths[0]);
   });
   ipcMain.handle('photo:read', async (e, p) => {
     if (!trusted(e) || imageReadBusy) return null;
@@ -471,6 +471,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
       handle=await fs.promises.open(f,'r');
       const st=await handle.stat();
       if(!st.isFile()||st.size>MAX_IMAGE_BYTES)return {error:'too-large'};
+      const header=Buffer.alloc(Math.min(st.size,1024*1024));const n=(await handle.read(header,0,header.length,0)).bytesRead;
+      const P=require('./renderer/photolib');const dimensions=P.headerSize(header.subarray(0,n));
+      if(dimensions&&!P.validImageSize(dimensions.width,dimensions.height))return {error:'too-large'};
+      if(closing)return null;
       const bytes=new ArrayBuffer(st.size),b=new Uint8Array(bytes);
       let offset=0;
       while(offset<b.length){const r=await handle.read(b,offset,b.length-offset,offset);if(!r.bytesRead)return null;offset+=r.bytesRead;}
@@ -479,19 +483,28 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }catch(_){return null;}finally{try{if(handle)await handle.close();}catch{}imageReadBusy=false;}
   });
   ipcMain.handle('photo:save', async (e, req) => {
-    if (!trusted(e) || !req || !SAVE_FORMATS[req.format] || !(req.bytes instanceof ArrayBuffer || ArrayBuffer.isView(req.bytes)) || req.bytes.byteLength > MAX_SAVE_BYTES) return { ok: false };
-    const base = String(req.name || 'photo').replace(/[\\/:*?"<>|\0]/g, '_').replace(/\.[A-Za-z0-9]{1,5}$/, '').slice(0, 120) || 'photo';
-    const ext = SAVE_FORMATS[req.format][0];
-    const r = await dialog.showSaveDialog(getMainWin(), { defaultPath: path.join(app.getPath('pictures'), `${base}-edited.${ext}`), filters: [{ name: ext.toUpperCase(), extensions: SAVE_FORMATS[req.format] }] });
-    if (r.canceled || !r.filePath) return { ok: false, canceled: true };
-    if (!SAVE_FORMATS[req.format].includes(extOf(r.filePath))) return { ok: false };
-    try {
-      // A view can cover only part of its backing buffer (including pooled Buffers).
-      const bytes = req.bytes instanceof ArrayBuffer ? Buffer.from(req.bytes)
-        : Buffer.from(req.bytes.buffer, req.bytes.byteOffset, req.bytes.byteLength);
-      fs.writeFileSync(r.filePath, bytes);
-      return { ok: true, file: r.filePath };
-    } catch (_) { return { ok: false }; }
+    if(!trusted(e)||imageSaveBusy||!req||!Object.hasOwn(SAVE_FORMATS,req.format)||!(req.bytes instanceof ArrayBuffer||ArrayBuffer.isView(req.bytes))||!req.bytes.byteLength||req.bytes.byteLength>MAX_SAVE_BYTES)return {ok:false};
+    imageSaveBusy=true;let tmp=null;
+    try{
+      const base=String(req.name||'photo').replace(/[\\/:*?"<>|\0]/g,'_').replace(/\.[A-Za-z0-9]{1,5}$/,'').slice(0,120)||'photo';
+      const ext=SAVE_FORMATS[req.format][0];
+      const r=await dialog.showSaveDialog(getMainWin(),{defaultPath:path.join(app.getPath('pictures'),base+'-edited.'+ext),filters:[{name:ext.toUpperCase(),extensions:SAVE_FORMATS[req.format]}]});
+      if(r.canceled||!r.filePath||!trusted(e))return {ok:false,canceled:true};
+      if(!SAVE_FORMATS[req.format].includes(extOf(r.filePath)))return {ok:false};
+      const parent=localDirectory(path.dirname(r.filePath)),leaf=path.basename(r.filePath);
+      if(!parent||!leaf||/[\\/:*?"<>|\0-\x1f]/.test(leaf))return {ok:false};
+      const output=path.join(parent,leaf);
+      // Export is new-file-only. Never replace the original, an existing
+      // image, a hardlink or an existing symlink, even after dialog consent.
+      try{await fs.promises.lstat(output);return {ok:false,code:'exists'};}catch(err){if(err.code!=='ENOENT')throw err;}
+      const bytes=req.bytes instanceof ArrayBuffer?Buffer.from(req.bytes):Buffer.from(req.bytes.buffer,req.bytes.byteOffset,req.bytes.byteLength);
+      const scratch=path.join(parent,'.opsis-photo-'+randomBytes(16).toString('hex')+'.'+ext);
+      const handle=await fs.promises.open(scratch,'wx',0o600);tmp=scratch;
+      try{await handle.writeFile(bytes);}finally{await handle.close();}
+      if(!trusted(e)||localDirectory(parent)!==parent)return {ok:false,canceled:true};
+      try{await fs.promises.link(tmp,output);}catch(err){if(err.code==='EEXIST')return {ok:false,code:'exists'};throw err;}
+      return {ok:true,file:output};
+    }catch{return {ok:false};}finally{if(tmp)await fs.promises.unlink(tmp).catch(()=>{});imageSaveBusy=false;}
   });
 
   // WAVEFRAME_SELFTEST: the real renderer plays a generated clip through wfmedia: with its subtitle, edits a generated photo, and audits the layout.
@@ -796,7 +809,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
     return r.filePaths.slice(0, 20).map(M3U.readM3uFile).filter(Boolean);
   });
 
-  return { selfTest,shutdownBusy:()=>nativeHost.busy()||dspBridge.busy()||autoSyncBusy||embeddedBusy||providerBusy||!!batchState?.running };
+  return { selfTest,shutdownBusy:()=>nativeHost.busy()||dspBridge.busy()||autoSyncBusy||embeddedBusy||providerBusy||imageReadBusy||imageSaveBusy||!!batchState?.running };
 }
 
 module.exports = { init, registerScheme, decodeText, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };

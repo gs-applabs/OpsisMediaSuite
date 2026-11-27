@@ -56,3 +56,17 @@ test('photo read requires a picker grant and does not expose a different local i
   assert.equal(await handlers['photo:read']({sender,senderFrame:{}},picked),null);
  }finally{openTarget=null;fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('photo export refuses existing destinations and removes only owned scratch',async()=>{
+ const dir=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'opsis-photo-safe-'))),sender={mainFrame:{}},e={sender,senderFrame:sender.mainFrame};
+ M.init({getMainWin:()=>({isDestroyed:()=>false,webContents:sender}),resolveFfmpegPath:()=>null});
+ try{
+  target=path.join(dir,'original.png');fs.writeFileSync(target,Buffer.from([9,8,7]));
+  const req={format:'png',name:'original',bytes:new Uint8Array([1,2,3])};
+  assert.deepEqual(await handlers['photo:save'](e,req),{ok:false,code:'exists'});
+  assert.deepEqual([...fs.readFileSync(target)],[9,8,7]);
+  target=path.join(dir,'new.png');assert.equal((await handlers['photo:save'](e,req)).ok,true);
+  assert.deepEqual([...fs.readFileSync(target)],[1,2,3]);assert.deepEqual(fs.readdirSync(dir).sort(),['new.png','original.png']);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

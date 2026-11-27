@@ -14,7 +14,7 @@
   const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let openGeneration = 0,opening=false;
+  let openGeneration = 0,opening=false,exportController=null,exportPhase='idle';
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
   let history=P.createHistory({params,cropKey});
@@ -55,6 +55,7 @@
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
     $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png');$('phMatteField').hidden=$('phFormat').value!=='jpeg'; });
     $('phSave').addEventListener('click', save);
+    $('phCancelExport').addEventListener('click',()=>{if(exportPhase==='processing')exportController?.abort();});
     $('phCloseMedia').addEventListener('click',async()=>{
       if(!bmp||busy||opening)return;
       const current=bmp;
@@ -182,11 +183,13 @@
     $('phClipping').textContent=t('ph.nearBlack')+': '+pct(stats.shadow)+' · '+t('ph.nearSaturation')+': '+pct(stats.highlight);
   }
 
-  function processExport(img,snapshot,maxEdge) {
+  function processExport(img,snapshot,maxEdge,signal) {
+    if(signal?.aborted)return Promise.reject(Error('cancelled'));
     return new Promise((resolve,reject)=>{
       const worker=new Worker('photo-worker.js');
       let timer,finished=false;
-      const finish=(err,value)=>{if(finished)return;finished=true;clearTimeout(timer);worker.terminate();err?reject(err):resolve(value);};
+      const finish=(err,value)=>{if(finished)return;finished=true;clearTimeout(timer);signal?.removeEventListener('abort',cancel);worker.terminate();err?reject(err):resolve(value);};
+      const cancel=()=>finish(Error('cancelled'));signal?.addEventListener('abort',cancel,{once:true});
       timer=setTimeout(()=>finish(Error('photo-timeout')),120000);
       worker.onerror=()=>finish(Error('photo-worker'));
       worker.onmessage=({data:r})=>{if(!r?.ok||!P.validImageSize(r.width,r.height)||!(r.buffer instanceof ArrayBuffer)||r.buffer.byteLength!==r.width*r.height*4){finish(Error(r?.error||'photo-worker'));return;}finish(null,{width:r.width,height:r.height,data:new Uint8ClampedArray(r.buffer)});};
@@ -225,18 +228,27 @@
     busy = true; ++openGeneration;
     const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value),matte=$('phMatte').value;
     if(!P.exportBudget(source.width,source.height,snapshot,maxEdge)){busy=false;info(t('ph.tooLarge'));return;}
-    $('phSave').disabled = true; info(t('ph.processing'));
+    const controller=exportController=new AbortController();exportPhase='processing';
+    const check=()=>{if(controller.signal.aborted)throw Error('cancelled');};
+    $('phSave').disabled=true;$('phCancelExport').hidden=false;$('phCancelExport').disabled=false;info(t('ph.processing'));
     await new Promise((r) => setTimeout(r, 30)); // let the message paint before the heavy work
     try {
-      const c = document.createElement('canvas'); c.width = source.width; c.height = source.height;
-      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(source, 0, 0);
-      const d = g.getImageData(0, 0, c.width, c.height);
-      c.width=0;c.height=0;
-      const out = await processExport(d,snapshot,maxEdge);
-      const {blob,size}=await encodeExport(out,f,q,maxEdge,matte);
-      const r = await api.photoSave({ format: f, name: sourceName, bytes: await blob.arrayBuffer() });
-      info(r && r.ok ? fmt(t('ph.saved'), { w: size.width, h: size.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
-    } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
+      check();const plan=P.exportReadPlan(source.width,source.height,snapshot);
+      const c=document.createElement('canvas');let pixels;
+      try{
+        c.width=plan.width;c.height=plan.height;
+        const g=c.getContext('2d',{willReadFrequently:true});
+        g.drawImage(source,plan.x,plan.y,plan.width,plan.height,0,0,plan.width,plan.height);
+        pixels=g.getImageData(0,0,c.width,c.height);
+      }finally{c.width=0;c.height=0;}
+      check();const out=await processExport(pixels,plan.params,maxEdge,controller.signal);
+      check();const {blob,size}=await encodeExport(out,f,q,maxEdge,matte);
+      check();const bytes=await blob.arrayBuffer();check();
+      exportPhase='saving';$('phCancelExport').disabled=true;
+      const r=await api.photoSave({format:f,name:sourceName,bytes});
+      info(r?.ok?fmt(t('ph.saved'),{w:size.width,h:size.height}):r?.canceled?'':r?.code==='exists'?'Choose a new filename / Επιλέξτε νέο όνομα αρχείου':t('ph.saveFailed'));
+    }catch(error){info(controller.signal.aborted?'Export cancelled / Ακυρώθηκε η εξαγωγή':t('ph.saveFailed'));}
+    finally{busy=false;exportController=null;exportPhase='idle';$('phSave').disabled=false;$('phCancelExport').hidden=true;$('phCancelExport').disabled=false;}
   }
 
   window.WaveframePhotoUi = { processExport, encodeExport, show() { build(); }, open: (p) => { build(); return openPath(p); } };

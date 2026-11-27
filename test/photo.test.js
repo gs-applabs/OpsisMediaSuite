@@ -160,3 +160,16 @@ test('history limits are clamped and export rejects extreme single-axis images',
  const h=P.createHistory({x:0},0);h.push({x:1});assert.equal(h.canUndo(),false);assert.deepEqual(h.current(),{x:1});
  assert.equal(P.exportBudget(40000,10,P.defaults(),1024),false);
 });
+
+
+test('export readback crop preserves exact full-resolution pixels and geometry',()=>{
+ const width=13,height=9,data=Uint8ClampedArray.from({length:width*height*4},(_,i)=>i%256);
+ for(const rotate of [0,90,180,270]){
+  const params={...P.defaults(),crop:{x:.37,y:.21,w:.5,h:.6},rotate,flipH:true,exposure:.3,denoise:20,sharpen:30,clarity:10};
+  const plan=P.exportReadPlan(width,height,params),cropped=new Uint8ClampedArray(plan.width*plan.height*4);
+  for(let y=0;y<plan.height;y++)cropped.set(data.subarray(((plan.y+y)*width+plan.x)*4,((plan.y+y)*width+plan.x+plan.width)*4),y*plan.width*4);
+  assert.deepEqual(P.process({width:plan.width,height:plan.height,data:cropped},plan.params),P.process({width,height,data},params));
+ }
+ assert.equal(P.exportBudget(8000,10000,{...P.defaults(),crop:{x:0,y:0,w:.2,h:.2}},2048),true);
+ assert.equal(P.exportBudget(8000,10000,P.defaults(),0),false);
+});

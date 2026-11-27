@@ -185,7 +185,7 @@
     let cur = geometry(img, p);
     if (cur.data === img.data) cur = { data: new Uint8ClampedArray(img.data), width: img.width, height: img.height };
     cur = denoise(cur, p.denoise);
-    applyColor(cur.data, p);
+    if(['exposure','contrast','saturation','temperature','tint','highlights','shadows','black','white','gamma','red','green','blue'].some(k=>p[k]!==defaults()[k]))applyColor(cur.data,p);
     return sharpen(creative(clarity(cur,p.clarity),p),p.sharpen);
   }
 
@@ -262,10 +262,19 @@
   }
   // Conservative estimate includes decoded bitmap, readback, processing and
   // output surfaces. Not an OS memory guarantee; reject oversized jobs early.
+  // Geometry crops first, before every filter. Read back that exact region
+  // rather than a full-resolution canvas. No resize before effects.
+  function exportReadPlan(w,h,params){
+    if(!validImageSize(w,h))throw Error('invalid-size');
+    const p=clampParams(params),bounds=cropBounds(w,h,p.crop);
+    return {...bounds,params:{...p,crop:null}};
+  }
   function exportBudget(w,h,params,maxEdge=0) {
     if(!validImageSize(w,h))return false;
     const size=outputSize(w,h,params),out=resizeOutput(size.width,size.height,maxEdge);
-    return w*h*12+size.width*size.height*8+out.width*out.height*8<=LIMITS.exportWorkBytes && out.width<=LIMITS.maxExportEdge&&out.height<=LIMITS.maxExportEdge;
+    const read=exportReadPlan(w,h,params);
+    // Source bitmap stays resident; cropped readback/processing and output are bounded separately.
+    return w*h*4+read.width*read.height*8+size.width*size.height*8+out.width*out.height*8<=LIMITS.exportWorkBytes && out.width<=LIMITS.maxExportEdge&&out.height<=LIMITS.maxExportEdge;
   }
   const LOOKS=Object.freeze({
     neutral:{}, portrait:{contrast:5,highlights:-15,shadows:12,vibrance:10,clarity:-8,temperature:5},
@@ -317,5 +326,5 @@
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportReadPlan, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

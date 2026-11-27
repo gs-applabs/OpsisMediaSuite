@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 3C — exact cropped photo readback, cancellable export, exclusive save (2026-11-27)
+
+- Prior 3A general Electron self-test in progress, 3B general CI in progress; no full green claim beyond 2E.
+- Full resolution export reads only the integer crop rectangle before filters; original geometry order and full-resolution effect calculations retained, no premature resize. Budget accounts for resident source bitmap plus crop work surfaces. Neutral colour pass skipped; no GPU filter parity claim. Large unrecognised headers remain subject to decoder/bitmap checks.
+- Export cancel terminates existing photo worker during processing; checks before/after canvas encoding and before save IPC. Cannot interrupt synchronous browser readback/encoding or revoke an already admitted save. Main save is single-flight, asynchronous, new-file-only, using exclusive same-volume hardlink publication and owned temporary cleanup; existing targets never overwritten. Unsupported filesystem fails closed. Header preflight before full IPC allocation; shutdown includes image I/O.
+- Tests: exact cropped/full pixel parity with geometry and filters, budget for small crop of large source, existing destination protection and temp cleanup. Guide 97 entries, new CI pending. No new GPU benchmark or release/merge.
+
 ## ULTRA 3B — pipe-based audio conversion and explicit encoder policy (2026-11-27)
 
 - Prior 3A general and installer CI still running at inspection; DSP and RAR workflows PASS. Last complete baseline remains 2E.
