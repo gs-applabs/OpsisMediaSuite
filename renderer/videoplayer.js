@@ -63,8 +63,26 @@
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function stop() { stopNative();saveResume(); releaseTicket(); ++generation; if(session)session.stop().catch(()=>{}); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
 
-  let handoff=null,nativePoll=null;
-  async function nativeHandoff(engine,p,g){
+  let handoff=null,nativePoll=null,viewportTimer=null;
+  function clearViewport(){clearInterval(viewportTimer);viewportTimer=null;}
+  function viewportRect(){
+    const frame=$('vpFrame');
+    if(document.visibilityState!=='visible'||!document.hasFocus()||!$('tab-video').classList.contains('active')||!frame||!innerWidth||!innerHeight)return null;
+    const rect=frame.getBoundingClientRect();
+    if(rect.width<40||rect.height<40||rect.left<0||rect.top<0||rect.right>innerWidth||rect.bottom>innerHeight)return null;
+    // Do not cover a modal or another HTML surface, and hide if clipped.
+    for(const [x,y] of [[rect.left+3,rect.top+3],[rect.right-3,rect.top+3],[rect.left+3,rect.bottom-3],[rect.right-3,rect.bottom-3],[(rect.left+rect.right)/2,(rect.top+rect.bottom)/2]]){
+      const hit=document.elementFromPoint(x,y);if(!hit||!frame.contains(hit))return null;
+    }
+    const x=Math.ceil(rect.left*1000/innerWidth),y=Math.ceil(rect.top*1000/innerHeight),right=Math.floor(rect.right*1000/innerWidth),bottom=Math.floor(rect.bottom*1000/innerHeight);
+    return right>x&&bottom>y?{x,y,w:right-x,h:bottom-y}:null;
+  }
+  function startViewport(marker){
+    clearViewport();let busy=false;
+    const tick=async()=>{if(busy||handoff!==marker||!marker.session)return;busy=true;try{await api.vpNativeViewport(marker.session,viewportRect());}catch{}finally{busy=false;}};
+    tick();viewportTimer=setInterval(tick,500);
+  }
+  async function nativeHandoff(engine,p,g,embedded=false){
     if(handoff||!p||VP.isUrl(p))return false;
     const wasPlaying=!video.paused,pos=Number.isFinite(video.currentTime)?Math.round(video.currentTime*1000):0;
     const resume=pos||Number(get(K.resume,{})[p])||0;
@@ -76,10 +94,11 @@
     const text=engine==='libvlc'&&sub?VP.exportSubtitles(VP.subtitleToVtt(sub.text,sub.ext,subDelay*1000,subScale,subFps).entries,'srt'):null;
     marker.subtitle={track:sub,text:sub?.text,scale:subScale,fps:subFps,delay:subDelay,transferred:!!text,requested:0};
     marker.subtitleDesired=marker.subtitle;
-    const r=await api.vpNativeOpen(p,engine,resume,text||null).catch(()=>null);
+    const r=await api.vpNativeOpen(p,engine,resume,text||null,embedded).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
-    marker.session=r.session;marker.engine=engine;marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
+    marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;
+    if(marker.embedded)startViewport(marker);marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
     say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine!=='libvlc'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
       if(handoff!==marker)return;
@@ -87,7 +106,7 @@
       if(handoff!==marker)return;
       if(s?.session===marker.session&&s.durationMs>0){const map=get(K.resume,{}),act=VP.resumeAction(s.positionMs,s.durationMs);if(act==='save'){map[p]=Math.round(s.positionMs);put(K.resume,VP.limitResume(map));}else if(act==='clear'){delete map[p];put(K.resume,map);}}
       if(s?.session===marker.session){marker.status=s;syncTime();syncTransport();if(!seeking&&Number.isFinite(s.volume))$('vpVolume').value=String(s.volume);}
-      if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
+      if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){clearViewport();handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
       nativePoll=setTimeout(poll,1000);
     };
     syncNativeSubtitle();poll();return true;
@@ -113,7 +132,8 @@
             if(result?.ok)marker.subtitle={...next,transferred:!!body,accepted:!!body,requested:0};
           }
           if(handoff!==marker)return;
-          if(marker.subtitleDesired===next)say(result?.ok?'LibVLC subtitle update accepted / Ελέγξτε την εμφάνιση':'Subtitle update failed: '+(result?.code||'unavailable'));
+          if(!result?.ok&&marker.subtitleDesired===next)marker.subtitleDesired=marker.subtitle;
+          if(marker.subtitleDesired===next||!result?.ok)say(result?.ok?'LibVLC subtitle update accepted / Ελέγξτε την εμφάνιση':'Subtitle update failed: '+(result?.code||'unavailable'));
         }else result=await api.vpNativeCommand(marker.session,name,value).catch(()=>null);
         if(handoff!==marker)return;
         if(!result?.ok){if(name!=='subtitle-sync')say('Native command unavailable');if(!result||['timeout','unavailable','pipe-error','native-closed','native-playback-failed'].includes(result.code)){marker.commands.length=0;break;}}
@@ -136,7 +156,7 @@
     if(m.engine!=='libvlc'){say(m.engine+' subtitle handoff unavailable');return;}
     if(nativeCommand('subtitle-sync',next))m.subtitleDesired=next;
   }
-  function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
+  function stopNative(){clearViewport();if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
     stopNative();saveResume(); releaseTicket();
@@ -698,10 +718,11 @@
     $('vpAB').addEventListener('click', toggleAB);
     $('vpSnap').addEventListener('click', snapshot);
     $('vpInfo').addEventListener('click', fileInfo);
-    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;$('vpMediaFoundation').hidden=!r?.available;$('vpNativeFallbackLabel').hidden=!r?.available;}).catch(()=>{});
+    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpNativeEmbed').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;$('vpMediaFoundation').hidden=!r?.available;$('vpNativeFallbackLabel').hidden=!r?.available;}).catch(()=>{});
     $('vpDirectShow').addEventListener('click',()=>nativeHandoff('directshow',current(),generation));
     $('vpMediaFoundation').addEventListener('click',()=>nativeHandoff('media-foundation',current(),generation));
     $('vpNative').addEventListener('click',()=>nativeHandoff('libvlc',current(),generation));
+    $('vpNativeEmbed').addEventListener('click',()=>nativeHandoff('libvlc',current(),generation,true));
     $('vpNativeStop').addEventListener('click',stopNative);
     $('vpCodecs').addEventListener('click', async () => {
       const report=await api.vpCodecInventory().catch(()=>null);

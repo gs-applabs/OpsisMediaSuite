@@ -561,3 +561,12 @@ test('RAR listing accepts only bounded literal subtitle members and rejects encr
  assert.equal(signature(Buffer.from('526172211a070100','hex')),true);
  assert.equal(signature(Buffer.from('504b0304','hex')),false);
 });
+
+
+test('embedded viewport accepts only bounded normalized rectangles and dedicated IPC',()=>{
+ const {normalizeViewport,normalizeCommand}=require('../native-host');
+ assert.equal(normalizeViewport(null),0);
+ assert.equal(normalizeViewport({x:100,y:100,w:500,h:500}),((100*1024+100)*1024+500)*1024+500);
+ for(const rect of [{x:-1,y:0,w:1,h:1},{x:900,y:0,w:101,h:1},{x:0,y:0,w:0,h:1},{x:0,y:0,w:1.5,h:1},{x:0,y:0,w:1000,h:1001},{}])assert.equal(normalizeViewport(rect),null);
+ assert.equal(normalizeCommand('viewport',1),null);
+});

@@ -29,6 +29,13 @@ jobs:
           if ($LASTEXITCODE -or (Select-String -Path audit.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet)) { throw 'native dependency audit failed' }
       - name: Build native host
         run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
+      - name: Embedded Win32 viewport attachment and bounds self-test
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--embed-selftest') -PassThru -RedirectStandardOutput embed-result.json -RedirectStandardError embed-error.log
+          if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'viewport timeout' }
+          Get-Content embed-result.json,embed-error.log
+          if ($p.ExitCode -ne 0) { throw "viewport test failed: $($p.ExitCode)" }
       - name: Generate real multitrack MKV
         shell: pwsh
         run: |
@@ -99,6 +106,8 @@ jobs:
           name: native-host-test-evidence
           path: |
             audit.txt
+            embed-result.json
+            embed-error.log
             native-result.json
             native-error.log
             control-result.json

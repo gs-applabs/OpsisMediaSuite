@@ -19,7 +19,7 @@ internal static class NativeCommands
             string cmd=name.GetString()??"";double value=0;
             bool hasValue=r.TryGetProperty("value",out var v);
             if(hasValue&&(v.ValueKind!=JsonValueKind.Number||!v.TryGetDouble(out value)||!double.IsFinite(value)))return new(n,"invalid",0);
-            if((cmd=="seek"||cmd=="volume"||cmd=="rate"||cmd=="subtitle-delay"||cmd=="subtitle-replace")&&!hasValue)return new(n,"invalid",0);
+            if((cmd=="seek"||cmd=="volume"||cmd=="rate"||cmd=="subtitle-delay"||cmd=="subtitle-replace"||cmd=="viewport")&&!hasValue)return new(n,"invalid",0);
             return new(n,cmd,value);
         }catch{return new(0,"invalid",0);}
     }

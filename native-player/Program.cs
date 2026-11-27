@@ -22,18 +22,25 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length < 2 || args.Length > 4 || !SafeLocal(args[1], MediaExt)) return 2;
+        if(args.Length==1&&args[0]=="--embed-selftest"){ApplicationConfiguration.Initialize();return EmbeddedViewport.SelfTest();}
+        bool embedded=args.Length==6&&args[0]=="--embed";
+        if (args.Length < 2 || (!embedded&&args.Length > 4) || !SafeLocal(args[1], MediaExt)) return 2;
+        EmbeddedViewport? viewport=null;
+        if(embedded){
+            if(!long.TryParse(args[4],out long hwnd)||hwnd<=0||!uint.TryParse(args[5],out uint pid)||pid==0)return 2;
+            viewport=new EmbeddedViewport(new IntPtr(hwnd),pid);if(!viewport.ParentValid())return 2;
+        }
         string? sidecar=null;
         if(args.Length==4&&args[0]!="--open")return 2;
-        if(args.Length==4||args[0]=="--selftest-sub"){
+        if(embedded||args.Length==4||args[0]=="--selftest-sub"){
             if(args[0]=="--selftest-sub"&&args.Length!=3)return 2;
-            sidecar=args[^1];if(!SafeSubtitle(sidecar))return 2;
+            sidecar=embedded?args[3]:args[^1];if(!SafeSubtitle(sidecar))return 2;
         }
-        long resume=0;if(args.Length>=3&&args[0]!="--selftest-sub"&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow"&&args[0]!="--mf-play")))return 2;
+        long resume=0;if(args.Length>=3&&args[0]!="--selftest-sub"&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--embed"&&args[0]!="--directshow"&&args[0]!="--mf-play")))return 2;
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
-        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--selftest-pipe" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--directshow-pipe" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest" && args[0]!="--mf-play" && args[0]!="--mf-play-selftest")return 2;
+        if(args[0]!="--open" && args[0]!="--embed" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--selftest-pipe" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--directshow-pipe" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest" && args[0]!="--mf-play" && args[0]!="--mf-play-selftest")return 2;
         try {
             if(args[0]=="--mf-play"||args[0]=="--mf-play-selftest"){ApplicationConfiguration.Initialize();return MediaFoundationPlayback.Run(args[1],resume,args[0]=="--mf-play-selftest");}
             if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
@@ -54,7 +61,7 @@ internal static class Program
             if(args[0]=="--selftest-pipe")return SelfTestPipe(player,media);
             if (selftest) return SelfTest(player, media);
             ApplicationConfiguration.Initialize();
-            using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume,sidecar);
+            using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume,sidecar,viewport);
             Application.Run(form);
             return 0;
         } catch (Exception ex) { Console.Error.WriteLine(ex.GetType().Name); HostEvent("error",0,0); return 1; }
@@ -196,10 +203,14 @@ internal static class Program
         private readonly long resume;
         private readonly string? sidecar;
         private long lastReport;
-        public PlayerWindow(MediaPlayer player, Media media, string title,long resume,string? sidecar)
+        private readonly EmbeddedViewport? viewport;
+        public PlayerWindow(MediaPlayer player, Media media, string title,long resume,string? sidecar,EmbeddedViewport? viewport)
         {
-            this.player=player; this.media=media;this.resume=resume;this.sidecar=sidecar; Text="OPSIS Native Player — "+title;
+            this.player=player; this.media=media;this.resume=resume;this.sidecar=sidecar;this.viewport=viewport; Text="OPSIS Native Player — "+title;
             Width=1050;Height=690;MinimumSize=new Size(650,420);
+            if(viewport!=null){
+                TopLevel=false;FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;MinimumSize=Size.Empty;
+            }
             var transport=new FlowLayoutPanel { Dock=DockStyle.Fill, AutoScroll=true, WrapContents=true };
             Button Button(string label, Action action) { var b=new Button{Text=label,AutoSize=true}; b.Click+=(_,_)=>action(); transport.Controls.Add(b);return b; }
             Button("Play / Pause",()=>{if(player.IsPlaying)player.SetPause(true);else if(player.State==VLCState.Paused)player.SetPause(false);else player.Play(media);});
@@ -217,22 +228,24 @@ internal static class Program
             Button("Sub +0.5s",()=>player.SetSpuDelay(Math.Min(3600000000L,player.SpuDelay+500000)));
             var volume=new TrackBar{Minimum=0,Maximum=100,Value=75,TickStyle=TickStyle.None,Width=100};volume.ValueChanged+=(_,_)=>player.Volume=volume.Value;transport.Controls.Add(volume);transport.Controls.Add(status);
             KeyPreview=true;KeyDown+=(_,e)=>{if(e.KeyCode==Keys.Escape&&FormBorderStyle==FormBorderStyle.None){FormBorderStyle=FormBorderStyle.Sizable;WindowState=FormWindowState.Normal;e.Handled=true;}};
-            var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3};layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,42));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,100));layout.Controls.Add(video,0,0);layout.Controls.Add(seek,0,1);layout.Controls.Add(transport,0,2);Controls.Add(layout);
+            var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3};layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,42));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,100));layout.Controls.Add(video,0,0);layout.Controls.Add(seek,0,1);layout.Controls.Add(transport,0,2);
+            if(viewport==null)Controls.Add(layout);
+            else {layout.Controls.Remove(video);Controls.Add(video);FormClosed+=(_,_)=>layout.Dispose();}
             audio.SelectedIndexChanged+=(_,_)=>{if(!updating&&audio.SelectedItem is TrackItem t)player.SetAudioTrack(t.Id);};
             subtitle.SelectedIndexChanged+=(_,_)=>{if(!updating&&subtitle.SelectedItem is TrackItem t)player.SetSpu(t.Id);};
             seek.MouseDown+=(_,_)=>seeking=true;seek.MouseUp+=(_,_)=>{seeking=false;if(player.IsSeekable&&player.Length>0)player.Time=player.Length*seek.Value/1000;};
             seek.Scroll+=(_,_)=>{if(!seeking&&player.IsSeekable&&player.Length>0)player.Time=player.Length*seek.Value/1000;};
             timer.Tick+=(_,_)=>RefreshState();
-            Shown+=(_,_)=>{player.Hwnd=video.Handle;player.Volume=75;if(!player.Play(media))status.Text="Playback failed";timer.Start();if(Console.IsInputRedirected)Task.Run(ReadCommands);};
-            FormClosing+=(_,_)=>{if(closing)return;closing=true;timer.Stop();HostEvent("closed",player.Time,player.Length);player.Stop();};
+            Shown+=(_,_)=>{if(viewport!=null&&!viewport.Attach(Handle)){HostEvent("error",0,0);Close();return;}player.Hwnd=video.Handle;player.Volume=75;if(!player.Play(media))status.Text="Playback failed";timer.Start();if(Console.IsInputRedirected)Task.Run(ReadCommands);};
+            FormClosing+=(_,_)=>{if(closing)return;closing=true;viewport?.Hide();timer.Stop();HostEvent("closed",player.Time,player.Length);player.Stop();};
         }
         private void ReadCommands(){
             try{
                 while(true){
-                    var cmd=NativeCommands.Read(Console.In);if(cmd==null)return;
+                    var cmd=NativeCommands.Read(Console.In);if(cmd==null){if(viewport!=null&&!IsDisposed&&IsHandleCreated)BeginInvoke(new Action(Close));return;}
                     using var handled=new ManualResetEventSlim(false);
                     if(IsDisposed||!IsHandleCreated)return;
-                    BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!closing&&ready&&NativeCommands.Apply(cmd,player,media,sidecar));}finally{handled.Set();}}));
+                    BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!closing&&ready&&(cmd.Name=="viewport"?viewport!=null&&viewport.Update(cmd.Value):NativeCommands.Apply(cmd,player,media,sidecar)));}finally{handled.Set();}}));
                     // One command may be queued at a time; don't let stdin flood the UI.
                     handled.Wait();
                 }
@@ -243,6 +256,7 @@ internal static class Program
         private void RefreshState()
         {
             if(closing)return;
+            if(viewport!=null&&!viewport.Tick()){HostEvent("error",player.Time,player.Length);Close();return;}
             if(player.State==VLCState.Error){HostEvent("error",player.Time,player.Length);Close();return;}
             if(!resumed&&player.IsSeekable&&player.Length>0){resumed=true;if(resume>0)player.Time=Math.Min(resume,Math.Max(0,player.Length-500));}
             if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;bool? accepted=sidecar==null||new FileInfo(sidecar).Length==0?null:player.AddSlave(MediaSlaveType.Subtitle,new Uri(sidecar).AbsoluteUri,true);HostEvent("ready",player.Time,player.Length,accepted,player.IsPlaying,player.Mute,player.Volume);lastReport=Environment.TickCount64;}

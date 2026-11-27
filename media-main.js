@@ -90,7 +90,22 @@ function init({ getMainWin, resolveFfmpegPath }) {
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
-  ipcMain.handle('vp:native-open',async(e,p,engine,positionMs,subtitleText)=>trusted(e)?nativeHost.open(p,engine,positionMs,subtitleText):{ok:false,code:'denied'});
+  ipcMain.handle('vp:native-open',async(e,p,engine,positionMs,subtitleText,embedded)=>{
+    if(!trusted(e))return {ok:false,code:'denied'};
+    if(embedded!==true)return nativeHost.open(p,engine,positionMs,subtitleText);
+    if(engine!=='libvlc'||process.platform!=='win32')return {ok:false,code:'unsupported-engine'};
+    try{
+      const handle=getMainWin().getNativeWindowHandle();
+      const value=handle.length===8?handle.readBigUInt64LE():handle.length===4?BigInt(handle.readUInt32LE()):0n;
+      if(value===0n||value>0x7fffffffffffffffn)return {ok:false,code:'bad-window'};
+      return nativeHost.open(p,engine,positionMs,subtitleText,{handle:value.toString(),pid:process.pid});
+    }catch{return {ok:false,code:'bad-window'};}
+  });
+  ipcMain.handle('vp:native-viewport',(e,session,rect)=>{
+    if(!trusted(e))return {ok:false,code:'denied'};
+    const w=getMainWin();
+    return nativeHost.updateViewport(session,w.isVisible()&&!w.isMinimized()&&w.isFocused()?rect:null);
+  });
   ipcMain.handle('vp:native-command',(e,session,name,value)=>trusted(e)?nativeHost.command(session,name,value):{ok:false,code:'denied'});
   ipcMain.handle('vp:native-subtitle',(e,session,text)=>trusted(e)?nativeHost.replaceSubtitle(session,text):{ok:false,code:'denied'});
   ipcMain.handle('vp:native-stop',e=>{if(trusted(e)){nativeHost.stop();return true;}return false;});

@@ -42,15 +42,23 @@ function normalizeCommand(name,value){
  if(value<bounds[0]||value>bounds[1])return null;
  return {name,value:name==='rate'?value:Math.round(value)};
 }
+function normalizeViewport(rect){
+ if(rect===null)return 0;
+ if(!rect||typeof rect!=='object')return null;
+ const {x,y,w,h}=rect;
+ if(![x,y,w,h].every(Number.isInteger)||x<0||y<0||w<=0||h<=0||x+w>1000||y+h>1000)return null;
+ return ((x*1024+y)*1024+w)*1024+h;
+}
 function createNativeHost({app,extensions,authorize}){
  let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0,subtitleSession=null;
  function finishCommand(r){if(!pending)return;const p=pending;pending=null;clearTimeout(p.timer);p.resolve(r);}
  const hostPath=()=>path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'native-player','publish'),...(app.isPackaged?['native-player']:[]),'Opsis.NativePlayer.exe');
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
  const status=()=>({available:available(),...state});
- async function open(value,engine='libvlc',positionMs=0,subtitleText=null){
+ async function open(value,engine='libvlc',positionMs=0,subtitleText=null,embedding=null){
   if(!['libvlc','directshow','media-foundation'].includes(engine))return {ok:false,code:'bad-engine'};
   if(!available())return {ok:false,code:'native-not-built'};
+  if(embedding!==null&&(engine!=='libvlc'||typeof embedding.handle!=='string'||!/^\d{1,20}$/.test(embedding.handle)||!Number.isSafeInteger(embedding.pid)||embedding.pid<=0))return {ok:false,code:'bad-embedding'};
   if(engine==='media-foundation'&&(typeof value!=='string'||!['.mp4','.m4v','.mov','.wmv','.wav','.mp3','.m4a','.aac','.wma'].includes(path.extname(value).toLowerCase())))return {ok:false,code:'unsupported-format'};
   if(child||opening)return {ok:false,code:'native-busy'};
   const p=allowedFile(value,extensions);if(!p)return {ok:false,code:'denied'};
@@ -66,11 +74,11 @@ function createNativeHost({app,extensions,authorize}){
      try{scratch=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-native-sub-'));sidecar=path.join(scratch,'synced.srt');fs.writeFileSync(sidecar,body,{encoding:'utf8',flag:'wx',mode:0o600});subtitleSession={token,dir:scratch,revision:0,bytes:Buffer.byteLength(body,'utf8')};}
      catch{cleanup();return {ok:false,code:'subtitle-temp-failed'};}
    }
-   state={phase:'starting',engine,positionMs:pos,durationMs:0,session:token,subtitleTransferred:engine==='libvlc'&&subtitleText!==null};
+   state={phase:'starting',engine,embedded:embedding!==null,positionMs:pos,durationMs:0,session:token,subtitleTransferred:engine==='libvlc'&&subtitleText!==null};
    return await new Promise(resolve=>{
     let proc,settled=false,timer;
     const finish=r=>{if(settled)return;settled=true;clearTimeout(timer);resolve(r);};
-    try{proc=spawn(exe,[engine==='directshow'?'--directshow':engine==='media-foundation'?'--mf-play':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
+    try{proc=spawn(exe,[engine==='directshow'?'--directshow':engine==='media-foundation'?'--mf-play':embedding?'--embed':'--open',valid,String(pos),...(sidecar?[sidecar]:[]),...(embedding?[embedding.handle,String(embedding.pid)]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
     catch(_){cleanup();state={...state,phase:'error'};finish({ok:false,code:'launch-failed'});return;}
     timer=setTimeout(()=>{if(child===proc){state={...state,phase:'error'};try{proc.kill();}catch{}}finish({ok:false,code:'native-timeout'});},120000);
     proc.stdin?.on('error',()=>{if(child===proc)finishCommand({ok:false,code:'pipe-error'});});
@@ -82,7 +90,7 @@ function createNativeHost({app,extensions,authorize}){
       if(event.event==='ready'&&state.phase!=='starting')return;
       if(event.event==='position'&&state.phase!=='playing')return;
       const fields={};for(const k of ['playing','muted','volume'])if(Object.hasOwn(event,k))fields[k]=event[k];state={...state,...fields};
-      if(event.event==='ready'){state={...state,phase:'playing',positionMs:event.positionMs,durationMs:event.durationMs,subtitleAccepted:event.subtitleAccepted??null};finish({ok:true,engine,status:'ready',session:token,subtitleAccepted:state.subtitleAccepted});}
+      if(event.event==='ready'){state={...state,phase:'playing',positionMs:event.positionMs,durationMs:event.durationMs,subtitleAccepted:event.subtitleAccepted??null};finish({ok:true,engine,embedded:state.embedded,status:'ready',session:token,subtitleAccepted:state.subtitleAccepted});}
       else if(event.event==='position'&&state.phase==='playing')state={...state,positionMs:event.positionMs,durationMs:event.durationMs};
       else if(event.event==='closed'){state={...state,phase:'closed',positionMs:event.positionMs,durationMs:event.durationMs};finishCommand({ok:false,code:'native-closed'});finish({ok:false,code:'native-closed'});}
       else if(event.event==='error'){state={...state,phase:'error'};finishCommand({ok:false,code:'native-playback-failed'});finish({ok:false,code:'native-playback-failed'});try{proc.kill();}catch{}}
@@ -101,6 +109,12 @@ function createNativeHost({app,extensions,authorize}){
   if(pending)return Promise.resolve({ok:false,code:'busy'});
   return new Promise(resolve=>{const id=++commandId;const timer=setTimeout(()=>finishCommand({ok:false,code:'timeout'}),3000);pending={id,timer,resolve};try{child.stdin.write(JSON.stringify({id,...cmd})+'\n');}catch{finishCommand({ok:false,code:'pipe-error'});}});
  }
+ function updateViewport(session,rect){
+  const value=normalizeViewport(rect);
+  if(value===null||state.session!==session||state.phase!=='playing'||!state.embedded||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  if(pending)return Promise.resolve({ok:false,code:'busy'});
+  return sendCommand({name:'viewport',value});
+ }
  function replaceSubtitle(session,text){
   const s=subtitleSession;
   if(!s||s.token!==session||state.session!==session||state.phase!=='playing'||state.engine!=='libvlc'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
@@ -117,6 +131,6 @@ function createNativeHost({app,extensions,authorize}){
  }
  function stop(){epoch++;finishCommand({ok:false,code:'cancelled'});if(child){state={...state,phase:'stopping'};try{child.kill();}catch(_){}}}
  if(typeof app.on==='function')app.on('before-quit',stop);
- return {available,status,open,stop,command,replaceSubtitle};
+ return {available,status,open,stop,command,replaceSubtitle,updateViewport};
 }
-module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer};
+module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer,normalizeViewport};
