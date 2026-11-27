@@ -2576,6 +2576,7 @@ window.__selfTest = async function () {
     const pp=WaveframeAudio.presenceParams(engine.state.presence);testFilter.type='peaking';testFilter.frequency.value=pp.frequency;testFilter.Q.value=pp.q;testFilter.gain.value=pp.gain;testFilter.getFrequencyResponse(new Float32Array([2800]),response,phase);
     check('presence filter boosts 2.8kHz by 6dB',Math.abs(20*Math.log10(response[0])-6)<.1);
     check('stereo balance setting reaches engine',engine.state.balance===-50);
+    engine.setCompressorMode('night');syncProfessionalFx();check('night compressor profile selected',engine.state.compressorMode==='night'&&document.getElementById('fxCompressorMode').value==='night');engine.setCompressorMode('standard');syncProfessionalFx();
     engine.setPresence(0);engine.setBalance(0);syncProfessionalFx();
     check('sleep button present', !!document.getElementById('btnSleep'));
     check('export button present', !!document.getElementById('btnExportApo'));

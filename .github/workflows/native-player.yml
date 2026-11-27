@@ -45,6 +45,8 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'native command timeout' }
           Get-Content control-result.json,control-error.log
           if ($p.ExitCode -ne 0) { throw "native command test failed: $($p.ExitCode)" }
+      - name: Real redirected native pipe commands and acknowledgments
+        run: node test/native-pipe-fixture.js
       - name: Real LibVLC external synchronized SRT
         shell: pwsh
         run: |
@@ -84,6 +86,7 @@ jobs:
             native-result.json
             native-error.log
             control-result.json
+            pipe-result.json
             control-error.log
             external-sub-result.json
             external-sub-error.log

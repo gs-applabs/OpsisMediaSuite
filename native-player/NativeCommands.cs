@@ -13,7 +13,9 @@ internal static class NativeCommands
             using var json=JsonDocument.Parse(line.ToString());var r=json.RootElement;
             if(!r.TryGetProperty("id",out var id)||!id.TryGetInt32(out int n)||n<1||!r.TryGetProperty("name",out var name)||name.ValueKind!=JsonValueKind.String)return new(0,"invalid",0);
             string cmd=name.GetString()??"";double value=0;
-            if(r.TryGetProperty("value",out var v)&&(!v.TryGetDouble(out value)||!double.IsFinite(value)))return new(n,"invalid",0);
+            bool hasValue=r.TryGetProperty("value",out var v);
+            if(hasValue&&(v.ValueKind!=JsonValueKind.Number||!v.TryGetDouble(out value)||!double.IsFinite(value)))return new(n,"invalid",0);
+            if((cmd=="seek"||cmd=="volume"||cmd=="rate")&&!hasValue)return new(n,"invalid",0);
             return new(n,cmd,value);
         }catch{return new(0,"invalid",0);}
     }

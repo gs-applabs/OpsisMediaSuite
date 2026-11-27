@@ -126,3 +126,6 @@ Pass 35 completed 188/188 and real worker sync recovered +1.7s. Pass 37 native b
 
 ## Pass 40 — safer autosync, compressor modes, photo looks
 Pass 39 all CI green (190/190, native seek 1500 ms, plugin 12/12, LAV installed graph). Public Sintel audio test found a false -29.6s suggestion (score .27, margin .043) for +2s shifted captions. Raise minimum score to .45, margin to .08, reject boundary candidates; actual soundtrack test now rejects known weak false alignment. Not speech recognition. Add gentle/standard/night compression profiles shared by live and offline graph and user presets; old default unchanged. Add six photo looks with intensity, preserve geometry and history. New control labels bilingual/English, full localization/layout certification pending. Tests added, latest CI pending.
+
+## Pass 41 — real redirected native pipe test and new UI checks
+Separate process Node-to-LibVLC stdin/stdout test: real ready, pause/seek, correlated acknowledgments, actual seek verification and rejection of negative/missing seek and unknown verb. Uses dummy sinks and the production parser/actions; not a full WinForms display test. Add real renderer checks for photo look strength/geometry and night compressor selection. CI pending.

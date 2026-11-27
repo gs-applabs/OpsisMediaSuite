@@ -434,6 +434,9 @@ function init({ getMainWin, resolveFfmpegPath }) {
       check('photo undo restores original orientation',await until("document.getElementById('phCanvas').width===64",3000));
       await js("document.getElementById('phRedo').click();1");
       check('photo redo restores rotation',await until("document.getElementById('phCanvas').width===48",3000));
+      await js("document.getElementById('phLook').value='monochrome';document.getElementById('phLookStrength').value='50';document.getElementById('phLookApply').click();1");
+      check('photo look applies adjustable intensity',await js("document.getElementById('ph_saturation').value==='-50'&&document.getElementById('phCanvas').width===48"));
+      await js("document.getElementById('phUndo').click();1");
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     try {
       /* layout of the three new areas in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */

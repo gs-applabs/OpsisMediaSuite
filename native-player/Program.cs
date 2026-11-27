@@ -31,14 +31,14 @@ internal static class Program
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
-        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
+        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--selftest-pipe" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
         try {
             if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
             if (args[0] == "--mf-audio-selftest") return MediaFoundationProbe.Run(args[1],false);
             if (args[0] == "--directshow-selftest") return DirectShowHost.SelfTest(args[1]);
             if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1],resume); }
             Core.Initialize();
-            bool selftest = args[0] == "--selftest" || args[0]=="--selftest-sub" || args[0]=="--selftest-control";
+            bool selftest = args[0] == "--selftest" || args[0]=="--selftest-sub" || args[0]=="--selftest-control" || args[0]=="--selftest-pipe";
             // No remote URL or caller-supplied VLC arguments. Separate process;
             // this is not an OS sandbox for hostile bitstreams.
             using var vlc = selftest
@@ -48,6 +48,7 @@ internal static class Program
             using var media = new Media(vlc, args[1], FromType.FromPath);
             if (args[0]=="--selftest-sub") return SelfTestSubtitle(player,media,sidecar!);
             if(args[0]=="--selftest-control")return SelfTestControl(player,media);
+            if(args[0]=="--selftest-pipe")return SelfTestPipe(player,media);
             if (selftest) return SelfTest(player, media);
             ApplicationConfiguration.Initialize();
             using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume,sidecar);
@@ -56,6 +57,25 @@ internal static class Program
         } catch (Exception ex) { Console.Error.WriteLine(ex.GetType().Name); HostEvent("error",0,0); return 1; }
     }
 
+    private static int SelfTestPipe(MediaPlayer player,Media media){
+        if(!player.Play(media))return 3;
+        var clock=Stopwatch.StartNew();
+        while(clock.ElapsedMilliseconds<8000&&(!player.IsPlaying||!player.IsSeekable||player.Length<=0))Thread.Sleep(50);
+        if(!player.IsPlaying||!player.IsSeekable)return 4;
+        HostEvent("ready",player.Time,player.Length,null,player.IsPlaying,player.Mute,player.Volume);
+        // Same protocol parser/actions as the window. Parent owns 30s watchdog.
+        for(int i=0;i<16;i++){
+            var cmd=NativeCommands.Read(Console.In);if(cmd==null)break;
+            bool ok=NativeCommands.Apply(cmd,player,media);
+            if(ok&&cmd.Name=="seek"){
+                clock.Restart();while(clock.ElapsedMilliseconds<2000&&Math.Abs(player.Time-cmd.Value)>300)Thread.Sleep(30);
+                ok=Math.Abs(player.Time-cmd.Value)<=300;
+            }
+            NativeCommands.Ack(cmd,ok);
+            HostEvent("position",player.Time,player.Length,null,player.IsPlaying,player.Mute,player.Volume);
+        }
+        player.Stop();return 0;
+    }
     private static int SelfTestControl(MediaPlayer player,Media media){
         if(!player.Play(media))return 3;
         var clock=Stopwatch.StartNew();
