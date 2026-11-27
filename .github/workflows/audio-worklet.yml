@@ -1,0 +1,42 @@
+name: Experimental AudioWorklet DSP CI
+on:
+  pull_request:
+    paths: ['native-dsp/**', 'test/audio-worklet/**', '.github/workflows/audio-worklet.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build standalone WASM from the same C++ core
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:3.1.74 em++ native-dsp/opsis_dsp.cpp native-dsp/wasm_adapter.cpp -std=c++17 -O3 --no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=0 -sINITIAL_MEMORY=16777216 -sFILESYSTEM=0 -sEXPORTED_FUNCTIONS='["_opsis_wasm_init","_opsis_wasm_settings","_opsis_wasm_plane","_opsis_wasm_configure","_opsis_wasm_reset","_opsis_wasm_process"]' -o test/audio-worklet/opsis-dsp.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experimental-dsp-wasm
+          path: test/audio-worklet/opsis-dsp.wasm
+          if-no-files-found: error
+          retention-days: 3
+  electron:
+    needs: wasm
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: experimental-dsp-wasm
+          path: test/audio-worklet
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Isolated real Electron AudioWorklet offline rendering
+        shell: pwsh
+        run: |
+          & node_modules/.bin/electron.cmd test/audio-worklet/launch.js
+          if ($LASTEXITCODE) { throw 'AudioWorklet test failed' }
