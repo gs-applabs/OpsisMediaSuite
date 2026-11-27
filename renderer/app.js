@@ -196,49 +196,18 @@ class AudioEngine {
     this.surroundSide.connect(sideInvertR);
     sideInvertR.connect(merger, 0, 1);
 
-    this.compressorNode = ctx.createDynamicsCompressor();
-    this.compressorNode.threshold.value = -24;
-    this.compressorNode.knee.value = 30;
-    this.compressorNode.ratio.value = 8;
-    this.compressorNode.attack.value = 0.003;
-    this.compressorNode.release.value = 0.25;
-    this.compDry = ctx.createGain();
-    this.compWet = ctx.createGain();
-    this.compWet.gain.value = 0;
-    this.compDry.gain.value = 1;
+    // Lightweight through paths only; heavy processors are created on demand.
     this.balanceNode=ctx.createStereoPanner();this.balanceNode.pan.value=0;merger.connect(this.balanceNode);
-    this.balanceNode.connect(this.compDry);
-    this.balanceNode.connect(this.compressorNode);
-    this.compressorNode.connect(this.compWet);
-    this.compSum = ctx.createGain();
-    this.compDry.connect(this.compSum);
-    this.compWet.connect(this.compSum);
-
-    this.reverbNode = ctx.createConvolver();
-    // Allocate the convolution impulse only when reverb is first enabled.
-    this.reverbDry = ctx.createGain();
-    this.reverbWet = ctx.createGain();
-    this.reverbWet.gain.value = 0;
-    this.reverbDry.gain.value = 1;
-    this.compSum.connect(this.reverbDry);
-    this.compSum.connect(this.reverbNode);
-    this.reverbNode.connect(this.reverbWet);
-    this.reverbSum = ctx.createGain();
-    this.reverbDry.connect(this.reverbSum);
-    this.reverbWet.connect(this.reverbSum);
-
-    this.exciterNode = ctx.createWaveShaper();
-    // Keep the disabled exciter unconfigured until first use.
-    this.exciterDry = ctx.createGain();
-    this.exciterWet = ctx.createGain();
-    this.exciterWet.gain.value = 0;
-    this.exciterDry.gain.value = 1;
-    this.reverbSum.connect(this.exciterDry);
-    this.reverbSum.connect(this.exciterNode);
-    this.exciterNode.connect(this.exciterWet);
-    this.exciterSum = ctx.createGain();
-    this.exciterDry.connect(this.exciterSum);
-    this.exciterWet.connect(this.exciterSum);
+    this.liveEffects={};
+    const stage=(kind,input,property)=>{
+      const dry=ctx.createGain(),wet=ctx.createGain(),sum=ctx.createGain();
+      dry.gain.value=1;wet.gain.value=0;input.connect(dry);dry.connect(sum);wet.connect(sum);
+      this[property]=null;this.liveEffects[kind]={input,dry,wet,sum,property,timer:0,target:0};
+      return sum;
+    };
+    this.compSum=stage('compressor',this.balanceNode,'compressorNode');
+    this.reverbSum=stage('reverb',this.compSum,'reverbNode');
+    this.exciterSum=stage('exciter',this.reverbSum,'exciterNode');
 
     this.masterBypassDry = ctx.createGain();
     this.masterBypassDry.gain.value = 0;
@@ -457,7 +426,11 @@ class AudioEngine {
   }
 
   applyLiveBypass(immediate=false) {
-    if(this.dspRouteGate)this.dspRouteGate.select(OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:this.workletPreference,workletReady:this.workletReady}),immediate);
+    const route=OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:this.workletPreference,workletReady:this.workletReady});
+    // Prepare the selected web branch before fading it in.
+    if(route==='web')this.syncLiveEffects();
+    if(this.dspRouteGate)this.dspRouteGate.select(route,immediate);
+    if(route!=='web')this.syncLiveEffects();
     this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
@@ -596,44 +569,60 @@ class AudioEngine {
     this.surroundSide.gain.setTargetAtTime(0.5 * w, this.ctx.currentTime, 0.02);
     this.syncWorkletSettings();
   }
+  webEffectsSelected(){
+    return this.state.masterEnabled&&!this.state.routeBypass&&!(this.workletPreference&&this.workletReady);
+  }
+  syncLiveEffects(){for(const kind of ['compressor','reverb','exciter'])this.syncLiveEffect(kind);}
+  syncLiveEffect(kind){
+    if(!this.ctx||!this.liveEffects)return;
+    const stage=this.liveEffects[kind],ctx=this.ctx;
+    const target=this.webEffectsSelected()&&this.state[kind]?(kind==='compressor'?1:WaveframeAudio.effectMix(this.state[kind+'Amount'],kind==='reverb'?.28:.35)):0;
+    let node=this[stage.property];
+    clearTimeout(stage.timer);stage.timer=0;
+    if(target>0&&!node){
+      if(kind==='compressor'){
+        node=ctx.createDynamicsCompressor();const params=WaveframeAudio.compressorParams(this.state.compressorMode);
+        for(const k of Object.keys(params))node[k].value=params[k];
+      }else if(kind==='reverb'){node=ctx.createConvolver();node.buffer=this._makeImpulseResponse(2.2,2.0);}
+      else{node=ctx.createWaveShaper();node.curve=this._makeSaturationCurve();node.oversample='4x';}
+      stage.input.connect(node);node.connect(stage.wet);this[stage.property]=node;
+    }
+    const dry=kind==='compressor'?1-target:1;
+    const at=ctx.currentTime;
+    const set=(param,value,immediate=false)=>{param.cancelScheduledValues(at);if(immediate||ctx.state!=='running')param.setValueAtTime(value,at);else param.setTargetAtTime(value,at,.05);};
+    if(stage.target!==target){set(stage.dry.gain,dry);set(stage.wet.gain,target);stage.target=target;}
+    if(target===0&&node){
+      const release=()=>{
+        stage.timer=0;
+        if(stage.target!==0||this[stage.property]!==node)return;
+        const now=ctx.currentTime;
+        stage.wet.gain.cancelScheduledValues(now);stage.wet.gain.setValueAtTime(0,now);
+        stage.dry.gain.cancelScheduledValues(now);stage.dry.gain.setValueAtTime(1,now);
+        try{stage.input.disconnect(node);}catch{}
+        try{node.disconnect();}catch{}
+        this[stage.property]=null;
+      };
+      // Let the wet path fade out before dropping the processor. A suspended
+      // context has no audible tail and can release it immediately.
+      if(ctx.state==='running')stage.timer=setTimeout(release,350);else release();
+    }
+  }
   setCompressorMode(mode){
     this.state.compressorMode=['gentle','standard','night'].includes(mode)?mode:'standard';
-    if(!this.ctx)return;
-    const p=WaveframeAudio.compressorParams(this.state.compressorMode),tt=this.ctx.currentTime;
-    for(const k of Object.keys(p))this.compressorNode[k].setTargetAtTime(p[k],tt,.03);
+    if(this.compressorNode){
+      const p=WaveframeAudio.compressorParams(this.state.compressorMode),tt=this.ctx.currentTime;
+      for(const k of Object.keys(p))this.compressorNode[k].setTargetAtTime(p[k],tt,.03);
+    }
     this.syncWorkletSettings();
   }
-  setCompressor(on) {
-    this.state.compressor = on;
-    if(!this.ctx)return;
-    const tt = this.ctx.currentTime;
-    this.compWet.gain.setTargetAtTime(on ? 1 : 0, tt, 0.05);
-    this.compDry.gain.setTargetAtTime(on ? 0 : 1, tt, 0.05);
-    this.syncWorkletSettings();
-  }
+  setCompressor(on){this.state.compressor=!!on;this.syncLiveEffect('compressor');this.syncWorkletSettings();}
   setEffectAmount(kind,value){
     if(!['reverb','exciter'].includes(kind))return;
     this.state[kind+'Amount']=Math.max(0,Math.min(100,Number.isFinite(Number(value))?Number(value):100));
-    if(kind==='reverb')this.setReverb(this.state.reverb);else this.setExciter(this.state.exciter);
+    this.syncLiveEffect(kind);this.syncWorkletSettings();
   }
-  setReverb(on) {
-    this.state.reverb=on;
-    if(!this.ctx)return;
-    if(on&&!this.reverbNode.buffer)this.reverbNode.buffer=this._makeImpulseResponse(2.2,2.0);
-    const tt = this.ctx.currentTime;
-    this.reverbWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.reverbAmount,.28) : 0, tt, 0.05);
-    this.reverbDry.gain.setTargetAtTime(1, tt, 0.05);
-    this.syncWorkletSettings();
-  }
-  setExciter(on) {
-    this.state.exciter=on;
-    if(!this.ctx)return;
-    if(on&&!this.exciterNode.curve){this.exciterNode.curve=this._makeSaturationCurve();this.exciterNode.oversample='4x';}
-    const tt = this.ctx.currentTime;
-    this.exciterWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.exciterAmount,.35) : 0, tt, 0.05);
-    this.exciterDry.gain.setTargetAtTime(1, tt, 0.05);
-    this.syncWorkletSettings();
-  }
+  setReverb(on){this.state.reverb=!!on;this.syncLiveEffect('reverb');this.syncWorkletSettings();}
+  setExciter(on){this.state.exciter=!!on;this.syncLiveEffect('exciter');this.syncWorkletSettings();}
   resetEffects() {
     this.setBassBoost(0);this.setPresence(0);this.setBalance(0);
     this.setVolumeBoostDb(0);
@@ -3058,7 +3047,7 @@ window.__selfTest = async function () {
     fake.slots[fake.activeSlot].el.resolve();await Promise.resolve();
     check('confirmed direct playback commits once',direct.length===2&&direct[1]===true&&!fake.pendingTransition);
     fake.pauseActive();
-    check('disabled effects defer heavy initialization',!engine.reverbNode.buffer&&!engine.exciterNode.curve);
+    check('disabled effects allocate no heavy processor',!engine.compressorNode&&!engine.reverbNode&&!engine.exciterNode);
     check('audiolib loaded', typeof WaveframeAudio === 'object' && typeof WaveframeAudio.integratedLufs === 'function');
     engine.setPresence(100);engine.setBalance(-50);syncProfessionalFx();
     const response=new Float32Array(1),phase=new Float32Array(1);const testFilter=new OfflineAudioContext(2,480,48000).createBiquadFilter();
@@ -3106,13 +3095,28 @@ window.__selfTest = async function () {
     els.swReverb.click();
     await new Promise((r) => setTimeout(r, 0)); // MutationObserver callbacks run as microtasks
     check('aria-checked follows a click', els.swReverb.getAttribute('aria-checked') === 'true' && engine.state.reverb === true);
-    check('enabling reverb allocates impulse on demand',!!engine.reverbNode.buffer);
+    check('enabling reverb allocates impulse on demand',!!engine.reverbNode?.buffer);
     // #8: "reset effects" also closes compressor / reverb / exciter
     els.swCompressor.click(); els.swExciter.click();
-    check('enabling exciter initializes curve on demand',!!engine.exciterNode.curve&&engine.exciterNode.oversample==='4x');
+    check('enabling exciter initializes curve on demand',!!engine.exciterNode?.curve&&engine.exciterNode.oversample==='4x');
+    check('enabling compressor creates only its selected processor',!!engine.compressorNode);
+    engine.setReverb(false);engine.setReverb(true);
+    await new Promise(r=>setTimeout(r,400));
+    check('rapid re-enable retains active reverb',!!engine.reverbNode?.buffer);
+    engine.setMasterEnable(false);
+    await new Promise(r=>setTimeout(r,400));
+    check('master bypass releases all three optional processors and retains preferences',!engine.compressorNode&&!engine.reverbNode&&!engine.exciterNode&&engine.state.compressor&&engine.state.reverb&&engine.state.exciter);
+    engine.setMasterEnable(true);
+    check('master re-enable restores only selected effects',!!engine.compressorNode&&!!engine.reverbNode?.buffer&&!!engine.exciterNode?.curve);
     els.btnResetFx.click();
     await new Promise((r) => setTimeout(r, 0));
     check('reset effects turns compressor, reverb and exciter off (engine and UI)', !engine.state.compressor && !engine.state.reverb && !engine.state.exciter && [els.swCompressor, els.swReverb, els.swExciter].every((b) => !b.classList.contains('active') && b.getAttribute('aria-checked') === 'false'));
+    await new Promise(r=>setTimeout(r,400));
+    check('reset releases all optional effect processors',!engine.compressorNode&&!engine.reverbNode&&!engine.exciterNode);
+    engine.setReverb(true);engine.setEffectAmount('reverb',0);
+    await new Promise(r=>setTimeout(r,400));
+    check('zero wet amount releases optional processor',!engine.reverbNode&&engine.state.reverb);
+    engine.setReverb(false);engine.setEffectAmount('reverb',100);
     // bug audit: names from files / backups are text, never markup
     const savedList = playlist, savedIdx = currentTrackIndex;
     playlist = [{ name: '<b id="xss-probe">bold</b>', picture: '" onerror="1' }]; currentTrackIndex = -1;

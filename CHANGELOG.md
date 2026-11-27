@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.13
+- Allocate real-time compressor, convolution and waveshaper processors only for selected nonzero effects in the active Web Audio route. Release disconnected processors after a short wet-path fade; cancel stale release on re-enable, preserve preferences during master/external/worklet bypass. Offline export and output safety limiter unchanged. Real renderer assertions for rapid toggles, bypass, restore, reset and zero mix. Prior demand-driven startup CI passed 282/282; startup idle CPU 0.13%. Latest results pending.
+
 ## Unreleased — Ultra Mega Pass 20B.12
 - Music ownership parks video playback, releasing ticket/session/decoder and video DSP; retains selected item, subtitle edits, in-memory position and FX preference for explicit resume. Suspend unused music AudioContext after 1.5 s, resume when used. Video resume checkpoint timer runs only during playback; hidden photo preview and converter preview queue pause when leaving their tabs. Explicit conversion/export jobs continue. New renderer tests for video park/resume. CI pending.
 
