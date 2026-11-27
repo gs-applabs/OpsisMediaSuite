@@ -34,7 +34,6 @@ jobs:
           if (!out) throw new Error('GS_SNAPSHOT_DIR required');
           fs.mkdirSync(out, { recursive: true });
           process.env.WAVEFRAME_NO_SPLASH = '1';
-          require('./main.js');
           (async () => {
             const end = Date.now() + 60000;
             let win;
@@ -69,8 +68,10 @@ jobs:
           setTimeout(()=>app.exit(2),180000).unref();
           '@
           Set-Content -LiteralPath 'gs-capture.cjs' -Value $code -Encoding utf8
+          Add-Content -LiteralPath 'main.js' -Value "`nrequire('./gs-capture.cjs');" -Encoding utf8
+          $env:WAVEFRAME_NO_SPLASH = '1'
           $exe = (Resolve-Path node_modules/electron/dist/electron.exe).Path
-          $p = Start-Process -FilePath $exe -ArgumentList 'gs-capture.cjs' -PassThru
+          $p = Start-Process -FilePath $exe -ArgumentList '.' -PassThru
           if (!$p.WaitForExit(200000)) { Stop-Process -Id $p.Id -Force; throw 'Capture timed out' }
           if ($p.ExitCode -ne 0) { throw "Electron capture failed: $($p.ExitCode)" }
       - name: Validate and publish gallery
@@ -88,7 +89,7 @@ jobs:
           $dest = 'docs/product-snapshots'
           if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
           New-Item -ItemType Directory -Force $dest | Out-Null
-          $lines = @('# Application screenshots / Στιγμιότυπα εφαρμογής', '', "Source commit: $env:GITHUB_SHA", '', 'Actual Electron UI, isolated empty media library, two themes. Not a playback or conversion test.', '')
+          $lines = @('# Application screenshots / Στιγμιότυπα εφαρμογής', '', "Source commit: $env:GITHUB_SHA", '', 'Actual Electron UI started through its package entrypoint, isolated empty media library, two themes. Not a playback or conversion test.', '')
           foreach ($file in ($files | Sort-Object Name)) {
             Copy-Item $file.FullName $dest
             $lines += @("### $($file.BaseName)", '', "![$($file.BaseName)]($($file.Name))", '')
