@@ -2,7 +2,7 @@
 // Lossless MP3 tag completion: append only missing simple ID3 frames, preserving
 // every existing frame and all audio bytes. Refuse exotic or ambiguous headers.
 const fs=require('node:fs/promises'), F=require('node:fs'), path=require('node:path');
-const {randomUUID}=require('node:crypto'),{pipeline}=require('node:stream/promises');
+const {randomUUID,createHash}=require('node:crypto'),{pipeline}=require('node:stream/promises');
 const {Readable}=require('node:stream');
 const fields={title:'TIT2',artist:'TPE1',album:'TALB',genre:'TCON',year:'TYER'};
 const maxTag=8*1024*1024, maxFile=512*1024*1024;
@@ -49,10 +49,13 @@ async function complete(file,values){
  const tmp=path.join(path.dirname(file),'.opsis-'+randomUUID()+'.mp3');
  const backup=file+'.opsis-'+randomUUID()+'.bak';
  try{
-  async function* bytes(){yield patch.bytes;yield* F.createReadStream(file,{start:skip});}
+  const originalHash=createHash('sha256');
+  async function* bytes(){yield patch.bytes;for await(const chunk of F.createReadStream(file,{start:skip})){originalHash.update(chunk);yield chunk;}}
   await pipeline(Readable.from(bytes()),F.createWriteStream(tmp,{flags:'wx',mode:stat.mode}));
+  const copiedHash=createHash('sha256');for await(const chunk of F.createReadStream(tmp,{start:patch.bytes.length}))copiedHash.update(chunk);
+  if(originalHash.digest('hex')!==copiedHash.digest('hex'))throw Error('audio byte verification failed');
   const check=await mm.parseFile(tmp,{duration:false,skipCovers:true});
-  for(const [k,v] of Object.entries(patch.applied))if(String(check.common[k])!==v)throw Error('tag verification failed: '+k);
+  for(const [k,v] of Object.entries(patch.applied))if(k==='genre'?!(Array.isArray(check.common.genre)&&check.common.genre.includes(v)):String(check.common[k])!==v)throw Error('tag verification failed: '+k);
   const same=async()=>{const s=await fs.lstat(file);if(s.size!==stat.size||s.mtimeMs!==stat.mtimeMs||s.ino!==stat.ino||!s.isFile())throw Error('file changed during operation');};
   await same();await fs.copyFile(file,backup,F.constants.COPYFILE_EXCL);await same();
   await fs.rename(tmp,file);

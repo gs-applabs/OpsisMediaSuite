@@ -1489,13 +1489,13 @@ els.fileInput.addEventListener('change', () => {
 function addFilesToPlaylist(files) {
   const wasEmpty = playlist.length === 0;
   const added = files.map((file) => {
-    const item = { file, path: file.path || null, name: file.name.replace(/\.[^/.]+$/, '') };
+    const item = { file, path: window.waveframe.pathForFile(file) || null, name: file.name.replace(/\.[^/.]+$/, '') };
     playlist.push(item);
     return item;
   });
   renderPlaylist();
   if (wasEmpty && playlist.length > 0) playTrackAt(0);
-  added.forEach((item) => enrichTrackMetadata(item));
+  void (async()=>{for(const item of added)await enrichTrackMetadata(item);})();
 }
 
 async function completeMusicTags(mode){
@@ -1526,7 +1526,7 @@ document.getElementById('metadataManual').addEventListener('click',()=>completeM
 
 async function enrichTrackMetadata(item) {
   if (!item.path) return;
-  const meta = await window.waveframe.readMetadata(item.path);
+  const meta = await window.waveframe.readMetadata(item.path).catch(()=>null);
   if (!meta) return;
   if (meta.title) item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
   item.artist = meta.artist || null;
@@ -1566,6 +1566,8 @@ function restorePlaylist() {
     else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
   });
   renderPlaylist();
+  // Refresh tags on restored local files in sequence to avoid unbounded disk IO.
+  void (async()=>{for(const item of playlist.slice(0,500)){if(item.path)await enrichTrackMetadata(item);}})();
 }
 document.body.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drag-over'); });
 document.body.addEventListener('dragleave', () => document.body.classList.remove('drag-over'));
