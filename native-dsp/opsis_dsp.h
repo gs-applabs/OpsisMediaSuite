@@ -27,6 +27,11 @@ typedef struct opsis_dsp_config_v2 {
 } opsis_dsp_config_v2;
 int opsis_dsp_configure_v2(opsis_dsp* dsp,const opsis_dsp_config_v2* config);
 opsis_dsp* opsis_dsp_create(uint32_t rate,uint32_t channels);
+// Explicit Windows speaker masks; channel order is ascending speaker bit.
+// 0x4 mono FC, 0x3 stereo FL/FR, 0x3f 5.1 back, 0x60f 5.1 side,
+// 0x63f 7.1. No inference from channel count alone, no downmix/upmix.
+// LFE skips EQ/bass/presence/ambience/exciter; shared preamp/dynamics apply.
+opsis_dsp* opsis_dsp_create_layout(uint32_t rate,uint32_t speaker_mask);
 void opsis_dsp_destroy(opsis_dsp* dsp);
 int opsis_dsp_configure(opsis_dsp* dsp,const opsis_dsp_config* config);
 void opsis_dsp_reset(opsis_dsp* dsp);

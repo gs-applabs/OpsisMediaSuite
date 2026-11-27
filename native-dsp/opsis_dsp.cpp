@@ -40,7 +40,8 @@ double filter(double in,const Coeff& c,Memory& m){
     return out;
 }
 // Fixed-capacity delay state at 96 kHz; cleared outside processing.
-constexpr size_t delayCapacity=6144;
+constexpr size_t delayCapacity=6144,maxChannels=8;
+using Frame=std::array<double,maxChannels>;
 struct Dynamics {
     unsigned mode=0,tick=0;
     double threshold=-24,ratio=8,knee=30,attack=.99,release=.999;
@@ -62,23 +63,27 @@ struct Dynamics {
 };
 struct Bank {
     std::array<Coeff,12> c{};
-    std::array<std::array<Memory,12>,2> state{};
+    std::array<std::array<Memory,12>,maxChannels> state{};
+    std::array<bool,12> filterActive{};
     double gain=1,width=1,balance=0,leftBalance=1,rightBalance=1;
     bool enabled=false,limiter=false;
     Dynamics dynamics{};
     double ambience=0,exciter=0,exciterAlpha=0,limiterRelease=.999,limiterGain=1;
-    std::array<double,2> low{};
-    std::array<std::array<float,delayCapacity>,2> delays{};
-    std::array<size_t,2> delayLength{1,1},cursor{};
-    void effects(double& l,double& r,uint32_t channels){
+    std::array<double,maxChannels> low{};
+    std::array<std::array<float,delayCapacity>,maxChannels> delays{};
+    std::array<size_t,maxChannels> delayLength{},cursor{};
+    static double peakOf(const Frame& f,uint32_t channels){
+        double peak=0;for(uint32_t ch=0;ch<channels;++ch)peak=std::max(peak,std::abs(f[ch]));return peak;
+    }
+    void effects(Frame& f,uint32_t channels,int lfe){
         if(dynamics.mode){
-            const double g=dynamics.process(std::max(std::abs(l),channels==2?std::abs(r):0.));
-            l*=g;r*=g;
+            const double g=dynamics.process(peakOf(f,channels));
+            for(uint32_t ch=0;ch<channels;++ch)f[ch]*=g;
         }
         if(ambience>0||exciter>0){
-            double* values[2]{&l,&r};
             for(uint32_t ch=0;ch<channels;++ch){
-                double v=*values[ch];
+                if(static_cast<int>(ch)==lfe)continue;
+                double v=f[ch];
                 if(ambience>0){
                     const double tail=delays[ch][cursor[ch]];
                     delays[ch][cursor[ch]]=float(std::clamp(clean(v+tail*.42),-4.,4.));
@@ -88,45 +93,62 @@ struct Bank {
                 if(exciter>0){
                     low[ch]=clean(low[ch]+exciterAlpha*(v-low[ch]));
                     const double high=std::clamp(v-low[ch],-1.,1.);
-                    // Odd, bounded harmonic shaping of the high-frequency component.
                     v+=exciter*(high*high*high);
                 }
-                *values[ch]=clean(v);
+                f[ch]=clean(v);
             }
         }
         if(limiter){
-            constexpr double ceiling=.8912509381337456; // -1 dBFS sample peak
-            const double peak=std::max(std::abs(l),channels==2?std::abs(r):0.);
+            constexpr double ceiling=.8912509381337456;
+            const double peak=peakOf(f,channels);
             const double requested=peak>ceiling?ceiling/peak:1.;
             limiterGain=std::min(requested,limiterRelease*limiterGain+(1-limiterRelease));
-            l*=limiterGain;r*=limiterGain;
+            for(uint32_t ch=0;ch<channels;++ch)f[ch]*=limiterGain;
         }
     }
-    void sample(double& l,double& r,uint32_t channels){
+    void sample(Frame& f,uint32_t channels,int lfe){
         if(!enabled)return;
-        for(size_t i=0;i<c.size();++i){l=filter(l,c[i],state[0][i]);if(channels==2)r=filter(r,c[i],state[1][i]);}
-        l*=gain;r*=gain;
-        if(channels==2){
-            const double mid=(l+r)*.5,side=(l-r)*.5*width;
-            l=(mid+side)*leftBalance;
-            r=(mid-side)*rightBalance;
+        for(uint32_t ch=0;ch<channels;++ch){
+            if(static_cast<int>(ch)!=lfe)
+                for(size_t i=0;i<c.size();++i)if(filterActive[i])f[ch]=filter(f[ch],c[i],state[ch][i]);
+            f[ch]*=gain;
         }
-        effects(l,r,channels);
-        l=std::clamp(clean(l),-1.,1.);r=std::clamp(clean(r),-1.,1.);
+        // Width and balance only affect the front L/R pair, never center,
+        // surround or LFE. These layouts explicitly guarantee FL/FR first.
+        if(channels>=2){
+            const double mid=(f[0]+f[1])*.5,side=(f[0]-f[1])*.5*width;
+            f[0]=(mid+side)*leftBalance;
+            f[1]=(mid-side)*rightBalance;
+        }
+        effects(f,channels,lfe);
+        for(uint32_t ch=0;ch<channels;++ch)f[ch]=std::clamp(clean(f[ch]),-1.,1.);
     }
 };
 }
 struct opsis_dsp {
     uint32_t rate,channels;
+    int lfe=-1;
     std::array<Bank,2> banks{};
     unsigned active=0;
     uint32_t fade=0,length=0;
 };
-extern "C" opsis_dsp* opsis_dsp_create(uint32_t rate,uint32_t channels){
-    if(rate<44100||rate>96000||(channels!=1&&channels!=2))return nullptr;
+extern "C" opsis_dsp* opsis_dsp_create_layout(uint32_t rate,uint32_t speaker_mask){
+    uint32_t channels=0;
+    switch(speaker_mask){
+        case 0x4:channels=1;break;
+        case 0x3:channels=2;break;
+        case 0x3f:case 0x60f:channels=6;break;
+        case 0x63f:channels=8;break;
+        default:return nullptr;
+    }
+    if(rate<44100||rate>96000)return nullptr;
     auto* p=new(std::nothrow) opsis_dsp{};
-    if(p){p->rate=rate;p->channels=channels;p->length=rate/100;}
+    if(p){p->rate=rate;p->channels=channels;p->lfe=channels>=6?3:-1;p->length=rate/100;}
     return p;
+}
+extern "C" opsis_dsp* opsis_dsp_create(uint32_t rate,uint32_t channels){
+    if(channels!=1&&channels!=2)return nullptr;
+    return opsis_dsp_create_layout(rate,channels==1?0x4u:0x3u);
 }
 extern "C" void opsis_dsp_destroy(opsis_dsp* p){delete p;}
 extern "C" int opsis_dsp_configure(opsis_dsp* p,const opsis_dsp_config* cfg){
@@ -134,17 +156,21 @@ extern "C" int opsis_dsp_configure(opsis_dsp* p,const opsis_dsp_config* cfg){
     for(float db:cfg->eq_db)if(!bounded(db,-12,12))return 0;
     if(!bounded(cfg->bass_db,-12,12)||!bounded(cfg->presence_percent,0,100)||
        !bounded(cfg->balance_percent,-100,100)||!bounded(cfg->surround_percent,0,100)||!bounded(cfg->preamp_db,-24,12))return 0;
-    Bank next{};
+    // Reset the inactive bank between calls, never in the sample loop.
+    auto& next=p->banks[1-p->active];
+    next=Bank{};
     next.enabled=cfg->enabled!=0;
     for(size_t i=0;i<freq.size();++i)next.c[i]=make(i==0?Kind::low:i==9?Kind::high:Kind::peak,freq[i],1.4,cfg->eq_db[i],p->rate);
     next.c[10]=make(Kind::low,90,.7,cfg->bass_db,p->rate);
     next.c[11]=make(Kind::peak,2800,.85,cfg->presence_percent*.06,p->rate);
+    for(size_t i=0;i<freq.size();++i)next.filterActive[i]=cfg->eq_db[i]!=0;
+    next.filterActive[10]=cfg->bass_db!=0;next.filterActive[11]=cfg->presence_percent!=0;
     next.gain=std::pow(10.,cfg->preamp_db/20.);
     next.width=1+cfg->surround_percent*.006;
     next.balance=cfg->balance_percent/100.;
     next.leftBalance=next.balance>0?std::cos(next.balance*pi/2):1;
     next.rightBalance=next.balance<0?std::cos(next.balance*pi/2):1;
-    p->banks[1-p->active]=next;p->fade=p->length;return 1;
+    p->fade=p->length;return 1;
 }
 extern "C" int opsis_dsp_configure_v2(opsis_dsp* p,const opsis_dsp_config_v2* cfg){
     if(!p||!cfg||cfg->version!=2||cfg->compressor_mode>3||cfg->limiter>1||
@@ -153,7 +179,8 @@ extern "C" int opsis_dsp_configure_v2(opsis_dsp* p,const opsis_dsp_config_v2* cf
     auto& next=p->banks[1-p->active];
     next.ambience=cfg->ambience_percent*.0028;
     next.exciter=cfg->exciter_percent*.0035;
-    next.delayLength={size_t(p->rate*.037),size_t(p->rate*.053)};
+    constexpr std::array<double,maxChannels> delaySeconds{.037,.053,.041,.043,.047,.059,.031,.061};
+    for(size_t ch=0;ch<maxChannels;++ch)next.delayLength[ch]=size_t(p->rate*delaySeconds[ch]);
     next.exciterAlpha=1-std::exp(-2*pi*3500/p->rate);
     next.limiter=cfg->limiter==1;
     next.limiterRelease=std::exp(-1./(.05*p->rate));
@@ -180,16 +207,17 @@ extern "C" int opsis_dsp_process(opsis_dsp* p,float* samples,uint32_t frames){
     for(uint32_t i=0;i<frames;++i){
         auto* f=samples+size_t(i)*p->channels;
         // Exact finite bypass, sanitizes invalid PCM. Not a recording path.
-        double l=std::isfinite(f[0])?f[0]:0,r=p->channels==2&&std::isfinite(f[1])?f[1]:0;
-        double a=l,b=r;
-        p->banks[p->active].sample(a,b,p->channels);
+        Frame input{};
+        for(uint32_t ch=0;ch<p->channels;++ch)input[ch]=std::isfinite(f[ch])?f[ch]:0;
+        Frame output=input;
+        p->banks[p->active].sample(output,p->channels,p->lfe);
         if(p->fade){
-            p->banks[1-p->active].sample(l,r,p->channels);
+            p->banks[1-p->active].sample(input,p->channels,p->lfe);
             const double mix=double(p->length-p->fade+1)/p->length;
-            a=a*(1-mix)+l*mix;b=b*(1-mix)+r*mix;
+            for(uint32_t ch=0;ch<p->channels;++ch)output[ch]=output[ch]*(1-mix)+input[ch]*mix;
             if(--p->fade==0)p->active=1-p->active;
         }
-        f[0]=float(a);if(p->channels==2)f[1]=float(b);
+        for(uint32_t ch=0;ch<p->channels;++ch)f[ch]=float(output[ch]);
     }
     return 1;
 }
