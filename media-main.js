@@ -694,6 +694,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
       check('photo editor rotates 90 degrees (64x48 -> 48x64)', await js("document.getElementById('phCanvas').width === 48 && document.getElementById('phCanvas').height === 64"));
       const workerOk=await js("(async()=>{const data=new Uint8ClampedArray([10,20,30,255,40,50,60,255]);const r=await WaveframePhotoUi.processExport({width:2,height:1,data},{rotate:90},0);return r.width===1&&r.height===2&&r.data[3]===255&&data.byteLength===0;})()");
       check('photo export worker transfers pixels and rotates',workerOk);
+      const encoded=await js("(async()=>{const out={width:64,height:48,data:new Uint8ClampedArray(64*48*4)};const results=[];for(const f of ['png','jpeg','webp']){const r=await WaveframePhotoUi.encodeExport(out,f,.95,32,'#00ff00');const bmp=await createImageBitmap(r.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);const rgba=Array.from(c.getContext('2d').getImageData(16,12,1,1).data);results.push({f,w:bmp.width,h:bmp.height,mime:r.blob.type,rgba});bmp.close();c.width=0;c.height=0;}return results;})()");
+      check('photo real PNG JPEG WebP encode/decode, resized dimensions and alpha/matte',encoded.length===3&&encoded.every(x=>x.w===32&&x.h===24&&x.mime==='image/'+x.f&&(x.f==='jpeg'?x.rgba[1]>235&&x.rgba[0]<20&&x.rgba[2]<20&&x.rgba[3]===255:x.rgba[3]===0)),JSON.stringify(encoded));
       await js("document.getElementById('phUndo').click();1");
       check('photo undo restores original orientation',await until("document.getElementById('phCanvas').width===64",3000));
       await js("document.getElementById('phRedo').click();1");

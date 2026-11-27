@@ -29,7 +29,9 @@ async function resolve7Zip(){
 }
 function parseListing(text){
  if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>256*1024)return null;
- const blocks=text.trim().split(/\r?\n\s*\r?\n/).filter(Boolean);
+ // Preserve empty technical values ("Characteristics = ") at EOF.
+ // Trimming whitespace changes valid key/value records into malformed ones.
+ const blocks=text.replace(/^\uFEFF/,'').replace(/^(?:\r?\n)+|(?:\r?\n)+$/g,'').split(/\r?\n[ \t]*\r?\n/).filter(Boolean);
  if(blocks.length>128)return null;
  const seen=new Set(),out=[];let total=0;
  for(const block of blocks){

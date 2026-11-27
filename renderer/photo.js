@@ -155,6 +155,32 @@
       try{worker.postMessage({width:img.width,height:img.height,buffer:img.data.buffer,params:snapshot,maxEdge},[img.data.buffer]);}catch(e){finish(e);}
     });
   }
+  // Shared production export and test path: release all temporary canvas
+  // surfaces on success, encoder failure, or unsupported output format.
+  async function encodeExport(out,f,q,maxEdge=0,matte='#ffffff'){
+    if(!Object.hasOwn(P.OUT_FORMATS,f)||!P.validImageSize(out.width,out.height)||
+       !(out.data instanceof Uint8ClampedArray)||out.data.length!==out.width*out.height*4)throw Error('photo-output');
+    const size=P.resizeOutput(out.width,out.height,maxEdge);
+    const oc=document.createElement('canvas');let target=oc;
+    try{
+      oc.width=out.width;oc.height=out.height;
+      oc.getContext('2d').putImageData(new ImageData(out.data,out.width,out.height),0,0);
+      if(size.width!==out.width||size.height!==out.height){
+        target=document.createElement('canvas');target.width=size.width;target.height=size.height;
+        const ctx=target.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(oc,0,0,size.width,size.height);
+        oc.width=0;oc.height=0;
+      }
+      if(f==='jpeg'){
+        const ctx=target.getContext('2d');ctx.globalCompositeOperation='destination-over';
+        ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(matte)?matte:'#ffffff';
+        ctx.fillRect(0,0,target.width,target.height);ctx.globalCompositeOperation='source-over';
+      }
+      const quality=Number.isFinite(q)?Math.max(0,Math.min(1,q)):.92;
+      const blob=await new Promise(res=>target.toBlob(res,P.OUT_FORMATS[f].mime,quality));
+      if(!blob||blob.type!==P.OUT_FORMATS[f].mime)throw Error('photo-encode');
+      return {blob,size};
+    }finally{oc.width=0;oc.height=0;if(target!==oc){target.width=0;target.height=0;}}
+  }
   function exportSize(){if(!bmp)return;const s=P.outputSize(bmp.width,bmp.height,full()),o=P.resizeOutput(s.width,s.height,Number($('phResize').value));$('phDimensions').textContent=o.width+' × '+o.height+' px';}
   async function save() {
     if (!bmp || busy) return;
@@ -169,20 +195,12 @@
       const d = g.getImageData(0, 0, c.width, c.height);
       c.width=0;c.height=0;
       const out = await processExport(d,snapshot,maxEdge);
-      const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
-      oc.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
-      const size=P.resizeOutput(out.width,out.height,maxEdge);
-      let target=oc;
-      if(size.width!==out.width||size.height!==out.height){target=document.createElement('canvas');target.width=size.width;target.height=size.height;const ctx=target.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(oc,0,0,size.width,size.height);oc.width=0;oc.height=0;}
-      if(f==='jpeg'){const ctx=target.getContext('2d');ctx.globalCompositeOperation='destination-over';ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(matte)?matte:'#ffffff';ctx.fillRect(0,0,target.width,target.height);ctx.globalCompositeOperation='source-over';}
-      const blob = await new Promise((res) => target.toBlob(res, P.OUT_FORMATS[f].mime, q));
-      target.width=0;target.height=0;
-      if (!blob || blob.type!==P.OUT_FORMATS[f].mime) { info(t('ph.saveFailed')); return; }
+      const {blob,size}=await encodeExport(out,f,q,maxEdge,matte);
       const r = await api.photoSave({ format: f, name: sourceName, bytes: await blob.arrayBuffer() });
       info(r && r.ok ? fmt(t('ph.saved'), { w: size.width, h: size.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
     } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
   }
 
-  window.WaveframePhotoUi = { processExport, show() { build(); }, open: (p) => { build(); return openPath(p); } };
+  window.WaveframePhotoUi = { processExport, encodeExport, show() { build(); }, open: (p) => { build(); return openPath(p); } };
   build();
 })();

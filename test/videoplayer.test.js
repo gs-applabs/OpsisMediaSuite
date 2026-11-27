@@ -654,3 +654,13 @@ test('generated RAR fixture has CRC-protected headers and expected member data',
  }
  assert.equal(offset,archive.length);
 });
+
+
+test('RAR technical listing preserves blank trailing field values and CRLF',()=>{
+ const {parseListing}=require('../subtitle-rar');
+ const row='Path = episode.el.srt\r\nSize = 80\r\nEncrypted = -\r\nCRC = 1234ABCD\r\nCharacteristics = \r\n';
+ assert.equal(parseListing(row)?.[0]?.name,'episode.el.srt');
+ assert.equal(parseListing('\r\n'+row+'\r\n')?.length,1);
+ assert.equal(parseListing(row.replace('Encrypted = -','Encrypted = +')),null);
+ assert.equal(parseListing(row.replace('Characteristics = ','Malformed')),null);
+});

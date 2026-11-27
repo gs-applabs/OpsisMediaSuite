@@ -28,6 +28,19 @@ async function run(){
  const result=await withRar({archive,exe:installed.exe,decode:b=>new TextDecoder('utf-8',{fatal:true}).decode(b),choose:rows=>{
    assert.equal(rows.length,1);assert.equal(rows[0].name,'episode.el.srt');inspected=true;return 0;
  }});
+ if(!result.ok){
+  // Synthetic fixture only: capture exact CLI evidence without exposing any
+  // user archive, filesystem path, or provider credentials.
+  const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+  const {execFileSync}=require('node:child_process');
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-rar-ci-'));
+  try{
+   const file=path.join(dir,'fixture.rar');await fs.writeFile(file,archive);
+   const args=['l','-slt','-ba','-bd','-sccUTF-8','-pOPSIS_NO_PASSWORD','--',file];
+   try{const raw=execFileSync(installed.exe,args,{cwd:dir,timeout:10000,maxBuffer:256*1024});console.log('Synthetic 7-Zip listing: '+JSON.stringify(raw.toString('utf8')));}
+   catch(e){console.log('Synthetic listing exit='+e.status+' stdout='+JSON.stringify(e.stdout?.toString('utf8'))+' stderr='+JSON.stringify(e.stderr?.toString('utf8')));}
+  }finally{await fs.rm(dir,{recursive:true,force:true});}
+ }
  assert.ok(inspected,JSON.stringify(result));assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.subtitle.text,text);
  const cancel=await withRar({archive,exe:installed.exe,decode:b=>b.toString('utf8'),choose:()=>-1});
  assert.deepEqual(cancel,{ok:false,code:'cancelled'});
