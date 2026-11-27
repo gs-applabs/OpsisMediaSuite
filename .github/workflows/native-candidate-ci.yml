@@ -2,8 +2,11 @@ name: Packaged native candidate (test only)
 on:
   push:
     branches: ['feat/photo-tools-fxsound-coexistence']
-    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js']
+    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js','native-player/**','native-host.js','package.json','package-lock.json','selftest.js','subtitle-sync-worker.js','subtitle-autosync.js']
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

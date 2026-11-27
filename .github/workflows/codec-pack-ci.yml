@@ -2,8 +2,11 @@ name: K-Lite Mega isolated codec CI
 on:
   push:
     branches: ['feat/photo-tools-fxsound-coexistence']
-    paths: ['.github/workflows/codec-pack-ci.yml']
+    paths: ['.github/workflows/codec-pack-ci.yml','codec-inventory.js','native-player/DirectShowHost.cs','native-player/NativeCommands.cs']
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

@@ -1,9 +1,14 @@
 name: Native playback host CI
 on:
   push:
-    paths: ['native-player/**', '.github/workflows/native-player.yml']
+    branches: [master]
+    paths: ['native-player/**', 'native-host.js', 'test/native-pipe-fixture.js', '.github/scripts/ensure-ffmpeg.ps1', '.github/workflows/native-player.yml']
   pull_request:
-    paths: ['native-player/**', '.github/workflows/native-player.yml']
+    paths: ['native-player/**', 'native-host.js', 'test/native-pipe-fixture.js', '.github/scripts/ensure-ffmpeg.ps1', '.github/workflows/native-player.yml']
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -66,6 +71,10 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'DirectShow timeout' }
           Get-Content directshow-result.json,directshow-error.log
           if ($p.ExitCode -ne 0) { throw "DirectShow test failed: $($p.ExitCode)" }
+      - name: DirectShow real redirected command pipe
+        env:
+          OPSIS_PIPE_ENGINE: directshow
+        run: node test/native-pipe-fixture.js
       - name: Media Foundation real PCM and NV12 decoding
         shell: pwsh
         run: |
@@ -87,6 +96,7 @@ jobs:
             native-error.log
             control-result.json
             pipe-result.json
+            directshow-pipe-result.json
             control-error.log
             external-sub-result.json
             external-sub-error.log

@@ -15,7 +15,7 @@ const { createProvider,movieHash }=require('./subtitle-provider.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
-const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub'];
+const SUB_EXTS = ['srt', 'vtt', 'ass', 'ssa', 'sub', 'ttml', 'dfxp'];
 const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
 const SERVE_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS, ...SUB_EXTS]);
 const MAX_SUB_BYTES = 5 * 1024 * 1024;
@@ -58,7 +58,7 @@ function siblingSubtitles(video) {
     const stem = path.basename(n, path.extname(n)).toLowerCase();
     if (stem !== base && !stem.startsWith(base + '.')) continue; // "movie.srt", "movie.el.srt"
     const f = path.join(dir, n);
-    try { if(isFile(f)){const sub=readSubtitle(f);if(sub)out.push(sub);} } catch (_) { /* skip */ }
+    try { const safe=allowedFile(f,new Set(SUB_EXTS));if(safe){const sub=readSubtitle(safe);if(sub)out.push(sub);} } catch (_) { /* skip */ }
     if (out.length >= 8) break;
   }
   return out;
@@ -69,11 +69,16 @@ function init({ getMainWin, resolveFfmpegPath }) {
   ipcMain.handle('vp:codec-inventory', e => trusted(e) ? inventory() : null);
   const approved = new Set(), tickets = new Map();
   const remember = p => { if (!p) return; if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
+  let mediaConsentBusy=false;
   async function authorize(p) {
     if(approved.has(p))return true;
-    const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Open / Άνοιγμα'],defaultId:0,cancelId:0,message:'Allow this local media file? / Να επιτραπεί η πρόσβαση στο αρχείο;',detail:p});
-    if(r.response!==1 || !allowedFile(p,PLAY_EXTS))return false;
-    remember(p);return true;
+    if(mediaConsentBusy)return false;
+    mediaConsentBusy=true;
+    try{
+      const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Open / Άνοιγμα'],defaultId:0,cancelId:0,message:'Allow this local media file? / Να επιτραπεί η πρόσβαση στο αρχείο;',detail:p});
+      if(r.response!==1||allowedFile(p,PLAY_EXTS)!==p)return false;
+      remember(p);return true;
+    }finally{mediaConsentBusy=false;}
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
@@ -97,11 +102,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   ipcMain.handle('vp:open-source', async (e, value) => {
     if (!trusted(e)) return null;
     const p = allowedFile(value, PLAY_EXTS); if (!p) return null;
-    if (!approved.has(p)) {
-      const r = await dialog.showMessageBox(getMainWin(), {type:'question', buttons:['Cancel / Ακύρωση','Open / Άνοιγμα'], defaultId:0, cancelId:0, message:'Allow this local media file? / Να επιτραπεί η πρόσβαση στο αρχείο;', detail:p});
-      if (r.response !== 1 || !trusted(e) || !allowedFile(p, PLAY_EXTS)) return null;
-      remember(p);
-    }
+    if(!await authorize(p)||!trusted(e))return null;
     const key = randomBytes(32).toString('hex');
     if (tickets.size >= 64) tickets.delete(tickets.keys().next().value);
     tickets.set(key,p);
@@ -201,7 +202,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       return {ok:true};
     }catch(_){return {ok:false};}finally{subtitleSaveBusy=false;}
   });
-  ipcMain.handle('vp:exists', (e, list) => (trusted(e) && Array.isArray(list) ? list.slice(0, 500).map((p) => isFile(p)) : []));
+  ipcMain.handle('vp:exists', (e, list) => (trusted(e) && Array.isArray(list) ? list.slice(0, 500).map(p=>{const f=allowedFile(p,PLAY_EXTS);return !!f&&approved.has(f);}) : []));
 
   /* ---------------- photo editor ---------------- */
   const imageGrants=new Set();
@@ -337,6 +338,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
           const unapproved = path.join(dir,'unapproved.mp4'); fs.copyFileSync(file, unapproved);
           const unauthorized = await js(`fetch('wfmedia://f/' + encodeURIComponent(${JSON.stringify(unapproved)})).then(r => r.status).catch(() => 'blocked')`);
           check('wfmedia rejects an unapproved media path', unauthorized === 404 || unauthorized === 'blocked', String(unauthorized));
+          check('video existence IPC refuses unapproved local media',await js(`waveframe.vpExists([${JSON.stringify(unapproved)}]).then(r=>r[0]===false)`));
           const guard = await js("fetch('wfmedia://f/' + encodeURIComponent('C:\\Windows\\System32\\drivers\\etc\\hosts')).then((r) => r.status).catch(() => 'blocked')");
           check('wfmedia: refuses files that are not media / subtitles', guard === 404 || guard === 'blocked', String(guard));
           // MP4 is a separate required capability; a successful WebM fixture is not proof of H.264 playback.
@@ -410,6 +412,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
         const nativeStatus=await js('waveframe.vpNativeStatus()');
         check('packaged native host discovered in resources',app.isPackaged&&nativeStatus?.available===true);
       }
+      const ttml=await js("WaveframeVp.subtitleToVtt('<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div><p begin=\"1.2s\" dur=\"2s\">Γεια<br/>κόσμε</p><p begin=\"4s\" end=\"5s\">Second</p></div></body></tt>','ttml',500)");
+      check('TTML absolute media timing and Greek multiline text',ttml.cues===2&&ttml.entries[0].start===1.7&&ttml.entries[0].end===3.7&&ttml.entries[0].text==='Γεια\nκόσμε');
+      const rejected=await js("WaveframeVp.subtitleToVtt('<!DOCTYPE tt [<!ENTITY x SYSTEM \"file:///C:/test\">]><tt><body><p begin=\"1s\" end=\"2s\">&x;</p></body></tt>','ttml',0)");
+      check('TTML rejects DTD and external entity input',rejected.cues===0);
       const codecReport = await inventory();
       check('Windows codec inventory returns bounded registry metadata', process.platform !== 'win32' || (codecReport.status==='ok' && Array.isArray(codecReport.packs) && Array.isArray(codecReport.filters) && Array.isArray(codecReport.transforms)), JSON.stringify({status:codecReport.status,arch:codecReport.arch,packs:codecReport.packs.length,filters:codecReport.filters.length,transforms:codecReport.transforms.length}));
       /* photo editor */

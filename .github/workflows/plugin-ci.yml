@@ -1,9 +1,14 @@
 name: Opsis plugin build and contract CI
 on:
   push:
+    branches: [master]
     paths: ['opsis-plugin/**', '.github/workflows/plugin-ci.yml']
   pull_request:
     paths: ['opsis-plugin/**', '.github/workflows/plugin-ci.yml']
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

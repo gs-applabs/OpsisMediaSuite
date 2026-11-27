@@ -97,9 +97,45 @@
     }
     return srtToVtt(out.join('\n'),shiftMs,scale);
   }
+  function ttmlSeconds(value){
+    const s=String(value||'').trim();
+    let m=/^(\d{1,3}):([0-5]\d):([0-5]\d)(?:\.(\d{1,6}))?$/.exec(s);
+    if(m)return +m[1]*3600+ +m[2]*60+ +m[3]+Number('0.'+(m[4]||0));
+    m=/^(\d+(?:\.\d+)?)(ms|h|m|s)$/.exec(s);
+    if(!m)return null;const t=Number(m[1])*({ms:.001,h:3600,m:60,s:1}[m[2]]);return Number.isFinite(t)&&t<=3600000?t:null;
+  }
+  // Simple absolute media-time TTML profile. No DTD/external entities,
+  // frame/tick units, sequential containers, ancestor timing or timed spans.
+  function ttmlToVtt(text,shiftMs,scale){
+    const empty=()=>({vtt:'WEBVTT\n\n',cues:0,entries:[]});
+    if(typeof DOMParser==='undefined'||typeof text!=='string'||text.length>5*1024*1024||/<!DOCTYPE|<!ENTITY/i.test(text))return empty();
+    const doc=new DOMParser().parseFromString(text,'application/xml'),root=doc.documentElement;
+    if(!root||root.localName!=='tt'||!['http://www.w3.org/ns/ttml','http://www.w3.org/2006/10/ttaf1',''].includes(root.namespaceURI||'')||doc.getElementsByTagName('parsererror').length)return empty();
+    const nodes=Array.from(root.getElementsByTagName('*'));if(nodes.length>80000)return empty();
+    const out=[],timing=n=>n.hasAttribute('begin')||n.hasAttribute('end')||n.hasAttribute('dur')||n.getAttribute('timeContainer')==='seq';
+    function body(p){
+      const parts=[],stack=[...p.childNodes].reverse();let count=0;
+      while(stack.length){const n=stack.pop();if(++count>10000)return null;
+        if(n.nodeType===3||n.nodeType===4)parts.push(n.nodeValue||'');
+        else if(n.nodeType===1){if(timing(n)||!['span','br'].includes(n.localName))return null;if(n.localName==='br')parts.push('\n');else for(let i=n.childNodes.length-1;i>=0;i--)stack.push(n.childNodes[i]);}
+      }
+      return parts.join('').split('\n').map(s=>s.replace(/[\t\r ]+/g,' ').trim()).filter(Boolean).join('\n').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    }
+    for(const p of nodes){if(p.localName!=='p')continue;
+      let parent=p.parentElement,unsupported=false,depth=0;while(parent){if(timing(parent)||++depth>64){unsupported=true;break;}parent=parent.parentElement;}
+      if(unsupported||p.getAttribute('timeContainer')==='seq')continue;
+      const start=ttmlSeconds(p.getAttribute('begin')),end=ttmlSeconds(p.getAttribute('end')),dur=ttmlSeconds(p.getAttribute('dur'));
+      const finish=end??(start!==null&&dur!==null?start+dur:null);
+      if(start===null||finish===null||finish<=start||finish>3600000)continue;
+      const value=body(p);if(!value)continue;
+      out.push(vttTime(start*1000)+' --> '+vttTime(finish*1000)+'\n'+value+'\n');if(out.length>=LIMITS.cues)break;
+    }
+    return srtToVtt(out.join('\n'),shiftMs,scale);
+  }
   function subtitleToVtt(text, ext, shiftMs, scale=1, fps=0) {
     const e = String(ext || '').toLowerCase();
     if(e==='sub')return microDvdToVtt(text,shiftMs,scale,fps);
+    if(e==='ttml'||e==='dfxp')return ttmlToVtt(text,shiftMs,scale);
     return srtToVtt(e === 'ass' || e === 'ssa' ? assToSrt(text) : text, shiftMs, scale);
   }
 
@@ -197,5 +233,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { ttmlSeconds,editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

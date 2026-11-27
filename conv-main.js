@@ -105,7 +105,8 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (pending.has(id) || pending.size >= 4) return {ok:false, code:'busy'};
     pending.add(id);
     try {
-      const job = await make();
+      const ensureActive=()=>{if(cancelledEarly.has(id))throw Object.assign(Error('cancelled'),{code:'cancelled'});};
+      ensureActive();const job = await make(ensureActive);
       jobs.set(id, job);
       if (cancelledEarly.delete(id)) job.cancel();
       const r = await job.promise;
@@ -118,10 +119,10 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (!trusted(e) || !req || !okId(req.id) || !inputFile(req.path)) return { ok: false, code: 'bad-request' };
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    return track(req.id,async()=>{
-      if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});
+    return track(req.id,async ensureActive=>{
+      if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});ensureActive();
       const ff=await resolveFfmpegPath(),f=inputFile(req.path);if(!ff||!f)throw Object.assign(Error('source or ffmpeg unavailable'),{code:ff?'denied':'no-ffmpeg'});
-      return E.convertDirect({ffmpegPath:ff,input:f,options:v.options,onProgress:p=>sendProgress({id:req.id,pct:p}),outDir:resolveOutDir(req,true)});
+      ensureActive();return E.convertDirect({ffmpegPath:ff,input:f,options:v.options,onProgress:p=>sendProgress({id:req.id,pct:p}),outDir:resolveOutDir(req,true)});
     });
   });
 
@@ -134,8 +135,8 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (req.wav.byteLength > MAX_READ) return {ok:false,code:'too-large'};
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    return track(req.id,async()=>{
-    if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});
+    return track(req.id,async ensureActive=>{
+    if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});ensureActive();
     const ff = v.options.format === 'wav' ? null : await resolveFfmpegPath();
     if (v.options.format !== 'wav' && !ff) throw Object.assign(Error('ffmpeg unavailable'),{code:'no-ffmpeg'});
     const wavBytes = req.wav instanceof ArrayBuffer ? new Uint8Array(req.wav) : req.wav;
@@ -143,7 +144,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     // tracks that come from the playlist have no file on disk: name them after the track inside the output folder
     const input = hasSource ? inputFile(req.path) : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
     if(!input)throw Object.assign(Error('source unavailable'),{code:'denied'});
-    return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
+    ensureActive();return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
     });
   });
 
@@ -191,13 +192,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     const v = V.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
     if (v.options.subtitleFile && !subtitleGrants.has(allowedFile(v.options.subtitleFile, SUB_TYPES))) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
-    return track(req.id,async()=>{
-      if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});
+    return track(req.id,async ensureActive=>{
+      if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});ensureActive();
       const ff=await resolveFfmpegPath(),f=inputFile(req.path);if(!ff||!f)throw Object.assign(Error('source or ffmpeg unavailable'),{code:ff?'denied':'no-ffmpeg'});
       const d=await EV.detectEncoders(ff);
       const outDir=resolveOutDir(req,true,defaultVideoOutDir);
       if(v.options.subtitleFile){const sub=allowedFile(v.options.subtitleFile,SUB_TYPES);if(!sub||!subtitleGrants.has(sub))throw Object.assign(Error('subtitle not approved'),{code:'denied'});v.options.subtitleFile=sub;}
-      return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
+      ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
     });
   });
 

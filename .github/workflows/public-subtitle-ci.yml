@@ -4,6 +4,9 @@ on:
     branches: ['feat/photo-tools-fxsound-coexistence']
     paths: ['.github/workflows/public-subtitle-ci.yml','test/public-subtitle-fixture.js','subtitle-autosync.js','subtitle-sync-worker.js','subtitle-provider.js','renderer/vplib.js','renderer/videoplayer.js']
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

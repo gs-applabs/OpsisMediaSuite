@@ -19,3 +19,5 @@ LibVLC central transport uses a bounded stdin JSON command and stdout ack, fixed
 
 ## Integrated test candidate
 The dedicated native-candidate workflow builds a private unsigned directory candidate with the native host in resources/native-player and tests the packaged app, workers and real native pipe. Only evidence logs and inventories are uploaded, not the binaries. The default distribution configuration is unchanged pending licensing review and release gates.
+
+DirectShow now has fixed command pipe for toggle/play/pause/seek/rate (graph HRESULT checked and actual running state reported); WAV graph pipe test validates seek and invalid commands. Installed-LAV graph still requires explicit consent. Native visual and hardware certification, volume/mute and subtitle graph remain outstanding.

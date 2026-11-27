@@ -306,3 +306,5 @@ test('native control accepts only bounded fixed commands',()=>{
  assert.deepEqual(normalizeCommand('seek',1500.4),{name:'seek',value:1500});
  assert.equal(normalizeCommand('seek',-1),null);assert.equal(normalizeCommand('volume',101),null);assert.equal(normalizeCommand('rate',Infinity),null);assert.equal(normalizeCommand('open','C:\\x'),null);
 });
+
+test('TTML simple media times reject unsupported frames and malformed units',()=>{assert.equal(V.ttmlSeconds('00:01:02.500'),62.5);assert.equal(V.ttmlSeconds('250ms'),.25);assert.equal(V.ttmlSeconds('1.5m'),90);assert.equal(V.ttmlSeconds('12f'),null);assert.equal(V.ttmlSeconds('00:00:99'),null);});

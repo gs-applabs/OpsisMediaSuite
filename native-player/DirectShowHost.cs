@@ -159,13 +159,27 @@ internal static class DirectShowHost
         }
     }
 
-    public static int SelfTest(string file)
+    private static bool IsRunning(Graph g){return g.Control.GetState(0,out var state)>=0&&(int)state==2;}
+    private static bool ApplyControl(Graph g,NativeCommands.Command c){
+        try{
+            switch(c.Name){
+                case "toggle":return (IsRunning(g)?g.Control.Pause():g.Control.Run())>=0;
+                case "pause":return g.Control.Pause()>=0;
+                case "play":return g.Control.Run()>=0;
+                case "seek":if(c.Value<0||c.Value>360000000)return false;Check(g.Seeking.GetDuration(out long duration));return g.Seeking.SetPositions((long)Math.Min(c.Value*10000,duration),(AMSeekingSeekingFlags)1,0,AMSeekingSeekingFlags.NoPositioning)>=0;
+                case "rate":return c.Value>=.5&&c.Value<=4&&g.Seeking.SetRate(c.Value)>=0;
+                default:return false;
+            }
+        }catch{return false;}
+    }
+    public static int SelfTest(string file,bool pipe=false)
     {
         if(!string.Equals(Path.GetExtension(file),".wav",StringComparison.OrdinalIgnoreCase))return 2;
         using var g=new Graph();
         var source=g.Add(AsyncReaderId,"Async Reader");var parser=g.Add(WaveParserId,"Wave Parser");var sink=g.Add(NullRendererId,"Null Renderer");
         g.Load(source,file);g.Connect(source,parser);g.Connect(parser,sink);
         Check(g.Seeking.GetDuration(out long duration));Check(g.Control.Run());
+        if(pipe){Program.HostEvent("ready",0,duration/10000,null,IsRunning(g));for(int i=0;i<16;i++){var cmd=NativeCommands.Read(Console.In);if(cmd==null)break;bool ok=ApplyControl(g,cmd);long position=0;if(ok&&cmd.Name=="seek"){var clock=Stopwatch.StartNew();do{Check(g.Seeking.GetCurrentPosition(out position));if(Math.Abs(position/10000-cmd.Value)<=300)break;Thread.Sleep(30);}while(clock.ElapsedMilliseconds<2000);ok=Math.Abs(position/10000-cmd.Value)<=300;}NativeCommands.Ack(cmd,ok);Check(g.Seeking.GetCurrentPosition(out position));Program.HostEvent("position",position/10000,duration/10000,null,IsRunning(g));}return 0;}
         var timer=Stopwatch.StartNew();long pos=0;
         while(timer.ElapsedMilliseconds<2500){Check(g.Seeking.GetCurrentPosition(out pos));if(pos>=1000000)break;Thread.Sleep(30);}
         Check(g.Control.Pause());
@@ -226,8 +240,8 @@ internal static class DirectShowHost
         using var timer=new System.Windows.Forms.Timer{Interval=1000};
         long Duration(){Check(g.Seeking.GetDuration(out long n));return n/10000;}
         long Position(){Check(g.Seeking.GetCurrentPosition(out long n));return n/10000;}
-        timer.Tick+=(_,_)=>{try{Program.HostEvent("position",Position(),Duration());}catch{}};
-        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;Check(g.Seeking.SetPositions(pos,(AMSeekingSeekingFlags)1 /* AM_SEEKING_AbsolutePositioning */,0,AMSeekingSeekingFlags.NoPositioning));}Program.HostEvent("ready",Position(),Duration());timer.Start();};
+        timer.Tick+=(_,_)=>{try{Program.HostEvent("position",Position(),Duration(),null,IsRunning(g));}catch{}};
+        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;Check(g.Seeking.SetPositions(pos,(AMSeekingSeekingFlags)1 /* AM_SEEKING_AbsolutePositioning */,0,AMSeekingSeekingFlags.NoPositioning));}Program.HostEvent("ready",Position(),Duration(),null,IsRunning(g));timer.Start();if(Console.IsInputRedirected)Task.Run(()=>{try{while(true){var cmd=NativeCommands.Read(Console.In);if(cmd==null||form.IsDisposed)return;using var handled=new ManualResetEventSlim(false);form.BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!form.IsDisposed&&ApplyControl(g,cmd));}finally{handled.Set();}}));handled.Wait();}}catch{}});};
         panel.Resize+=(_,_)=>{if(form.Visible)window.SetWindowPosition(0,0,panel.Width,panel.Height);};
         form.FormClosing+=(_,_)=>{timer.Stop();try{Program.HostEvent("closed",Position(),Duration());}catch{}g.Control.Stop();window.put_Visible(OABool.False);window.put_Owner(IntPtr.Zero);};
         Application.Run(form);return 0;

@@ -90,7 +90,7 @@
     };
     poll();return true;
   }
-  function nativeCommand(name,value){if(!handoff?.session||handoff.engine!=='libvlc')return;api.vpNativeCommand(handoff.session,name,value).then(r=>{if(!r?.ok&&r?.code!=='busy')say('Native command unavailable');}).catch(()=>{});}
+  function nativeCommand(name,value){if(!handoff?.session)return;if(handoff.engine==='directshow'&&!['toggle','play','pause','seek','rate'].includes(name)){say('DirectShow audio command is not supported yet');return;}api.vpNativeCommand(handoff.session,name,value).then(r=>{if(!r?.ok&&r?.code!=='busy')say('Native command unavailable');}).catch(()=>{});}
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
@@ -168,8 +168,11 @@
     subSrc.forEach((s, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = s.name; sel.append(o); });
     sel.value = String(subSel);
   }
-  let rawCues=[],editUndo=null;
-  function showCueEditor(){const c=rawCues[$('vpSubCue').selectedIndex];$('vpSubEditStart').value=c?String(c.start):'';$('vpSubEditEnd').value=c?String(c.end):'';$('vpSubEditText').value=c?c.text:'';$('vpSubEditApply').disabled=!c;$('vpSubEditUndo').disabled=!editUndo||editUndo.track!==subSrc[subSel];}
+  let rawCues=[],editUndo=null,cuePage=0;
+  const CUE_PAGE=500;
+  function cueIndex(){return $('vpSubCue').selectedIndex<0?-1:cuePage*CUE_PAGE+$('vpSubCue').selectedIndex;}
+  function fillCuePage(index=0){const pages=$('vpSubCuePage'),sel=$('vpSubCue');pages.textContent='';sel.textContent='';const count=Math.ceil(rawCues.length/CUE_PAGE);cuePage=Math.max(0,Math.min(count-1,Math.floor(Math.max(0,index)/CUE_PAGE)));for(let page=0;page<count;page++){const o=document.createElement('option');o.value=String(page);o.textContent=(page*CUE_PAGE+1)+'–'+Math.min((page+1)*CUE_PAGE,rawCues.length);pages.append(o);}pages.value=String(cuePage);pages.disabled=count<=1;for(let i=cuePage*CUE_PAGE;i<Math.min(rawCues.length,(cuePage+1)*CUE_PAGE);i++){const c=rawCues[i],o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);sel.append(o);}if(sel.options.length)sel.selectedIndex=Math.max(0,Math.min(sel.options.length-1,index-cuePage*CUE_PAGE));showCueEditor();}
+  function showCueEditor(){const c=rawCues[cueIndex()];$('vpSubEditStart').value=c?String(c.start):'';$('vpSubEditEnd').value=c?String(c.end):'';$('vpSubEditText').value=c?c.text:'';$('vpSubEditApply').disabled=!c;$('vpSubEditUndo').disabled=!editUndo||editUndo.track!==subSrc[subSel];}
   function rebuildTrack() {
     // Programmatic WebVTT cues avoid the asynchronous blob: fetch and the
     // file-origin/CORS differences between Electron releases.
@@ -178,14 +181,12 @@
       for (const cue of Array.from(nativeSubtitleTrack.cues || [])) nativeSubtitleTrack.removeCue(cue);
       nativeSubtitleTrack.mode = 'disabled';
     }
-    const selectedCue=$('vpSubCue').selectedIndex;
+    const selectedCue=cueIndex();
     $('vpSubCue').textContent='';rawCues=[];
-    if (subSel < 0 || !subSrc[subSel]) {showCueEditor();return;}
+    if (subSel < 0 || !subSrc[subSel]) {fillCuePage();return;}
     const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps);
     rawCues=VP.subtitleToVtt(s.text,s.ext,0,1,subFps).entries;
-    for(const [i,c] of rawCues.slice(0,2000).entries()){const o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);$('vpSubCue').append(o);}
-    if(selectedCue>=0&&selectedCue<$('vpSubCue').options.length)$('vpSubCue').selectedIndex=selectedCue;
-    showCueEditor();
+    fillCuePage(Math.max(0,selectedCue));
     if (!r.cues) { say(r.needsFps?'MicroDVD: choose source FPS / Επιλέξτε αρχικά FPS':t('vp.subEmpty')); return; }
     if (!nativeSubtitleTrack) nativeSubtitleTrack = video.addTextTrack('subtitles','OPSIS subtitles');
     // Hidden mode allows cues to be populated before native rendering begins.
@@ -418,7 +419,7 @@
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
-    $('vpPlay').addEventListener('click', () => { if(handoff){if(handoff.engine==='libvlc')nativeCommand('toggle');else say('Use the native player controls / Χειριστήρια native player');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
+    $('vpPlay').addEventListener('click', () => { if(handoff){nativeCommand('toggle');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
     $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { if(handoff){nativeCommand('mute');return;} video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { if(handoff)return; video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
@@ -460,8 +461,8 @@
     });
     $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
     $('vpSubDelayExact').addEventListener('change',()=>setDelay(Number($('vpSubDelayExact').value)));
-    $('vpSubSyncHere').addEventListener('click',()=>{if($('vpSubCue').options.length&&Number.isFinite(video.currentTime))setDelay(video.currentTime-Number($('vpSubCue').value)*subScale);});
-    function marker(){return $('vpSubCue').options.length&&Number.isFinite(video.currentTime)?{subtitle:Number($('vpSubCue').value),video:video.currentTime}:null;}
+    $('vpSubSyncHere').addEventListener('click',()=>{if(!handoff&&$('vpSubCue').options.length&&Number.isFinite(video.currentTime))setDelay(video.currentTime-Number($('vpSubCue').value)*subScale);});
+    function marker(){return !handoff&&$('vpSubCue').options.length&&Number.isFinite(video.currentTime)?{subtitle:Number($('vpSubCue').value),video:video.currentTime}:null;}
     $('vpSubAnchorA').addEventListener('click',()=>{syncAnchor=marker();$('vpSubAnchorStatus').textContent=syncAnchor?'A: '+syncAnchor.subtitle.toFixed(2)+' → '+syncAnchor.video.toFixed(2)+' s':'Select a cue first';});
     $('vpSubAnchorB').addEventListener('click',()=>{const r=VP.twoPointSync(syncAnchor,marker());if(!r){$('vpSubAnchorStatus').textContent='Select two ordered cues at least 2s apart';return;}subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAnchorStatus').textContent='Scale '+r.scale.toFixed(6)+' · '+subDelay.toFixed(3)+' s';});
     $('vpSubAutoSync').addEventListener('click',async()=>{
@@ -479,9 +480,10 @@
     });
     $('vpSubAutoCancel').addEventListener('click',()=>{api.vpSubAutoCancel().catch(()=>{});$('vpSubAutoCancel').disabled=true;});
     $('vpSubApplySync').addEventListener('click',()=>{if(!autoSuggestion)return;const r=autoSuggestion;clearAnchors();subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAutoStatus').textContent='Suggestion applied — verify dialogue / Ελέγξτε την ομιλία';});
+    $('vpSubCuePage').addEventListener('change',()=>fillCuePage(Number($('vpSubCuePage').value)*CUE_PAGE));
     $('vpSubCue').addEventListener('change',showCueEditor);
     $('vpSubEditApply').addEventListener('click',()=>{
-      const original=subSrc[subSel],i=$('vpSubCue').selectedIndex;if(!original||handoff)return;
+      const original=subSrc[subSel],i=cueIndex();if(!original||handoff)return;
       const start=$('vpSubEditStart').value,end=$('vpSubEditEnd').value;
       const next=start!==''&&end!==''?VP.editCue(rawCues,i,{start:Number(start),end:Number(end),text:$('vpSubEditText').value}):null;
       const text=next&&VP.exportSubtitles(next,'vtt');

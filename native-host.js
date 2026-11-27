@@ -51,7 +51,7 @@ function createNativeHost({app,extensions,authorize}){
    return await new Promise(resolve=>{
     let proc,settled=false,buffer='',timer;
     const finish=r=>{if(settled)return;settled=true;clearTimeout(timer);resolve(r);};
-    try{proc=spawn(exe,[engine==='directshow'?'--directshow':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:[engine==='libvlc'?'pipe':'ignore','pipe','ignore']});child=proc;}
+    try{proc=spawn(exe,[engine==='directshow'?'--directshow':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
     catch(_){cleanup();state={...state,phase:'error'};finish({ok:false,code:'launch-failed'});return;}
     timer=setTimeout(()=>{if(child===proc){state={...state,phase:'error'};try{proc.kill();}catch{}}finish({ok:false,code:'native-timeout'});},120000);
     proc.stdin?.on('error',()=>finishCommand({ok:false,code:'pipe-error'}));
@@ -76,7 +76,7 @@ function createNativeHost({app,extensions,authorize}){
   }finally{opening=false;}
  }
  function command(session,name,value){
-  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||state.engine!=='libvlc'||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow'].includes(state.engine)||(state.engine==='directshow'&&!['toggle','play','pause','seek','rate'].includes(name))||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
   if(pending)return Promise.resolve({ok:false,code:'busy'});
   return new Promise(resolve=>{const id=++commandId;const timer=setTimeout(()=>finishCommand({ok:false,code:'timeout'}),3000);pending={id,timer,resolve};try{child.stdin.write(JSON.stringify({id,...cmd})+'\n');}catch{finishCommand({ok:false,code:'pipe-error'});}});
  }
