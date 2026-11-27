@@ -1,0 +1,116 @@
+name: Product snapshots
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/product-snapshots.yml']
+permissions:
+  contents: write
+concurrency:
+  group: product-snapshots
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: github.ref == 'refs/heads/master'
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Capture the actual Electron application
+        shell: pwsh
+        run: |
+          $env:GS_SNAPSHOT_DIR = Join-Path $env:RUNNER_TEMP 'product-snapshots'
+          $env:WAVEFRAME_USER_DATA = Join-Path $env:RUNNER_TEMP 'waveframe-capture-profile'
+          $code = @'
+          const { app, BrowserWindow } = require('electron');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+          const out = process.env.GS_SNAPSHOT_DIR;
+          if (!out) throw new Error('GS_SNAPSHOT_DIR required');
+          fs.mkdirSync(out, { recursive: true });
+          process.env.WAVEFRAME_NO_SPLASH = '1';
+          require('./main.js');
+          (async () => {
+            const end = Date.now() + 60000;
+            let win;
+            while (Date.now() < end) {
+              win = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('/renderer/index.html') && !w.webContents.isLoading());
+              if (win) break;
+              await delay(500);
+            }
+            if (!win) throw new Error('Actual application window did not load');
+            win.setSize(1440, 900);
+            await delay(1500);
+            const tabs = await win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.tab-btn[data-tab]')).map(b=>b.dataset.tab)");
+            for (const required of ['player','enhance','converter','video','photo','settings']) if (!tabs.includes(required)) throw new Error('Missing tab '+required);
+            for (let theme=0; theme<2; theme++) {
+              if (theme) {
+                await win.webContents.executeJavaScript("document.getElementById('btnThemeToggle').click()");
+                await delay(300);
+              }
+              const skin = await win.webContents.executeJavaScript("document.documentElement.dataset.theme || 'default'");
+              for (const tab of tabs) {
+                if (!/^[a-z0-9-]+$/.test(tab)) throw new Error('Unexpected tab identifier');
+                const selected = await win.webContents.executeJavaScript("document.querySelector('.tab-btn[data-tab="+tab+"]').click(); document.querySelector('#tab-"+tab+"').classList.contains('active')");
+                if (!selected) throw new Error('Tab did not activate: '+tab);
+                await delay(600);
+                const img = await win.webContents.capturePage();
+                if (img.isEmpty() || img.getSize().width < 400) throw new Error('Empty capture: '+tab);
+                fs.writeFileSync(path.join(out, String(theme)+'-'+String(skin).replace(/[^a-z0-9-]/gi,'_')+'-'+tab+'.png'), img.toPNG());
+              }
+            }
+            app.exit(0);
+          })().catch(err=>{ console.error(err); app.exit(1); });
+          setTimeout(()=>app.exit(2),180000).unref();
+          '@
+          Set-Content -LiteralPath 'gs-capture.cjs' -Value $code -Encoding utf8
+          $exe = (Resolve-Path node_modules/electron/dist/electron.exe).Path
+          $p = Start-Process -FilePath $exe -ArgumentList 'gs-capture.cjs' -PassThru
+          if (!$p.WaitForExit(200000)) { Stop-Process -Id $p.Id -Force; throw 'Capture timed out' }
+          if ($p.ExitCode -ne 0) { throw "Electron capture failed: $($p.ExitCode)" }
+      - name: Validate and publish gallery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'product-snapshots'
+          $files = @(Get-ChildItem $src -File -Filter '*.png')
+          if ($files.Count -lt 12) { throw 'Missing tab or theme screenshots' }
+          Add-Type -AssemblyName System.Drawing
+          foreach ($file in $files) {
+            $image = [Drawing.Image]::FromFile($file.FullName)
+            try { if ($image.Width -lt 400 -or $image.Height -lt 300) { throw 'Invalid image dimensions' } } finally { $image.Dispose() }
+          }
+          $dest = 'docs/product-snapshots'
+          if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          $lines = @('# Application screenshots / Στιγμιότυπα εφαρμογής', '', "Source commit: $env:GITHUB_SHA", '', 'Actual Electron UI, isolated empty media library, two themes. Not a playback or conversion test.', '')
+          foreach ($file in ($files | Sort-Object Name)) {
+            Copy-Item $file.FullName $dest
+            $lines += @("### $($file.BaseName)", '', "![$($file.BaseName)]($($file.Name))", '')
+          }
+          $lines | Set-Content "$dest/README.md" -Encoding utf8
+          $readme = Get-Content README.md -Raw
+          if (!$readme.Contains('docs/product-snapshots/README.md')) {
+            $readme += "`n`n## Current screenshot gallery / Νέα στιγμιότυπα`n`n[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)`n"
+            Set-Content README.md $readme -Encoding utf8
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/product-snapshots README.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m 'docs: refresh application screenshots'
+          if ($LASTEXITCODE -ne 0) { throw 'Commit failed' }
+          git push origin HEAD:master
+          if ($LASTEXITCODE -ne 0) { throw 'Push rejected; no forced update' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-snapshots
+          path: ${{ runner.temp }}/product-snapshots/*.png
+          if-no-files-found: warn
