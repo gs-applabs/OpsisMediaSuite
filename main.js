@@ -5,7 +5,7 @@ const os = require('os');
 const https = require('https');
 const { execFile, spawn } = require('child_process');
 const { localPath } = require('./local-media-policy.js');
-const AdmZip = require('adm-zip');
+// The archive library is loaded only during a user-authorized FFmpeg install.
 const suite = require('./suite-main.js');
 const suiteLib = require('./suite.js');
 const converter = require('./conv-main.js');
@@ -95,7 +95,7 @@ async function installFfmpeg(onProgress, confirm) {
   }
 
   onProgress({ phase: 'extract', pct: 0 });
-  const zip = new AdmZip(zipPath);
+  const zip = new (require('adm-zip'))(zipPath);
   const entry = zip.getEntries().find((e) => /(^|\/)bin\/ffmpeg\.exe$/i.test(e.entryName));
   if (!entry || entry.header.size > 256 * 1024 * 1024) throw new Error('Invalid FFmpeg archive entry');
   const tempExe = path.join(dir, 'ffmpeg-' + require('node:crypto').randomBytes(8).toString('hex') + '.exe');

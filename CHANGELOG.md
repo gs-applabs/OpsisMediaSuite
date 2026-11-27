@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.11 demand-driven activation
+- Defer live AudioContext and DSP graph until audio playback/mic/test tone/explicit worklet use; preferences remain state-only while inactive, offline conversion stays independent. Defer dependency scan to settings and archive/codec/probe helpers to their respective operations. Add cold-renderer and first-activation assertions. Fix stale static crash-log assertion to track the bounded writer without weakening runtime limits. Hourly workflow changed to manual to avoid duplicate jobs on every PR update; three existing runs remain. New CI pending.
+
 ## Unreleased — Ultra Mega Pass 20B.10
 - Converter shutdown closes admission to new work, cancels active FFmpeg/auxiliary jobs and allows up to four seconds for cleanup before exit. Cancellation is rechecked after preparation and before publication; audio/video probes and thumbnails have separate bounded admission. Per-job progress notifications limited to roughly 10/s plus terminal completion, with no pending-message buffer. Previous 20B.8 CI passed 278 tests and renderer release checks; hourly runs still executing. New shutdown behavior pending Windows CI.
 

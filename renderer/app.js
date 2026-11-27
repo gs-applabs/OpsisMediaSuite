@@ -62,7 +62,8 @@ const USER_PRESET_KEY = 'waveframe.userPresets';
 
 class AudioEngine {
   constructor() {
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.ctx=null;
+    this.workletPreference=false;this.workletReady=false;this.normalizationGain=1;
 
     this.slots = [
       { el: document.getElementById('audioSlotA'), source: null, gain: null, name: null },
@@ -97,7 +98,21 @@ class AudioEngine {
       routeBypass: false,
     };
 
+  }
+
+  // UI preferences exist independently of the real-time audio device.
+  // Only actual playback, microphone, test tone or developer worklet needs it.
+  ensureGraph(){
+    if(this.ctx)return;
+    this.ctx=new (window.AudioContext||window.webkitAudioContext)();
     this._buildGraph();
+    const s=this.state;
+    this.applyEqBands(s.eqBands.slice());this.setBassBoost(s.bassBoost);this.setVolumeBoostDb(s.volumeBoost);
+    this.setPresence(s.presence);this.setBalance(s.balance);this.setSurround(s.surround);
+    this.setCompressorMode(s.compressorMode);this.setCompressor(s.compressor);
+    this.setReverb(s.reverb);this.setExciter(s.exciter);this.setNormalizationGain(this.normalizationGain);
+    this.setMuted(s.muted);this.applyLiveBypass(true);
+    window.dispatchEvent(new Event('waveframe:audio-graph-ready'));
   }
 
   _buildGraph() {
@@ -277,11 +292,13 @@ class AudioEngine {
   }
 
   resume() {
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    this.ensureGraph();
+    if(this.ctx.state==='suspended')this.ctx.resume().catch(()=>{});
   }
 
   stopAlternateSources() {
     this.micEpoch=(this.micEpoch||0)+1;
+    if(!this.ctx)return;
     this.micGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     if (this.testOsc) {
@@ -329,9 +346,10 @@ class AudioEngine {
   get activeEl() { return this.slots[this.activeSlot].el; }
 
   play() {
+    if(!this.activeEl.getAttribute('src'))return Promise.resolve();
     window.WaveframeVideoPlayer?.pause();
-    this.cancelCrossfade(true);
     this.resume();
+    this.cancelCrossfade(true);
     this.stopAlternateSources();
     const slot = this.slots[this.activeSlot];
     slot.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
@@ -355,13 +373,13 @@ class AudioEngine {
 
   setVolume(v) {
     this.state.volume = v;
-    if (!this.state.muted) this.masterGain.gain.setTargetAtTime(v * (this.sleepFactor ?? 1), this.ctx.currentTime, 0.02);
+    if (this.ctx&&!this.state.muted) this.masterGain.gain.setTargetAtTime(v * (this.sleepFactor ?? 1), this.ctx.currentTime, 0.02);
   }
 
   // Sleep timer fade-out: multiplies the user's volume without touching it (so cancelling the timer restores the exact level).
   setSleepFactor(f) {
     this.sleepFactor = f;
-    if (!this.state.muted) this.masterGain.gain.setTargetAtTime(this.state.volume * f, this.ctx.currentTime, 0.05);
+    if (this.ctx&&!this.state.muted) this.masterGain.gain.setTargetAtTime(this.state.volume * f, this.ctx.currentTime, 0.05);
   }
 
   setMasterEnable(on) {
@@ -376,6 +394,7 @@ class AudioEngine {
 
   // Only a developer build can supply the fixed local WASM module.
   async enableExperimentalWorklet(bytes,compiled=null){
+    this.ensureGraph();
     if(this.workletNode&&this.workletReady){this.workletPreference=true;this.applyLiveBypass();return true;}
     const epoch=++this.workletEpoch;
     let node=null;
@@ -437,13 +456,14 @@ class AudioEngine {
   }
 
   applyLiveBypass(immediate=false) {
-    this.dspRouteGate.select(OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:this.workletPreference,workletReady:this.workletReady}),immediate);
+    if(this.dspRouteGate)this.dspRouteGate.select(OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:this.workletPreference,workletReady:this.workletReady}),immediate);
     this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
 
   setMuted(m) {
     this.state.muted = m;
+    if(!this.ctx)return;
     this.masterGain.gain.setTargetAtTime(m ? 0 : this.state.volume * (this.sleepFactor ?? 1), this.ctx.currentTime, 0.02);
   }
 
@@ -461,6 +481,7 @@ class AudioEngine {
     ++this.transitionEpoch;
     clearTimeout(this.transitionTimer);this.transitionTimer=null;
     const pending=this.pendingTransition;this.pendingTransition=null;
+    if(!this.ctx)return;
     const now=this.ctx.currentTime;
     this.slots.forEach((slot,i)=>{
       slot.gain.gain.cancelScheduledValues(now);
@@ -471,6 +492,7 @@ class AudioEngine {
   }
 
   switchTrack(loader, onReady) {
+    this.ensureGraph();
     this.cancelCrossfade();
     const epoch=this.transitionEpoch,prevSlotIndex=this.activeSlot;
     const dur=Math.max(0,Math.min(30,Number(this.crossfadeSeconds)||0));
@@ -523,6 +545,7 @@ class AudioEngine {
 
   setEqBand(index, db) {
     this.state.eqBands[index] = db;
+    if(!this.ctx)return;
     this.eqNodes[index].gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
     this.syncWorkletSettings();
   }
@@ -532,12 +555,15 @@ class AudioEngine {
     this.state.normalizationEnabled = on;
   }
   setNormalizationGain(linearGain) {
+    this.normalizationGain=linearGain;
+    if(!this.ctx)return;
     const target = this.state.normalizationEnabled ? linearGain : 1;
     this.normGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.15);
   }
   setPresence(value) {
     const n=Math.max(0,Math.min(100,Number(value)||0));
     this.state.presence=n;
+    if(!this.ctx){window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));return;}
     this.presenceNode.gain.setTargetAtTime(WaveframeAudio.presenceParams(n).gain,this.ctx.currentTime,.03);
     this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
@@ -545,34 +571,40 @@ class AudioEngine {
   setBalance(value) {
     const n=Math.max(-100,Math.min(100,Number(value)||0));
     this.state.balance=n;
+    if(!this.ctx){window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));return;}
     this.balanceNode.pan.setTargetAtTime(WaveframeAudio.balanceValue(n),this.ctx.currentTime,.03);
     this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
   setBassBoost(db) {
     this.state.bassBoost = db;
+    if(!this.ctx)return;
     this.bassBoostNode.gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
     this.syncWorkletSettings();
   }
   setVolumeBoostDb(db) {
     this.state.volumeBoost = db;
+    if(!this.ctx)return;
     this.volumeBoostNode.gain.setTargetAtTime(Math.pow(10, db / 20), this.ctx.currentTime, 0.02);
     this.syncWorkletSettings();
   }
   setSurround(pct) {
     this.state.surround = pct;
+    if(!this.ctx)return;
     const w = 1 + (Math.max(0,Math.min(100,Number(pct)||0)) / 100) * 0.6;
     this.surroundSide.gain.setTargetAtTime(0.5 * w, this.ctx.currentTime, 0.02);
     this.syncWorkletSettings();
   }
   setCompressorMode(mode){
     this.state.compressorMode=['gentle','standard','night'].includes(mode)?mode:'standard';
+    if(!this.ctx)return;
     const p=WaveframeAudio.compressorParams(this.state.compressorMode),tt=this.ctx.currentTime;
     for(const k of Object.keys(p))this.compressorNode[k].setTargetAtTime(p[k],tt,.03);
     this.syncWorkletSettings();
   }
   setCompressor(on) {
     this.state.compressor = on;
+    if(!this.ctx)return;
     const tt = this.ctx.currentTime;
     this.compWet.gain.setTargetAtTime(on ? 1 : 0, tt, 0.05);
     this.compDry.gain.setTargetAtTime(on ? 0 : 1, tt, 0.05);
@@ -584,16 +616,18 @@ class AudioEngine {
     if(kind==='reverb')this.setReverb(this.state.reverb);else this.setExciter(this.state.exciter);
   }
   setReverb(on) {
+    this.state.reverb=on;
+    if(!this.ctx)return;
     if(on&&!this.reverbNode.buffer)this.reverbNode.buffer=this._makeImpulseResponse(2.2,2.0);
-    this.state.reverb = on;
     const tt = this.ctx.currentTime;
     this.reverbWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.reverbAmount,.28) : 0, tt, 0.05);
     this.reverbDry.gain.setTargetAtTime(1, tt, 0.05);
     this.syncWorkletSettings();
   }
   setExciter(on) {
+    this.state.exciter=on;
+    if(!this.ctx)return;
     if(on&&!this.exciterNode.curve){this.exciterNode.curve=this._makeSaturationCurve();this.exciterNode.oversample='4x';}
-    this.state.exciter = on;
     const tt = this.ctx.currentTime;
     this.exciterWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.exciterAmount,.35) : 0, tt, 0.05);
     this.exciterDry.gain.setTargetAtTime(1, tt, 0.05);
@@ -943,6 +977,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     if (btn.dataset.tab === 'converter') loadConverter();
     if (btn.dataset.tab === 'video') loadVideoPlayer();
     if (btn.dataset.tab === 'photo') loadPhoto();
+    if (btn.dataset.tab === 'settings') void refreshDepsStatus();
   });
 });
 
@@ -1896,7 +1931,7 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
     const el=document.documentElement.lang==='el';
     experimental.textContent=engine.workletPreference?(el?'Επιστροφή σε Web Audio':'Return to Web Audio'):(el?'Πειραματικός DSP WASM':'Experimental WASM DSP');
     workletStatus.hidden=!wasmBytes;
-    workletStatus.textContent=failed?(el?'Αποτυχία WASM — επιστροφή στην ασφαλή διαδρομή.':'WASM failed — safe route restored.'):(el?'Πειραματική λειτουργία · ':'Experimental mode · ')+engine.dspRouteGate.target;
+    workletStatus.textContent=failed?(el?'Αποτυχία WASM — επιστροφή στην ασφαλή διαδρομή.':'WASM failed — safe route restored.'):(el?'Πειραματική λειτουργία · ':'Experimental mode · ')+(engine.dspRouteGate?.target||'web');
   }
   window.waveframe.experimentalWorkletBytes().then(bytes=>{
     if(bytes instanceof Uint8Array){wasmBytes=bytes;experimental.hidden=false;showWorklet();}
@@ -2323,7 +2358,7 @@ function restorePreferences() {
   applyHueMode(localStorage.getItem('waveframe.hueMode') || 'auto');
 }
 
-Backgrounds.setAnalyser(engine.analyser, new Uint8Array(engine.analyser.frequencyBinCount));
+window.addEventListener('waveframe:audio-graph-ready',()=>Backgrounds.setAnalyser(engine.analyser,new Uint8Array(engine.analyser.frequencyBinCount)));
 
 /* ------------------------------------------------------------------ */
 /* Tutorial                                                            */
@@ -2446,8 +2481,8 @@ let particles = [];
 
 const canvas = els.visualizer;
 const vctx = canvas.getContext('2d');
-const freqData = new Uint8Array(engine.analyser.frequencyBinCount);
-const timeData = new Uint8Array(engine.analyser.frequencyBinCount);
+const freqData = new Uint8Array(1024);
+const timeData = new Uint8Array(1024);
 const visualizerWrap = document.getElementById('visualizerWrap');
 const visAlbumArt = document.getElementById('visAlbumArt');
 const visAlbumArtImg = document.getElementById('visAlbumArtImg');
@@ -2872,7 +2907,7 @@ function renderLoop(now=performance.now()){
   if(!vis&&!meter)return;
   if(visualDirty||(active&&now-lastVisualFrame>=32)){
     lastVisualFrame=now;visualDirty=false;
-    if(active){engine.analyser.getByteFrequencyData(freqData);if(vis)engine.analyser.getByteTimeDomainData(timeData);}
+    if(active&&engine.analyser){engine.analyser.getByteFrequencyData(freqData);if(vis)engine.analyser.getByteTimeDomainData(timeData);}
     else{freqData.fill(0);timeData.fill(128);}
     if(vis){if(visMode!==prevVisMode||!active){particles=[];prevVisMode=visMode;}(VIS_DRAW[visMode]||drawBars)();}
     if(meter)updateMiniMeter();
@@ -2893,8 +2928,11 @@ const depFfmpegStatus = document.getElementById('depFfmpegStatus');
 const btnInstallDeps = document.getElementById('btnInstallDeps');
 const depsProgress = document.getElementById('depsProgress');
 
+let depsCheckPending=null;
 async function refreshDepsStatus() {
-  const status = await window.waveframe.checkDeps();
+  if(!depsCheckPending)depsCheckPending=window.waveframe.checkDeps().catch(()=>null).finally(()=>{depsCheckPending=null;});
+  const status = await depsCheckPending;
+  if(!status?.ffmpeg)return;
   const ok = status.ffmpeg.ok;
   depFfmpegStatus.textContent = ok ? t('settings.depsOk') : t('settings.depsMissing');
   depFfmpegStatus.className = 'dep-status ' + (ok ? 'ok' : 'missing');
@@ -2921,7 +2959,7 @@ btnInstallDeps.addEventListener('click', async () => {
   }
 });
 
-document.addEventListener('waveframe:language-changed', () => refreshDepsStatus());
+document.addEventListener('waveframe:language-changed',()=>{if(document.querySelector('.tab-btn.active')?.dataset.tab==='settings')void refreshDepsStatus();});
 
 /* ------------------------------------------------------------------ */
 /* Boot                                                                */
@@ -2932,7 +2970,6 @@ renderUserPresets();
 restorePreferences();
 restorePlaylist();
 updateTrackNameUi();
-refreshDepsStatus();
 
 window.waveframe.onMediaKey((action) => {
   if (action === 'playpause') { if (currentTrackIndex === -1 && playlist.length > 0) playTrackAt(0); else engine.togglePlay().then(syncPlayButton); }
@@ -2976,6 +3013,12 @@ window.__selfTest = async function () {
   const out = [];
   const check = (name, ok, extra) => out.push({ name, ok: !!ok, extra: extra === undefined ? '' : String(extra) });
   try {
+    check('cold renderer does not initialize live audio',engine.ctx===null&&!engine.analyser);
+    engine.setVolume(.65);engine.setBassBoost(3);
+    check('inactive audio settings retain state without allocating device',engine.ctx===null&&engine.state.volume===.65&&engine.state.bassBoost===3);
+    engine.ensureGraph();
+    check('first audio use allocates real graph and retains settings',!!engine.ctx&&!!engine.analyser&&engine.state.bassBoost===3);
+    engine.setVolume(.8);engine.setBassBoost(0);
     // Exercise the real transition methods without opening an audio device.
     const fake=Object.create(AudioEngine.prototype);
     const makeSlot=()=>({el:{paused:false,pause(){this.paused=true;},play(){this.paused=false;return new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});}},gain:{gain:{cancelScheduledValues(){},setValueAtTime(){},linearRampToValueAtTime(){}}}});

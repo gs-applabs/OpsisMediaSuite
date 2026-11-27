@@ -9,7 +9,7 @@ const M3U = require('./m3u.js');
 const { localPath, allowedFile } = require('./local-media-policy.js');
 const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
-const { inventory } = require('./codec-inventory.js');
+const inventory=(...args)=>require('./codec-inventory.js').inventory(...args);
 const { createNativeHost } = require('./native-host.js');
 const {gpuSummary}=require('./gpu-diagnostics.js');
 const {summarizeMetrics}=require('./resource-diagnostics.js');
@@ -17,12 +17,16 @@ const {createDspBridge}=require('./native-dsp-bridge.js');
 const {detectEncoders}=require('./conv-video.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
-const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
-const {resolve7Zip,withRar}=require('./subtitle-rar.js');
-const {resolveProbe,probeMkv,canExtract,extractMkv}=require('./subtitle-probe.js');
+const zipSubtitles=(...args)=>require('./subtitle-archive.js').zipSubtitles(...args);
+const resolve7Zip=(...args)=>require('./subtitle-rar.js').resolve7Zip(...args);
+const withRar=(...args)=>require('./subtitle-rar.js').withRar(...args);
+const resolveProbe=(...args)=>require('./subtitle-probe.js').resolveProbe(...args);
+const probeMkv=(...args)=>require('./subtitle-probe.js').probeMkv(...args);
+const canExtract=(...args)=>require('./subtitle-probe.js').canExtract(...args);
+const extractMkv=(...args)=>require('./subtitle-probe.js').extractMkv(...args);
 const {createSubdl}=require('./subtitle-subdl.js');
 const {seasonPlan,runSeasonBatch,MAX_BATCH,seasonPage}=require('./subtitle-batch.js');
-const {searchProviders}=require('./subtitle-multi.js');
+const searchProviders=(...args)=>require('./subtitle-multi.js').searchProviders(...args);
 const VP=require('./renderer/vplib');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
@@ -291,7 +295,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       if(['zip','rar'].includes(extOf(f))){
         const fd=await fs.promises.open(f,'r');
         let data;
-        try{const st=await fd.stat();if(st.size>MAX_ARCHIVE)return {ok:false,code:'archive-size'};data=Buffer.alloc(st.size);let offset=0;while(offset<data.length){const rr=await fd.read(data,offset,data.length-offset,offset);if(!rr.bytesRead)return {ok:false,code:'archive-read-failed'};offset+=rr.bytesRead;}}finally{await fd.close();}
+        try{const st=await fd.stat();if(st.size>require('./subtitle-archive.js').MAX_ARCHIVE)return {ok:false,code:'archive-size'};data=Buffer.alloc(st.size);let offset=0;while(offset<data.length){const rr=await fd.read(data,offset,data.length-offset,offset);if(!rr.bytesRead)return {ok:false,code:'archive-read-failed'};offset+=rr.bytesRead;}}finally{await fd.close();}
         if(extOf(f)==='rar'){
           const allow=()=>trusted(e)&&approved.has(p)&&allowedFile(p,new Set(VIDEO_EXTS))===p;
           const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Use installed 7-Zip / Χρήση 7-Zip'],defaultId:0,cancelId:0,message:'Read this RAR using installed 7-Zip?',detail:'Requires 7-Zip 25.01 or newer. Only a selected text subtitle is read to memory. This uses a native archive parser, not a sandbox.'});

@@ -137,3 +137,6 @@ SSD/temporary resource hygiene: owned scratch directories for WAV/predecode/pass
 
 ## 20B.10
 Converter shutdown gate, active-run cancellation, bounded cleanup grace (4 seconds), recheck before starting a new pass or publishing, probe/thumb admission guards, progress notification deduplication (100 ms, terminal always). No guarantee of recovery from forced process kill or OS crash; no deletion of completed outputs. New CI pending.
+
+## 20B.11 — Demand-driven core
+Live AudioContext/DSP graph not created at cold start; preserve state-only controls, instantiate on playback/mic/tone/worklet, restore preferences; offline conversion independent. Dependency scan only when Settings selected, lazy optional archive/probe/codec modules. Existing CI 282 tests, 281 pass, one obsolete static log assertion corrected; pending new verification. Hourly workflow switched to manual to avoid repeat runs; existing runs unaffected. Not yet full DSP per-node deactivation or full startup certification.

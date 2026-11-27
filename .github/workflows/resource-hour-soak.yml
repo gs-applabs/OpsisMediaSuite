@@ -1,7 +1,6 @@
 name: Hour-long resource soak (test only)
 on:
-  pull_request:
-    paths: ['.github/workflows/resource-hour-soak.yml']
+  # Existing runs remain independent. Avoid another hour-long run on each PR update.
   workflow_dispatch:
 permissions:
   contents: read

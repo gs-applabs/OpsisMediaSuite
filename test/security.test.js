@@ -56,8 +56,9 @@ test('IPC arguments are validated in main.js (types, sizes, patterns)', () => {
   const m = read('main.js');
   assert.match(m, /typeof enabled === 'boolean'/);
   assert.match(m, /PNG_DATA_URL/);
-  assert.match(m, /slice\(0, 4000\)/, 'crash log entries are bounded');
-  assert.match(m, /512 \* 1024/, 'crash log is rotated');
+  assert.match(m, /slice\(0,\s*4000\)/, 'crash log entries are bounded');
+  assert.match(m, /appendBoundedLog\(logPath,/, 'crash log uses bounded writer');
+  assert.match(read('resource-diagnostics.js'), /max=512\*1024/, 'crash log is rotated');
   assert.match(m, /path\.isAbsolute\(filePath\)/);
   assert.match(m, /AUDIO_FILE_EXTENSIONS\.includes/);
   assert.match(m, /\^\[a-z0-9-\]\{1,30\}\$/, 'theme names are a strict pattern');
