@@ -241,8 +241,21 @@
     const size=outputSize(w,h,params),out=resizeOutput(size.width,size.height,maxEdge);
     return w*h*12+size.width*size.height*8+out.width*out.height*8<=LIMITS.exportWorkBytes && out.width<=LIMITS.maxExportEdge&&out.height<=LIMITS.maxExportEdge;
   }
+  const LOOKS=Object.freeze({
+    neutral:{}, portrait:{contrast:5,highlights:-15,shadows:12,vibrance:10,clarity:-8,temperature:5},
+    landscape:{contrast:12,vibrance:24,clarity:18,highlights:-12,shadows:10},
+    monochrome:{saturation:-100,contrast:15,clarity:10},
+    vintage:{sepia:32,contrast:-12,vignette:20,saturation:-20,temperature:12},
+    document:{contrast:25,sharpen:25,saturation:-100,white:235}
+  });
+  function applyLook(params,name,strength=100){
+    if(!Object.hasOwn(LOOKS,name))return clampParams(params);
+    const old=clampParams(params),base=defaults(),weight=Math.max(0,Math.min(100,Number(strength)||0))/100;
+    for(const k of Object.keys(RANGE))old[k]=base[k]+((LOOKS[name][k]??base[k])-base[k])*weight;
+    return clampParams(old);
+  }
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { applyLook, clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

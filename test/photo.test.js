@@ -146,3 +146,5 @@ test('RGB channels and clarity preserve alpha and source data',()=>{
  assert.ok(crisp.data[4]>120);assert.equal(crisp.data[7],100);
  assert.deepEqual(P.process(img,P.defaults()).data,img.data);
 });
+
+test('photo looks retain geometry and blend from neutral',()=>{const p={...P.defaults(),rotate:90,flipH:true,crop:{x:.1,y:.1,w:.5,h:.5}};const q=P.applyLook(p,'monochrome',50);assert.equal(q.saturation,-50);assert.equal(q.rotate,90);assert.equal(q.flipH,true);assert.deepEqual(q.crop,p.crop);assert.equal(p.saturation,0);assert.equal(P.applyLook(q,'portrait',0).contrast,0);});

@@ -136,6 +136,10 @@
     return {frequency:2800,q:.85,gain:6*n};
   }
   function balanceValue(amount) {return Math.max(-1,Math.min(1,(Number(amount)||0)/100));}
+  function compressorParams(mode){
+    const modes={gentle:{threshold:-18,knee:20,ratio:2,attack:.015,release:.35},standard:{threshold:-24,knee:30,ratio:8,attack:.003,release:.25},night:{threshold:-32,knee:24,ratio:12,attack:.005,release:.4}};
+    return {...(Object.hasOwn(modes,mode)?modes[mode]:modes.standard)};
+  }
   function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
-  return { presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

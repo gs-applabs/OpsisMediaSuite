@@ -384,6 +384,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
         fs.writeFileSync(path.join(source,'sintel-audio-sync.json'),JSON.stringify(evidence,null,2));
         console.log('INFO real soundtrack audio-sync '+JSON.stringify(evidence));
         check('real soundtrack sync returns explicit suggestion or abstention',typeof original?.ok==='boolean'&&typeof shiftedAudio?.ok==='boolean');
+        check('real soundtrack rejects known weak false alignment',!shiftedAudio?.ok||consistent,JSON.stringify(evidence));
 
       }
       // Real file decode + authorized IPC + timing estimator. The waveform

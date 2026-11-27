@@ -200,7 +200,7 @@
               <div class="switch-row"><label for="fxBalance">Stereo balance / Ισορροπία</label><input id="fxBalance" type="range" min="-100" max="100" step="1" value="0"><output id="fxBalanceValue" for="fxBalance">0</output></div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.compressor">Συμπιεστής</div><div class="switch-sub" data-i18n="enhance.compressorSub">Δυναμικός έλεγχος έντασης — Νυχτερινή λειτουργία &amp; Αυτόματο κέρδος</div></div>
-                <button class="switch" id="swCompressor"></button>
+                <button class="switch" id="swCompressor"></button><label for="fxCompressorMode">Mode / Λειτουργία</label><select id="fxCompressorMode"><option value="gentle">Gentle / Ήπια</option><option value="standard" selected>Standard</option><option value="night">Night / Νύχτα</option></select>
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.reverb">Αντήχηση / Ατμόσφαιρα</div><div class="switch-sub" data-i18n="enhance.reverbSub">Χωρική αντήχηση — Κινηματογραφική &amp; Αίθουσας</div></div>
@@ -403,6 +403,7 @@
             <div class="vp-bar">
               <button class="small-btn" id="phOpen" data-i18n="ph.open">Άνοιγμα</button>
               <button class="small-btn" id="phAuto" data-i18n="ph.auto">Αυτόματη βελτίωση</button>
+              <label>Look / Φίλτρο <select id="phLook"><option value="neutral">Neutral / Ουδέτερο</option><option value="portrait">Portrait / Πορτρέτο</option><option value="landscape">Landscape / Τοπίο</option><option value="monochrome">B&amp;W / Ασπρόμαυρο</option><option value="vintage">Vintage</option><option value="document">Document / Έγγραφο</option></select></label><label>Strength % <input id="phLookStrength" type="number" min="0" max="100" step="5" value="100"></label><button class="small-btn" id="phLookApply">Apply look</button>
               <button class="small-btn" id="phUndo" disabled aria-label="Undo / Αναίρεση">↶ Undo</button>
               <button class="small-btn" id="phRedo" disabled aria-label="Redo / Επανάληψη">↷ Redo</button>
               <button class="small-btn" id="phReset" data-i18n="ph.reset">Επαναφορά</button>

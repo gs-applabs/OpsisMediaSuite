@@ -38,6 +38,7 @@
     }
     for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k; $('phCrop').append(o); }
     $('phOpen').addEventListener('click', async () => { const p = await api.photoPick(); if (p) openPath(p); });
+    $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params=P.applyLook(params,$('phLook').value,Number($('phLookStrength').value));syncSliders();checkpoint();schedule();});
     $('phAuto').addEventListener('click', () => { if (!preview) return; params = P.applyAuto(preview,params); syncSliders(); checkpoint(); schedule(); });
     $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders(); checkpoint(); schedule(); });
     $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; checkpoint(); schedule(); });

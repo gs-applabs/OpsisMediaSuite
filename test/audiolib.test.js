@@ -124,3 +124,5 @@ test('presence and stereo balance are bounded and neutral by default',()=>{
  assert.equal(lib.presenceParams(0).gain,0);assert.equal(lib.presenceParams(100).gain,6);assert.equal(lib.presenceParams(200).gain,6);assert.equal(lib.presenceParams(-10).gain,0);
  assert.equal(lib.balanceValue(-200),-1);assert.equal(lib.balanceValue(25),.25);assert.equal(lib.balanceValue(NaN),0);
 });
+
+test('compressor modes retain legacy standard and bound all parameters',()=>{assert.equal(lib.compressorParams('standard').ratio,8);assert.equal(lib.compressorParams('gentle').ratio,2);assert.equal(lib.compressorParams('night').threshold,-32);assert.deepEqual(lib.compressorParams('__proto__'),lib.compressorParams('standard'));});

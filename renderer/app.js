@@ -78,6 +78,7 @@ class AudioEngine {
     this.state = {
       eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       bassBoost: 0,
+      compressorMode:'standard',
       presence:0,
       balance:0,
       volumeBoost: 0,
@@ -461,6 +462,11 @@ class AudioEngine {
     const w = 1 + (Math.max(0,Math.min(100,Number(pct)||0)) / 100) * 0.6;
     this.surroundSide.gain.setTargetAtTime(0.5 * w, this.ctx.currentTime, 0.02);
   }
+  setCompressorMode(mode){
+    this.state.compressorMode=['gentle','standard','night'].includes(mode)?mode:'standard';
+    const p=WaveframeAudio.compressorParams(this.state.compressorMode),tt=this.ctx.currentTime;
+    for(const k of Object.keys(p))this.compressorNode[k].setTargetAtTime(p[k],tt,.03);
+  }
   setCompressor(on) {
     this.state.compressor = on;
     const tt = this.ctx.currentTime;
@@ -483,7 +489,7 @@ class AudioEngine {
     this.setBassBoost(0);this.setPresence(0);this.setBalance(0);
     this.setVolumeBoostDb(0);
     this.setSurround(0);
-    this.setCompressor(false);
+    this.setCompressor(false);this.setCompressorMode('standard');
     this.setReverb(false);
     this.setExciter(false);
   }
@@ -541,8 +547,7 @@ class AudioEngine {
     if(this.state.balance){const balance=offline.createStereoPanner();balance.pan.value=WaveframeAudio.balanceValue(this.state.balance);chainEnd.connect(balance);chainEnd=balance;}
     if (this.state.compressor) {
       const comp = offline.createDynamicsCompressor();
-      comp.threshold.value = -24; comp.knee.value = 30; comp.ratio.value = 8;
-      comp.attack.value = 0.003; comp.release.value = 0.25;
+      const cp=WaveframeAudio.compressorParams(this.state.compressorMode);for(const k of Object.keys(cp))comp[k].value=cp[k];
       chainEnd.connect(comp);
       chainEnd = comp;
     }
@@ -1056,7 +1061,7 @@ function renderUserPresets() {
 function applyUserPreset(p) {
   engine.applyEqBands(p.bands);
   setEqUi(p.bands);
-  engine.setPresence(p.presence??0);engine.setBalance(p.balance??0);syncProfessionalFx();
+  engine.setPresence(p.presence??0);engine.setBalance(p.balance??0);engine.setCompressorMode(p.compressorMode);syncProfessionalFx();
   if (typeof p.bassBoost === 'number') {
     engine.setBassBoost(p.bassBoost);
     els.bassBoost.value = String(p.bassBoost);
@@ -1090,7 +1095,7 @@ els.btnSavePreset.addEventListener('click', async () => {
     name,
     bands: [...engine.state.eqBands],
     bassBoost: engine.state.bassBoost,
-    presence:engine.state.presence,balance:engine.state.balance,
+    presence:engine.state.presence,balance:engine.state.balance,compressorMode:engine.state.compressorMode,
     volumeBoost: engine.state.volumeBoost,
     surround: engine.state.surround,
     compressor: engine.state.compressor,
@@ -1505,10 +1510,11 @@ els.volBoost.addEventListener('input', () => {
 });
 function syncProfessionalFx(){
   const p=document.getElementById('fxPresence'),b=document.getElementById('fxBalance');
-  p.value=String(engine.state.presence);b.value=String(engine.state.balance);
+  p.value=String(engine.state.presence);b.value=String(engine.state.balance);document.getElementById('fxCompressorMode').value=engine.state.compressorMode;
   document.getElementById('fxPresenceValue').textContent=WaveframeAudio.presenceParams(engine.state.presence).gain.toFixed(1)+' dB';
   document.getElementById('fxBalanceValue').textContent=String(engine.state.balance);
 }
+document.getElementById('fxCompressorMode').addEventListener('change',e=>{engine.setCompressorMode(e.target.value);syncProfessionalFx();});
 document.getElementById('fxPresence').addEventListener('input',e=>{engine.setPresence(e.target.value);syncProfessionalFx();});
 document.getElementById('fxBalance').addEventListener('input',e=>{engine.setBalance(e.target.value);syncProfessionalFx();});
 els.btnResetFx.addEventListener('click', () => {

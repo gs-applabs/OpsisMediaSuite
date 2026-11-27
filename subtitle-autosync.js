@@ -42,10 +42,11 @@ function estimate(activity,cues,{maxShift=30,step=STEP}={}){
   }
  }
  scores.sort((a,b)=>b.score-a.score);const best=scores[0];
- if(!best||best.score<.23)return {ok:false,code:'weak-match'};
+ if(!best||best.score<.45)return {ok:false,code:'weak-match'};
  const rival=scores.find(c=>Math.abs(c.delay-best.delay)>.7||Math.abs(c.scale-best.scale)*n*step>1.5);
  const margin=rival?best.score-rival.score:best.score;
- if(margin<.035)return {ok:false,code:'ambiguous-match'};
+ // A low score or boundary hit is not credible evidence of dialogue alignment.
+ if(margin<.08||Math.abs(best.delay)>=shift*step-.5)return {ok:false,code:'ambiguous-match'};
  return {ok:true,scale:best.scale,delay:Math.round(best.delay*1000)/1000,score:Math.round(best.score*1000)/1000,margin:Math.round(margin*1000)/1000,analyzedSeconds:n*step,method:'audio-activity'};
 }
 function extractActivity(ffmpeg,file,seconds=MAX_SECONDS,{audioIndex=0,signal}={}){
