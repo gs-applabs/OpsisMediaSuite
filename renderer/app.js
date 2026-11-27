@@ -1563,6 +1563,23 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
     route=list.some(d=>d.kind==='audiooutput'&&d.deviceId==='default'&&/fxsound/i.test(d.label));show();
   }
   async function detect(){const r=await window.waveframe.fxSoundStatus().catch(()=>null);installed=r?.installed??null;running=r?.running??null;show();}
+  const inventoryButton=document.getElementById('audioEndpointInventory'),inventoryReport=document.getElementById('audioEndpointReport');
+  inventoryButton.addEventListener('click',async()=>{
+    inventoryButton.disabled=true;inventoryReport.hidden=false;
+    const greek=document.documentElement.lang==='el';
+    inventoryReport.textContent=greek?'Ανάγνωση συσκευών…':'Reading devices…';
+    try{
+      const data=await window.waveframe.audioEndpoints();
+      if(!data){inventoryReport.textContent=greek?'Μη διαθέσιμη ανίχνευση Core Audio.':'Core Audio inventory unavailable.';return;}
+      const states=greek?{1:'Ενεργή',2:'Απενεργοποιημένη',4:'Απούσα',8:'Αποσυνδεδεμένη'}:{1:'Active',2:'Disabled',4:'Not present',8:'Unplugged'};
+      const roles=greek?['Κονσόλα','Πολυμέσα','Επικοινωνίες']:['Console','Multimedia','Communications'];
+      const lines=data.rows.map(row=>row.name+' — '+states[row.state]+[row.console,row.multimedia,row.communications].map((on,i)=>on?' · '+roles[i]:'').join(''));
+      if(!lines.length)lines.push(greek?'Δεν εντοπίστηκαν έξοδοι.':'No rendering endpoints found.');
+      if(data.partial||data.rolesKnown.some(x=>!x))lines.push(greek?'Μερικά στοιχεία δεν ήταν διαθέσιμα.':'Some information was unavailable.');
+      lines.push(greek?'Μόνο ανάγνωση — καμία αλλαγή εξόδου ή επιβεβαίωση APO.':'Read only — no output change or APO verification.');
+      inventoryReport.textContent=lines.join('\n');
+    }catch{inventoryReport.textContent=greek?'Αποτυχία ανάγνωσης.':'Inventory failed.';}finally{inventoryButton.disabled=false;}
+  });
   select.addEventListener('change',change);
   bypass.addEventListener('click',()=>{select.value='external';change();});
   navigator.mediaDevices?.addEventListener('devicechange',()=>{devices();detect();});

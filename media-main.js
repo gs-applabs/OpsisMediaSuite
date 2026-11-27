@@ -93,6 +93,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
+  let audioInventoryBusy=false;
+  ipcMain.handle('audio:endpoints',async e=>{
+    if(!trusted(e)||audioInventoryBusy)return null;
+    audioInventoryBusy=true;
+    try{const result=await nativeHost.audioEndpoints();return trusted(e)?result:null;}finally{audioInventoryBusy=false;}
+  });
   ipcMain.handle('vp:native-open',async(e,p,engine,positionMs,subtitleText,embedded,decode='auto')=>{
     if(!trusted(e))return {ok:false,code:'denied'};
     if(embedded!==true)return nativeHost.open(p,engine,positionMs,subtitleText,null,decode);

@@ -22,6 +22,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if(args.Length==1&&args[0]=="--audio-endpoints")return AudioEndpointInventory.Run();
         if(args.Length==1&&args[0]=="--embed-selftest"){ApplicationConfiguration.Initialize();return EmbeddedViewport.SelfTest();}
         string decoder="auto";
         if(args.Length>=4&&args[^2]=="--decode-mode"){

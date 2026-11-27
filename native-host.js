@@ -9,7 +9,7 @@ function prepareSubtitle(text){
  if(!body||Buffer.byteLength(body,'utf8')>5*1024*1024)return null;
  return body;
 }
-const {spawn}=require('node:child_process');
+const {spawn,execFile}=require('node:child_process');
 const {allowedFile,localPath}=require('./local-media-policy');
 function parseHostEvent(line){
  if(typeof line!=='string'||line.length>1024)return null;
@@ -50,12 +50,32 @@ function normalizeViewport(rect){
  if(![x,y,w,h].every(Number.isInteger)||x<0||y<0||w<=0||h<=0||x+w>1000||y+h>1000)return null;
  return ((x*1024+y)*1024+w)*1024+h;
 }
+function parseAudioEndpoints(text){
+ try{
+  if(typeof text!=='string'||text.length>65536)return null;
+  const r=JSON.parse(text);
+  if(r.ok!==true||!Array.isArray(r.rows)||r.rows.length>64||!Array.isArray(r.rolesKnown)||r.rolesKnown.length!==3||!r.rolesKnown.every(x=>typeof x==='boolean'))return null;
+  const rows=[];
+  for(const x of r.rows){
+   if(!x||typeof x.name!=='string'||x.name.length>160||![1,2,4,8].includes(x.state)||!['console','multimedia','communications'].every(k=>typeof x[k]==='boolean'))return null;
+   rows.push({name:x.name.replace(/[\x00-\x1f\x7f]/g,' '),state:x.state,console:x.console,multimedia:x.multimedia,communications:x.communications});
+  }
+  return {rows,partial:r.partial===true,rolesKnown:r.rolesKnown};
+ }catch{return null;}
+}
 function createNativeHost({app,extensions,authorize}){
  let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0,subtitleSession=null;
  function finishCommand(r){if(!pending)return;const p=pending;pending=null;clearTimeout(p.timer);p.resolve(r);}
  const hostPath=()=>path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'native-player','publish'),...(app.isPackaged?['native-player']:[]),'Opsis.NativePlayer.exe');
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
  const status=()=>({available:available(),...state});
+ function audioEndpoints(){
+  const exe=available()?localPath(hostPath()):null;if(!exe)return Promise.resolve(null);
+  return new Promise(resolve=>{
+    try{execFile(exe,['--audio-endpoints'],{cwd:path.dirname(exe),windowsHide:true,timeout:5000,maxBuffer:65536,encoding:'utf8'},(err,out)=>resolve(err?null:parseAudioEndpoints(out)));}
+    catch{resolve(null);}
+  });
+ }
  async function open(value,engine='libvlc',positionMs=0,subtitleText=null,embedding=null,decode='auto'){
   if(!['libvlc','directshow','media-foundation'].includes(engine))return {ok:false,code:'bad-engine'};
   if(!available())return {ok:false,code:'native-not-built'};
@@ -133,6 +153,6 @@ function createNativeHost({app,extensions,authorize}){
  }
  function stop(){epoch++;finishCommand({ok:false,code:'cancelled'});if(child){state={...state,phase:'stopping'};try{child.kill();}catch(_){}}}
  if(typeof app.on==='function')app.on('before-quit',stop);
- return {available,status,open,stop,command,replaceSubtitle,updateViewport};
+ return {available,status,open,stop,command,replaceSubtitle,updateViewport,audioEndpoints};
 }
-module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer,normalizeViewport};
+module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer,normalizeViewport,parseAudioEndpoints};

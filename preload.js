@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   version,
   detectFxSound: () => ipcRenderer.invoke('fxsound:detect'),
   fxSoundStatus: () => ipcRenderer.invoke('fxsound:status'),
+  audioEndpoints:()=>ipcRenderer.invoke('audio:endpoints'),
   musicPath,
   minimize: () => ipcRenderer.send('window:minimize'),
   maximizeToggle: () => ipcRenderer.send('window:maximize-toggle'),

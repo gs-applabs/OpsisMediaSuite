@@ -29,6 +29,14 @@ jobs:
           if ($LASTEXITCODE -or (Select-String -Path audit.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet)) { throw 'native dependency audit failed' }
       - name: Build native host
         run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
+      - name: Read-only Core Audio render endpoint inventory
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--audio-endpoints') -PassThru -RedirectStandardOutput audio-endpoint-result.json -RedirectStandardError audio-endpoint-error.log
+          if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'audio inventory timeout' }
+          Get-Content audio-endpoint-result.json,audio-endpoint-error.log
+          $r = Get-Content audio-endpoint-result.json -Raw | ConvertFrom-Json
+          if ($p.ExitCode -ne 0 -or -not $r.ok -or $r.rolesKnown.Count -ne 3 -or $r.rows.Count -gt 64) { throw 'audio endpoint inventory failed' }
       - name: Embedded Win32 viewport attachment and bounds self-test
         shell: pwsh
         run: |
@@ -113,6 +121,8 @@ jobs:
           name: native-host-test-evidence
           path: |
             audit.txt
+            audio-endpoint-result.json
+            audio-endpoint-error.log
             embed-result.json
             embed-error.log
             native-result.json

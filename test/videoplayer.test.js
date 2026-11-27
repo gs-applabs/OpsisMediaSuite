@@ -604,3 +604,14 @@ test('resource snapshot excludes extra fields and distinguishes missing measurem
  assert.deepEqual(out,{rows:[{pid:12,type:'Browser',cpuPercent:2.35,workingSetKiB:1024,peakWorkingSetKiB:2048}],workingSetKiB:1024});
  assert.equal(summarizeMetrics([{pid:1}]).workingSetKiB,null);
 });
+
+
+test('audio endpoint report is read-only, bounded and excludes raw device IDs',()=>{
+ const {parseAudioEndpoints}=require('../native-host');
+ const row={name:'Speakers',state:1,console:true,multimedia:true,communications:false,id:'secret'};
+ const r=parseAudioEndpoints(JSON.stringify({ok:true,rows:[row],partial:false,rolesKnown:[true,true,true]}));
+ assert.deepEqual(r,{rows:[{name:'Speakers',state:1,console:true,multimedia:true,communications:false}],partial:false,rolesKnown:[true,true,true]});
+ assert.equal(parseAudioEndpoints(JSON.stringify({ok:true,rows:[{...row,state:99}],rolesKnown:[true,true,true]})),null);
+ assert.equal(parseAudioEndpoints(JSON.stringify({ok:true,rows:Array(65).fill(row),rolesKnown:[true,true,true]})),null);
+ assert.equal(parseAudioEndpoints('invalid'),null);
+});
