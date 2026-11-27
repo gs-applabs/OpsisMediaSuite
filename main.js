@@ -276,6 +276,10 @@ function createWindow() {
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
           await sample('post-selftest');
+          if(profile&&process.env.OPSIS_RESOURCE_SOAK==='1'){
+            results.push(...await win.webContents.executeJavaScript('window.__resourceSoak()'));
+            await sample('post-soak');
+          }
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
           code = results.every((r) => r.ok) ? 0 : 1;
         } catch (e) { console.log('FAIL self-test could not run: ' + e); }

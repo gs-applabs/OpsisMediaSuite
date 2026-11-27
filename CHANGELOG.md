@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20C.2
+- Add isolated opt-in 60-second audio/tab soak (20 real local generated media switches, five removals, final resource cleanup) and post-soak metrics; six repeat conversions verify decoded outputs and staging cleanup. Cancel pending crossfade before removing loaded items, preserve active selection. General and installer CI are keyed by commit to avoid cancellation across development passes. Soak and CI results pending.
+
 ## Unreleased — Ultra Mega Pass 20B.3 / 20C.1
 - Test-only Windows process tree profiling alongside Electron samples, with cumulative I/O transfer counters and optional GPU engine maximum; unavailable measurements explicitly reported. Deduplicate concurrent encoder discovery, cap encoder cache and discovery output, terminate auxiliary FFmpeg subprocesses on quit. Real two-process FFmpeg cancellation regression test. These are not physical SSD write metrics or full GPU utilization; long soak and results pending.
 

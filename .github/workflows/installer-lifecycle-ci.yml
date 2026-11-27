@@ -6,8 +6,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: installer-lifecycle-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: installer-lifecycle-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 jobs:
   lifecycle:
     runs-on: windows-latest

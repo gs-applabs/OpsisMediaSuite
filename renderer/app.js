@@ -1732,12 +1732,21 @@ function renderPlaylist(persist=true) {
     rm.addEventListener('click', (e) => {
       e.stopPropagation();
       const removed=playlist[idx];
+      // A pending crossfade may still reference the removed item. Cancel its
+      // callback before changing indices; keep the actual active slot's item.
+      const wasSelected=playlist[currentTrackIndex]===removed;
+      const isLoaded=engine.slots.some(slot=>slot.item===removed);
+      if(isLoaded&&engine.pendingTransition)engine.cancelCrossfade(true);
+      const activeItem=engine.slots[engine.activeSlot].item;
+      if(activeItem===removed)engine.pauseActive();
       playlist.splice(idx, 1);
-      if (idx === currentTrackIndex) { engine.pauseActive(); currentTrackIndex = -1; }
-      else if (idx < currentTrackIndex) currentTrackIndex--;
+      if(activeItem===removed)currentTrackIndex=-1;
+      else if(activeItem&&playlist.includes(activeItem))currentTrackIndex=playlist.indexOf(activeItem);
+      else if(wasSelected)currentTrackIndex=-1;
+      else if(idx<currentTrackIndex)currentTrackIndex--;
       // Release a removed file even if a paused crossfade slot still holds it.
       for(const slot of engine.slots)if(slot.item===removed){slot.el.pause();slot.el.removeAttribute('src');slot.el.load();if(slot.objectUrl)URL.revokeObjectURL(slot.objectUrl);slot.objectUrl=null;slot.item=null;slot.name='';}
-      if(currentTrackIndex===-1)updateTrackNameUi();
+      updateTrackNameUi();syncPlayButton();
       renderPlaylist();
     });
     li.appendChild(rm);
@@ -2963,6 +2972,57 @@ window.__selfTest = async function () {
   return out;
 };
 
+
+// Test-only soak, invoked by the isolated Electron CI profile after normal tests.
+// Local generated media, muted playback, real DOM/transport. No external files.
+window.__resourceSoak=async function(){
+  const out=[],check=(name,ok,extra='')=>out.push({name,ok:!!ok,extra:String(extra)});
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const until=async(fn,ms=2000)=>{const end=performance.now()+ms;while(performance.now()<end){if(fn())return true;await wait(50);}return !!fn();};
+  const old={list:playlist,index:currentTrackIndex,crossfade:engine.crossfadeSeconds,normalize:engine.state.normalizationEnabled,muted:engine.state.muted,mediaMuted:engine.slots.map(s=>s.el.muted)};
+  let completed=0,advancing=0,removed=0,transitions=0;
+  try{
+    window.WaveframeVideoPlayer?.pause();
+    engine.pauseActive();engine.stopAlternateSources();engine.setMuted(true);engine.slots.forEach(s=>s.el.muted=true);
+    engine.setNormalizationEnabled(false);engine.setNormalizationGain(1);engine.crossfadeSeconds=.15;
+    const rate=22050,n=rate*10;
+    const samples=new Float32Array(n);for(let i=0;i<n;i++)samples[i]=.02*Math.sin(2*Math.PI*440*i/rate);
+    const bytes=WaveframeConv.writeWav([samples],rate,16);
+    const files=[new File([bytes],'soak-a.wav',{type:'audio/wav'}),new File([bytes],'soak-b.wav',{type:'audio/wav'})];
+    playlist=[];currentTrackIndex=-1;renderPlaylist();
+    showTab('player');
+    for(let i=0;i<20;i++){
+      const started=performance.now();
+      if(!playlist.length)playlist.push(...files.map(file=>({file,name:file.name})));
+      renderPlaylist(false);
+      const index=i%playlist.length,item=playlist[index];
+      playTrackAt(index);
+      if(await until(()=>engine.slots[engine.activeSlot].item===item&&!engine.activeEl.paused&&engine.activeEl.readyState>=2)){
+        transitions++;
+        const before=engine.activeEl.currentTime;
+        if(await until(()=>engine.slots[engine.activeSlot].item===item&&engine.activeEl.currentTime>before+.04,1500))advancing++;
+      }
+      showTab(i%2?'enhance':'settings');await wait(100);showTab('player');
+      if(i%4===3){
+        const idx=playlist.indexOf(item),button=els.playlist.children[idx]?.querySelector('.remove-track');
+        if(button){button.click();if(engine.slots.every(s=>s.item!==item&&!((s.item===null)&&s.objectUrl)))removed++;}
+      }
+      completed++;
+      await wait(Math.max(0,3000-(performance.now()-started)));
+    }
+    check('60-second audio/tab soak completed',completed===20,completed+' cycles');
+    check('real audio transitions settle on requested track',transitions===20,transitions+'/20');
+    check('real playback time advances',advancing===20,advancing+'/20');
+    check('removed audio sources release all slot references',removed===5,removed+'/5');
+  }catch(e){check('audio soak threw',false,e?.stack||e);}
+  finally{
+    engine.pauseActive();engine.stopAlternateSources();
+    for(const slot of engine.slots){slot.el.removeAttribute('src');slot.el.load();if(slot.objectUrl)URL.revokeObjectURL(slot.objectUrl);slot.objectUrl=null;slot.item=null;slot.name='';}
+    check('audio soak final cleanup',engine.transitionTimer===null&&engine.slots.every(s=>s.el.paused&&!s.objectUrl&&!s.item));
+    playlist=old.list;currentTrackIndex=old.index;engine.crossfadeSeconds=old.crossfade;engine.setNormalizationEnabled(old.normalize);engine.setMuted(old.muted);engine.slots.forEach((s,i)=>s.el.muted=old.mediaMuted[i]);renderPlaylist();updateTrackNameUi();syncPlayButton();
+  }
+  return out;
+};
 
 // Developer-page-only fixture exercises the actual AudioEngine methods with
 // a real OfflineAudioContext because hosted VMs may lack audio endpoints.

@@ -41,12 +41,13 @@ let out = '';
 child.stdout.on('data', (d) => { const s = d.toString(); out += s; process.stdout.write(s); });
 child.stderr.on('data', () => { /* Chromium noise */ });
 
+const timeoutMs=process.env.OPSIS_RESOURCE_SOAK==='1'?360000:240000;
 const timeout = setTimeout(() => {
   stopProfile();
-  console.error('FAIL: self-test timed out after 240 s');
+  console.error('FAIL: self-test timed out after '+timeoutMs/1000+' s');
   try { if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); else child.kill('SIGKILL'); } catch (_) { /* already gone */ }
   process.exit(1);
-}, 240000);
+}, timeoutMs);
 
 child.on('close', (code) => {
   stopProfile();clearTimeout(timeout);

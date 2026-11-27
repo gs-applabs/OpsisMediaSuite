@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 permissions:
   contents: read
 
@@ -46,6 +46,7 @@ jobs:
       - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
         env:
           OPSIS_RESOURCE_PROFILE: '1'
+          OPSIS_RESOURCE_SOAK: '1'
         run: |
           npm run selftest 2>&1 | Tee-Object -FilePath selftest-resource.log
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
