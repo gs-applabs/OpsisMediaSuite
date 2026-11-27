@@ -250,7 +250,19 @@ function createWindow() {
     try { win.reload(); } catch (_) { /* window is closing */ }
   });
   win.on('unresponsive', () => { /* keep the window: the audio engine may just be busy decoding a large file */ });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Explicit developer opt-in only. Never load the generated page in a packaged app.
+  const experimentalDsp=!app.isPackaged&&process.env.OPSIS_EXPERIMENTAL_DSP==='1'
+    &&!!localPath(path.join(__dirname,'renderer','index-dsp-dev.html'))
+    &&!!localPath(path.join(__dirname,'renderer','dsp-dev','opsis-dsp.wasm'));
+  win.loadFile(path.join(__dirname,'renderer',experimentalDsp?'index-dsp-dev.html':'index.html'));
+  if(experimentalDsp&&process.env.OPSIS_WORKLET_PLAYER_TEST==='1'){
+    win.webContents.once('did-finish-load',async()=>{
+      try{
+        const result=await win.webContents.executeJavaScript('window.__workletPlayerTest()');
+        console.log('PASS experimental Player '+JSON.stringify(result));app.exit(0);
+      }catch(e){console.error('FAIL experimental Player '+e);app.exit(1);}
+    });
+  }
   if (process.env.WAVEFRAME_SELFTEST === '1') {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
@@ -310,6 +322,22 @@ function createWindow() {
   // IPC hardening: every channel is answered only to the main window (or, for the two read-only constants, the Help window)
   // and every argument is type-checked and size-limited here - the renderer is not trusted.
   const fromMain = (e) => e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
+  ipcMain.handle('audio:worklet-dev',async e=>{
+    if(!fromMain(e)||!experimentalDsp)return null;
+    const file=localPath(path.join(__dirname,'renderer','dsp-dev','opsis-dsp.wasm'));
+    if(!file)return null;
+    try{
+      const handle=await fs.promises.open(file,'r');
+      try{
+        const stat=await handle.stat();
+        if(stat.size<8||stat.size>4*1024*1024)return null;
+        const bytes=Buffer.alloc(stat.size);
+        let offset=0;while(offset<bytes.length){const q=await handle.read(bytes,offset,bytes.length-offset,offset);if(!q.bytesRead)return null;offset+=q.bytesRead;}
+        if((await handle.stat()).size!==stat.size||bytes.readUInt32LE(0)!==0x6d736100||!fromMain(e))return null;
+        return new Uint8Array(bytes);
+      }finally{await handle.close();}
+    }catch{return null;}
+  });
   const fromApp = (e) => fromMain(e) || (!!helpWindow && !helpWindow.isDestroyed() && e.sender === helpWindow.webContents && e.senderFrame === helpWindow.webContents.mainFrame);
   // Read-only detection of installed FxSound; never launch it or change system audio settings.
   let fxStatusCache=null,fxStatusAt=0,fxStatusPending=null;

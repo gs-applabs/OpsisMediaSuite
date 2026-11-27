@@ -35,8 +35,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Prepare developer-only Player assets
+        run: node test/audio-worklet/prepare-player.js
       - name: Isolated real Electron AudioWorklet offline rendering
         shell: pwsh
         run: |
           & node_modules/.bin/electron.cmd test/audio-worklet/launch.js
           if ($LASTEXITCODE) { throw 'AudioWorklet test failed' }
+      - name: Verify experimental Player integration without a hardware endpoint
+        shell: pwsh
+        run: |
+          $env:OPSIS_EXPERIMENTAL_DSP='1'
+          $env:OPSIS_WORKLET_PLAYER_TEST='1'
+          node test/audio-worklet/player-test.js
+          if ($LASTEXITCODE) { throw 'experimental Player integration failed' }

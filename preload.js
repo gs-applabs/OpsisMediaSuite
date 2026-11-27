@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   fxSoundStatus: () => ipcRenderer.invoke('fxsound:status'),
   audioEndpoints:()=>ipcRenderer.invoke('audio:endpoints'),
   nativeDspAvailable:()=>ipcRenderer.invoke('audio:dsp-available'),
+  experimentalWorkletBytes:()=>ipcRenderer.invoke('audio:worklet-dev'),
   nativeDspOpen:(rate,channels,frames,cfg)=>ipcRenderer.invoke('audio:dsp-open',rate,channels,frames,cfg),
   nativeDspChunk:(session,pcm)=>ipcRenderer.invoke('audio:dsp-chunk',session,pcm),
   nativeDspFinish:session=>ipcRenderer.invoke('audio:dsp-finish',session),

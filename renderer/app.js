@@ -236,7 +236,10 @@ class AudioEngine {
     this.masterBypassDry.connect(this.masterBypassSum);
     this.masterBypassWet.connect(this.masterBypassSum);
     // One routing authority. The worklet is not registered in production yet.
-    this.dspRouteGate=new OpsisDspRouting.RouteGate(ctx,{web:this.masterBypassWet,dry:this.masterBypassDry});
+    this.workletGain=ctx.createGain();this.workletGain.gain.value=0;
+    this.workletGain.connect(this.masterBypassSum);
+    this.dspRouteGate=new OpsisDspRouting.RouteGate(ctx,{web:this.masterBypassWet,dry:this.masterBypassDry,worklet:this.workletGain});
+    this.workletNode=null;this.workletPreference=false;this.workletReady=false;this.workletEpoch=0;this.workletTimer=null;this.workletSent='';
 
     this.masterGain = ctx.createGain();
     this.masterGain.gain.value = this.state.volume;
@@ -359,8 +362,71 @@ class AudioEngine {
     this.applyLiveBypass();
   }
 
-  applyLiveBypass() {
-    this.dspRouteGate.select(OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:false,workletReady:false}));
+  // Only a developer build can supply the fixed local WASM module.
+  async enableExperimentalWorklet(bytes,compiled=null){
+    if(this.workletNode&&this.workletReady){this.workletPreference=true;this.applyLiveBypass();return true;}
+    const epoch=++this.workletEpoch;
+    let node=null;
+    try{
+      if(!(bytes instanceof Uint8Array)||bytes.length>4*1024*1024||this.ctx.sampleRate<44100||this.ctx.sampleRate>96000)throw Error('unsupported worklet');
+      const module=compiled||await WebAssembly.compile(bytes);
+      if(!this.workletModuleLoaded){await this.ctx.audioWorklet.addModule('dsp-dev/processor.mjs');this.workletModuleLoaded=true;}
+      if(epoch!==this.workletEpoch)return false;
+      const cfg=this.workletConfig();
+      node=new AudioWorkletNode(this.ctx,'opsis-test-dsp',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit',processorOptions:{module,config:cfg}});
+      this.workletNode=node;
+      // Use normalized DRY source, never the processed Web Audio output.
+      this.normGain.connect(node);node.connect(this.workletGain);
+      await new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>reject(Error('worklet readiness timeout')),5000);
+        const fail=()=>{clearTimeout(timeout);reject(Error('worklet failure'));if(this.workletNode===node)this.disableExperimentalWorklet(true);};
+        node.onprocessorerror=fail;
+        node.port.onmessage=({data})=>{
+          if(data?.type==='ready'){clearTimeout(timeout);resolve();}
+          else if(data?.type==='failed'||data?.type==='invalid-settings')fail();
+        };
+      });
+      if(epoch!==this.workletEpoch||this.workletNode!==node)return false;
+      this.workletReady=true;this.workletPreference=true;this.workletSent=JSON.stringify(cfg);
+      this.syncWorkletSettings();this.applyLiveBypass();return true;
+    }catch{
+      if(epoch===this.workletEpoch)this.disableExperimentalWorklet(true);
+      return false;
+    }
+  }
+
+  workletConfig(){
+    // Global master volume and output limiter remain common to every route.
+    // Avoid a second dynamics limiter in the worklet; native sample clipping
+    // protection is still intrinsic to the C++ core.
+    return {...WaveframeAudio.nativeDspConfigV2(this.state,'native',false),limiter:0};
+  }
+
+  syncWorkletSettings(){
+    if(!this.workletReady||!this.workletNode)return;
+    clearTimeout(this.workletTimer);
+    this.workletTimer=setTimeout(()=>{
+      if(!this.workletReady||!this.workletNode)return;
+      const cfg=this.workletConfig(),key=JSON.stringify(cfg);
+      if(key===this.workletSent)return;
+      try{this.workletNode.port.postMessage({type:'settings',config:cfg});this.workletSent=key;}
+      catch{this.disableExperimentalWorklet(true);}
+    },35);
+  }
+
+  disableExperimentalWorklet(failed=false){
+    ++this.workletEpoch;clearTimeout(this.workletTimer);
+    this.workletPreference=false;this.workletReady=false;
+    const node=this.workletNode;this.workletNode=null;
+    // On processor failure avoid fading from an already silent branch.
+    this.applyLiveBypass(true);
+    if(node){try{this.normGain.disconnect(node);node.disconnect();node.port.close();}catch{}}
+    if(failed)window.dispatchEvent(new CustomEvent('waveframe:worklet-failed'));
+  }
+
+  applyLiveBypass(immediate=false) {
+    this.dspRouteGate.select(OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:this.workletPreference,workletReady:this.workletReady}),immediate);
+    this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
 
@@ -438,6 +504,7 @@ class AudioEngine {
   setEqBand(index, db) {
     this.state.eqBands[index] = db;
     this.eqNodes[index].gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
+    this.syncWorkletSettings();
   }
   applyEqBands(bands) { bands.forEach((db, i) => this.setEqBand(i, db)); }
 
@@ -452,37 +519,44 @@ class AudioEngine {
     const n=Math.max(0,Math.min(100,Number(value)||0));
     this.state.presence=n;
     this.presenceNode.gain.setTargetAtTime(WaveframeAudio.presenceParams(n).gain,this.ctx.currentTime,.03);
+    this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
   setBalance(value) {
     const n=Math.max(-100,Math.min(100,Number(value)||0));
     this.state.balance=n;
     this.balanceNode.pan.setTargetAtTime(WaveframeAudio.balanceValue(n),this.ctx.currentTime,.03);
+    this.syncWorkletSettings();
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
   setBassBoost(db) {
     this.state.bassBoost = db;
     this.bassBoostNode.gain.setTargetAtTime(db, this.ctx.currentTime, 0.02);
+    this.syncWorkletSettings();
   }
   setVolumeBoostDb(db) {
     this.state.volumeBoost = db;
     this.volumeBoostNode.gain.setTargetAtTime(Math.pow(10, db / 20), this.ctx.currentTime, 0.02);
+    this.syncWorkletSettings();
   }
   setSurround(pct) {
     this.state.surround = pct;
     const w = 1 + (Math.max(0,Math.min(100,Number(pct)||0)) / 100) * 0.6;
     this.surroundSide.gain.setTargetAtTime(0.5 * w, this.ctx.currentTime, 0.02);
+    this.syncWorkletSettings();
   }
   setCompressorMode(mode){
     this.state.compressorMode=['gentle','standard','night'].includes(mode)?mode:'standard';
     const p=WaveframeAudio.compressorParams(this.state.compressorMode),tt=this.ctx.currentTime;
     for(const k of Object.keys(p))this.compressorNode[k].setTargetAtTime(p[k],tt,.03);
+    this.syncWorkletSettings();
   }
   setCompressor(on) {
     this.state.compressor = on;
     const tt = this.ctx.currentTime;
     this.compWet.gain.setTargetAtTime(on ? 1 : 0, tt, 0.05);
     this.compDry.gain.setTargetAtTime(on ? 0 : 1, tt, 0.05);
+    this.syncWorkletSettings();
   }
   setEffectAmount(kind,value){
     if(!['reverb','exciter'].includes(kind))return;
@@ -494,12 +568,14 @@ class AudioEngine {
     const tt = this.ctx.currentTime;
     this.reverbWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.reverbAmount,.28) : 0, tt, 0.05);
     this.reverbDry.gain.setTargetAtTime(1, tt, 0.05);
+    this.syncWorkletSettings();
   }
   setExciter(on) {
     this.state.exciter = on;
     const tt = this.ctx.currentTime;
     this.exciterWet.gain.setTargetAtTime(on ? WaveframeAudio.effectMix(this.state.exciterAmount,.35) : 0, tt, 0.05);
     this.exciterDry.gain.setTargetAtTime(1, tt, 0.05);
+    this.syncWorkletSettings();
   }
   resetEffects() {
     this.setBassBoost(0);this.setPresence(0);this.setBalance(0);
@@ -1589,6 +1665,27 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
     route=list.some(d=>d.kind==='audiooutput'&&d.deviceId==='default'&&/fxsound/i.test(d.label));show();
   }
   async function detect(){const r=await window.waveframe.fxSoundStatus().catch(()=>null);installed=r?.installed??null;running=r?.running??null;show();}
+  const experimental=document.getElementById('experimentalWorklet'),workletStatus=document.getElementById('experimentalWorkletStatus');
+  let wasmBytes=null;
+  function showWorklet(failed=false){
+    const el=document.documentElement.lang==='el';
+    experimental.textContent=engine.workletPreference?(el?'Επιστροφή σε Web Audio':'Return to Web Audio'):(el?'Πειραματικός DSP WASM':'Experimental WASM DSP');
+    workletStatus.hidden=!wasmBytes;
+    workletStatus.textContent=failed?(el?'Αποτυχία WASM — επιστροφή στην ασφαλή διαδρομή.':'WASM failed — safe route restored.'):(el?'Πειραματική λειτουργία · ':'Experimental mode · ')+engine.dspRouteGate.target;
+  }
+  window.waveframe.experimentalWorkletBytes().then(bytes=>{
+    if(bytes instanceof Uint8Array){wasmBytes=bytes;experimental.hidden=false;showWorklet();}
+  }).catch(()=>{});
+  experimental.addEventListener('click',async()=>{
+    if(!wasmBytes||experimental.disabled)return;
+    experimental.disabled=true;
+    try{
+      if(engine.workletPreference){engine.disableExperimentalWorklet();showWorklet();}
+      else{engine.resume();showWorklet(!(await engine.enableExperimentalWorklet(wasmBytes)));}
+    }finally{experimental.disabled=false;}
+  });
+  window.addEventListener('waveframe:worklet-failed',()=>showWorklet(true));
+  window.addEventListener('waveframe:dsp-route-changed',()=>{if(wasmBytes)showWorklet();});
   const inventoryButton=document.getElementById('audioEndpointInventory'),inventoryReport=document.getElementById('audioEndpointReport');
   inventoryButton.addEventListener('click',async()=>{
     inventoryButton.disabled=true;inventoryReport.hidden=false;
@@ -2700,4 +2797,40 @@ window.__selfTest = async function () {
     check('i18n has the new keys', t('player.sleep') !== 'player.sleep' && t('enhance.exportApo') !== 'enhance.exportApo');
   } catch (e) { check('self-test threw', false, e && e.stack || e); }
   return out;
+};
+
+
+// Developer-page-only fixture exercises the actual AudioEngine methods with
+// a real OfflineAudioContext because hosted VMs may lack audio endpoints.
+window.__workletPlayerTest=async function(){
+  const bytes=await window.waveframe.experimentalWorkletBytes();
+  if(!(bytes instanceof Uint8Array))throw Error('developer capability missing');
+  const ctx=new OfflineAudioContext(2,48000*3,48000);
+  const x=Object.create(AudioEngine.prototype);
+  const web=ctx.createGain(),dry=ctx.createGain(),wet=ctx.createGain(),sum=ctx.createGain();
+  const norm=ctx.createGain(),source=ctx.createOscillator();source.frequency.value=1000;
+  const amplitude=ctx.createGain();amplitude.gain.value=.025;source.connect(amplitude);amplitude.connect(norm);
+  norm.connect(web);norm.connect(dry);web.connect(sum);dry.connect(sum);wet.connect(sum);sum.connect(ctx.destination);
+  Object.assign(x,{ctx,normGain:norm,workletGain:wet,dspRouteGate:new OpsisDspRouting.RouteGate(ctx,{web,dry,worklet:wet}),state:{masterEnabled:true,routeBypass:false,eqBands:[0,0,0,0,0,6],bassBoost:0},workletNode:null,workletPreference:false,workletReady:false,workletEpoch:0,workletTimer:null,workletSent:''});
+  // Construction readiness can be asynchronous until rendering begins.
+  await ctx.audioWorklet.addModule('dsp-dev/processor.mjs');x.workletModuleLoaded=true;
+  const compiled=await WebAssembly.compile(bytes);
+  const enabled=x.enableExperimentalWorklet(bytes,compiled);
+  const hold=ctx.suspend(.5).then(async()=>{
+    if(!await enabled||x.dspRouteGate.target!=='worklet')throw Error('activation failed');
+    return ctx.resume();
+  });
+  const fallback=ctx.suspend(2).then(()=>{
+    // Exercise the real failover method; not a spontaneous device fault.
+    x.disableExperimentalWorklet(true);
+    if(x.dspRouteGate.target!=='web'||x.workletNode!==null)throw Error('fallback failed');
+    return ctx.resume();
+  });
+  source.start();
+  const rendered=await ctx.startRendering();await Promise.all([hold,fallback]);
+  const data=rendered.getChannelData(0);
+  function gain(start,end){let s=0;for(let i=start;i<end;i++)s+=data[i]**2;return 10*Math.log10(s/(end-start)/(.025*.025/2));}
+  const active=gain(48000,72000),safe=gain(108000,132000);
+  if(Math.abs(active-6)>.2||Math.abs(safe)>.2)throw Error('unexpected Player response '+active+'/'+safe);
+  return {active,safe};
 };

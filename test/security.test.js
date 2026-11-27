@@ -99,3 +99,12 @@ test('explicit executable paths and media ticket revocation', () => {
   assert.match(media,/tickets\.delete\(m\[1\]\)/);
   assert.match(video,/vpReleaseSource/);
 });
+
+
+test('experimental WASM page and artifact are excluded from release and require explicit developer opt-in',()=>{
+ const m=read('main.js'),p=JSON.parse(read('package.json')),html=read('renderer/index.html');
+ assert.match(m,/!app\.isPackaged&&process\.env\.OPSIS_EXPERIMENTAL_DSP==='1'/);
+ assert.ok(p.build.files.includes('!renderer/index-dsp-dev.html'));
+ assert.ok(p.build.files.includes('!renderer/dsp-dev/**/*'));
+ assert.ok(!html.includes('wasm-unsafe-eval'));
+});
