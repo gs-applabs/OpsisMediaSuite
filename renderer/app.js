@@ -538,7 +538,8 @@ class AudioEngine {
     const requested=key==='eq'?s.eqBands.some(v=>Number(v)!==0):Number(s[key==='bass'?'bassBoost':key])!==0;
     const target=this.webEffectsSelected()&&requested;
     const at=ctx.currentTime;
-    const adjust=(param,value)=>{if(ctx.state==='running')param.setTargetAtTime(value,at,.02);else param.setValueAtTime(value,at);};
+    // Branch update closures survive multiple slider changes: sample the current audio clock each time.
+    const adjust=(param,value)=>{const now=ctx.currentTime;if(ctx.state==='running')param.setTargetAtTime(value,now,.02);else param.setValueAtTime(value,now);};
     if(target){
       clearTimeout(stage.timer);stage.timer=0;
       if(!stage.branch){
@@ -593,7 +594,8 @@ class AudioEngine {
     const stage=this.liveEffects[kind],ctx=this.ctx;
     const target=this.webEffectsSelected()&&this.state[kind]?(kind==='compressor'?1:WaveframeAudio.effectMix(this.state[kind+'Amount'],kind==='reverb'?.28:.35)):0;
     let node=this[stage.property];
-    clearTimeout(stage.timer);stage.timer=0;
+    // Repeated disabled-state sync must not keep extending a pending release.
+    if(target>0||ctx.state!=='running'){clearTimeout(stage.timer);stage.timer=0;}
     if(target>0&&!node){
       if(kind==='compressor'){
         node=ctx.createDynamicsCompressor();const params=WaveframeAudio.compressorParams(this.state.compressorMode);
@@ -606,7 +608,7 @@ class AudioEngine {
     const at=ctx.currentTime;
     const set=(param,value,immediate=false)=>{param.cancelScheduledValues(at);if(immediate||ctx.state!=='running')param.setValueAtTime(value,at);else param.setTargetAtTime(value,at,.05);};
     if(stage.target!==target){set(stage.dry.gain,dry);set(stage.wet.gain,target);stage.target=target;}
-    if(target===0&&node){
+    if(target===0&&node&&!stage.timer){
       const release=()=>{
         stage.timer=0;
         if(stage.target!==0||this[stage.property]!==node)return;
@@ -1387,14 +1389,27 @@ function fmtTime(s) {
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
-setInterval(() => {
-  const el = engine.activeEl;
-  if (!document.hidden&&document.getElementById('tab-player').classList.contains('active')&&el&&Number.isFinite(el.duration)&&el.duration>0) {
-    const position=String(Math.round((el.currentTime/el.duration)*1000)),label=`${fmtTime(el.currentTime)} / ${fmtTime(el.duration)}`;
-    if(els.seek.value!==position)els.seek.value=position;
-    if(els.timeLabel.textContent!==label)els.timeLabel.textContent=label;
+// No permanent transport polling: native media events and visibility/tab changes
+// are sufficient, including paused seeks and switching the crossfade's active slot.
+function syncTransportPosition(){
+  if(document.hidden||!document.getElementById('tab-player').classList.contains('active'))return;
+  const el=engine.activeEl;
+  const valid=!!el&&Number.isFinite(el.duration)&&el.duration>0;
+  const time=valid&&Number.isFinite(el.currentTime)?Math.max(0,Math.min(el.currentTime,el.duration)):0;
+  const position=String(valid?Math.round(time/el.duration*1000):0);
+  const label=`${fmtTime(time)} / ${fmtTime(valid?el.duration:0)}`;
+  if(els.seek.value!==position)els.seek.value=position;
+  if(els.timeLabel.textContent!==label)els.timeLabel.textContent=label;
+}
+window.addEventListener('waveframe:tab-selected',syncTransportPosition);
+window.addEventListener('waveframe:audio-activity',syncTransportPosition);
+document.addEventListener('visibilitychange',syncTransportPosition);
+for(const slot of engine.slots){
+  for(const event of ['timeupdate','durationchange','loadedmetadata','seeked','emptied']){
+    slot.el.addEventListener(event,()=>{if(slot===engine.slots[engine.activeSlot])syncTransportPosition();});
   }
-}, 250);
+}
+syncTransportPosition();
 els.seek.addEventListener('input', () => engine.seekTo(parseFloat(els.seek.value) / 1000));
 
 els.btnPlay.addEventListener('click', async () => {
@@ -3133,6 +3148,20 @@ window.__selfTest = async function () {
     engine.setReverb(false);engine.setReverb(true);
     await new Promise(r=>setTimeout(r,400));
     check('rapid re-enable retains active reverb',!!engine.reverbNode?.buffer);
+    // Exercise release idempotence with the real live-effect method and a
+    // controlled running clock. No physical audio endpoint is needed.
+    const releaseProbe=Object.create(AudioEngine.prototype);
+    const stubParam=()=>({cancelScheduledValues(){},setTargetAtTime(){},setValueAtTime(){}});
+    const probeNode={disconnect(){}};
+    Object.assign(releaseProbe,{ctx:{state:'running',currentTime:1},state:{masterEnabled:true,reverb:false},
+      reverbNode:probeNode,liveEffects:{reverb:{input:{disconnect(){}},wet:{gain:stubParam()},dry:{gain:stubParam()},property:'reverbNode',timer:0,target:1}}});
+    const probeStage=releaseProbe.liveEffects.reverb;
+    releaseProbe.syncLiveEffect('reverb');const releaseId=probeStage.timer;
+    releaseProbe.syncLiveEffect('reverb');releaseProbe.syncLiveEffect('reverb');
+    check('repeated inactive DSP sync retains original release deadline',!!releaseId&&probeStage.timer===releaseId);
+    clearTimeout(probeStage.timer);probeStage.timer=0;releaseProbe.ctx.state='suspended';
+    releaseProbe.syncLiveEffect('reverb');
+    check('suspended DSP releases inactive processor immediately',releaseProbe.reverbNode===null&&!probeStage.timer);
     engine.setMasterEnable(false);
     await new Promise(r=>setTimeout(r,400));
     check('master bypass releases all three optional processors and retains preferences',!engine.compressorNode&&!engine.reverbNode&&!engine.exciterNode&&engine.state.compressor&&engine.state.reverb&&engine.state.exciter);
@@ -3193,7 +3222,17 @@ window.__resourceSoak=async function(requestedCycles=20){
         if(await until(()=>confirmed()&&engine.activeEl.currentTime>before+.04,2500))advancing++;
         else if(failures.length<30)failures.push({cycle:i+1,before,after:engine.activeEl.currentTime,paused:engine.activeEl.paused,ready:engine.activeEl.readyState,network:engine.activeEl.networkState,ended:engine.activeEl.ended,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
       }else if(failures.length<30)failures.push({cycle:i+1,reason:'not-confirmed',paused:engine.activeEl.paused,ready:engine.activeEl.readyState,ctx:engine.ctx.state,pending:!!engine.pendingTransition});
-      showTab(i%2?'enhance':'settings');await wait(100);showTab('player');
+      showTab(i%2?'enhance':'settings');
+      if(i===0){
+        const previousLabel=els.timeLabel.textContent;
+        engine.activeEl.dispatchEvent(new Event('timeupdate'));
+        check('inactive player tab does not update transport UI',els.timeLabel.textContent===previousLabel);
+      }
+      await wait(100);showTab('player');
+      if(i===0&&!document.hidden&&confirmed()){
+        const el=engine.activeEl;
+        check('returning to player refreshes transport position',Math.abs(Number(els.seek.value)-Math.round(el.currentTime/el.duration*1000))<=2);
+      }
       if(i%4===3){
         const idx=playlist.indexOf(item),button=els.playlist.children[idx]?.querySelector('.remove-track');
         if(button){button.click();if(engine.slots.every(s=>s.item!==item&&!((s.item===null)&&s.objectUrl)))removed++;}

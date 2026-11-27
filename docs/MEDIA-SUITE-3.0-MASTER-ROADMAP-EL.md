@@ -11,9 +11,9 @@ R3 ανακατανέμει τις προτεραιότητες R2 χωρίς ν
 | Γενικό CI 20B.12 | Επαληθευμένο | [46005804273](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46005804273), 282/282, Electron PASS, 20/20 πραγματική πρόοδος ήχου |
 | Επιλεκτική εκκίνηση και video park/resume | Επαληθευμένο στο VM | Ίδιο CI, selected item/ticket/session/FX/timer assertions |
 | CPU/RAM αδράνειας | Μετρημένο | 0.08% CPU, 524143.2 KiB summed working set, 0.05% CPU / 606555.2 KiB post-soak. 5 δείγματα ανά φάση, όχι ελεγχόμενο hardware benchmark |
-| 20B.13/14 DSP | Υλοποιημένο, CI εκκρεμεί | [46006371203](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46006371203), [46006791066](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46006791066) |
-| Μακρά soak | Σε εξέλιξη, όχι PASS | [46002506246](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46002506246), [46002997615](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46002997615), [46003581420](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46003581420) σε παλαιότερα commits |
-| Εγκαταστάτης | Inno Setup, προηγούμενο lifecycle PASS | [46002998078](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46002998078); νέο lifecycle [46006791051](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46006791051) εκκρεμεί |
+| 20B.13/14 DSP | Επαληθευμένο στο VM | [46006371203](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46006371203), [46006791066](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46006791066) |
+| Μακρά soak | 3/3 ωριαία PASS σε παλαιότερα commits | [46002506246](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46002506246), [46002997615](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46002997615), [46003581420](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46003581420) σε παλαιότερα commits |
+| Εγκαταστάτης | Inno Setup, προηγούμενο lifecycle PASS | [46002998078](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46002998078); νέο lifecycle [46006791051](https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46006791051) PASS |
 | Native/DSP/RAR/K-Lite/plugin | Εξειδικευμένα CI PASS στο 20B.12 | Όχι εγγύηση λειτουργίας όλων των codecs ή φυσικής συσκευής |
 | Οδηγός λειτουργιών | 92 curated routes | Πλήρης απογραφή runtime και μεταφράσεις εκκρεμούν |
 
@@ -210,6 +210,15 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 ---
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
+
+## 21A — Baseline reconciliation and lifecycle audit (2026-11-27)
+
+- Frozen R3 baseline `b4c526d0e1703959d102cbbe32f6b1ee89532cb6`: all nine PR workflows completed successfully (general 46007823118, DSP 46007823140, AudioWorklet 46007823108, native 46007823064, plugin 46007823195, RAR 46007823116, K-Lite 46007823315, packaged 46007823237, installer 46007823121). General logs: 282/282, real Electron SELF-TEST PASSED, 20-cycle soak; startup idle 0.09% CPU/529877.6 KiB mean summed Electron working set, post-soak 0.49%/555908 KiB (five samples each, not physical hardware or private bytes).
+- 20B.13/14 general 46006371203 and 46006791066 succeeded; real Inno lifecycle 46006791051 succeeded. Three prior hour soaks 46002506246 / 46002997615 / 46003581420 completed with 1200 audio/tab cycles and final cleanup PASS each; startup mean working set 537370.4 / 541096.8 / 540621.6 KiB, post-soak 251079.2 / 245939.2 / 252552.8 KiB. Post-soak CPU 1.91 / 1.77 / 1.23% (five samples each); cannot certify five-minute ≤1% or private bytes, handle slope, native children, mixed-mode or eight-hour stability. These are separate historical runs, not a single three-hour soak or a test of the new code.
+- Lifecycle inventory from renderer/app.js: cold AudioContext, parked video, lazy video/photo/converter modules, selected effects, visibility-driven visualizer, metadata queue and explicit sleep timer already exist. Preserve existing settings and owners; do not introduce a parallel scheduler. Remaining always-running player position interval removed in favor of active-slot media events, tab/visibility/audio-activity updates. Idle or inactive Player performs no periodic transport polling; paused seek and source switch refresh supported.
+- DSP audit fixes: tone branch closures use current audio clock per parameter change rather than creation-time clock; repeated inactive compressor/reverb/exciter sync no longer postpones disposal. Suspended context can release immediately. Added controlled release-deadline and suspended-disposal self-test, inactive player transport and visible tab return assertions in real soak.
+- New candidate CI pending; no measured CPU/RAM saving attributed to this patch. Native shutdown ACK, parallel user jobs, cross-process resource measurement, full 1h on new candidate and physical 8h remain P0/P1. No release or merge. Next 21B after CI, ownership of asynchronous native sessions and explicit independent jobs.
+
 
 ## 18F — Installer and music metadata
 - Inno Setup 7 remains the sole installer for new releases. NSIS handling is legacy migration only. CI must test the actual .iss, same AppId, install/upgrade/uninstall, not substitute a different installer.
