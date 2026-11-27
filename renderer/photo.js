@@ -59,8 +59,9 @@
     drop.addEventListener('drop', (e) => {
       e.preventDefault(); drop.classList.remove('drag');
       const f = e.dataTransfer.files[0]; if (!f) return;
-      const p = api.pathForFile(f);
-      if (p) openPath(p); else openBlob(f, f.name);
+      // A real drag/drop File is already authorized by the browser. Do not
+      // turn its path into a general-purpose filesystem read capability.
+      openBlob(f, f.name);
     });
     document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone'); });
   }

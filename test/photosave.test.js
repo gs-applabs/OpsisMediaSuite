@@ -8,10 +8,10 @@ const path = require('node:path');
 const Module = require('node:module');
 
 const handlers = {};
-let target = '';
+let target = '',openTarget=null;
 const stub = {
   ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; }, on() {} },
-  dialog: { showSaveDialog: async () => ({ canceled: false, filePath: target }), showOpenDialog: async () => ({ canceled: true }) },
+  dialog: { showSaveDialog: async () => ({ canceled: false, filePath: target }), showOpenDialog: async () => openTarget?({canceled:false,filePaths:[openTarget]}):({canceled:true}) },
   protocol: { handle() {}, registerSchemesAsPrivileged() {} },
   net: {},
   app: { getPath: () => os.tmpdir() },
@@ -41,4 +41,18 @@ test('photo save writes only the supplied ArrayBuffer view', async () => {
   assert.equal((await save({ sender: {} }, { format: 'png', name: 'x', bytes: new Uint8Array([1]).buffer })).ok, false);
   assert.equal(fs.existsSync(target), false);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('photo read requires a picker grant and does not expose a different local image',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'wf-photo-read-'));const sender={mainFrame:{}},e={sender,senderFrame:sender.mainFrame};
+ M.init({getMainWin:()=>({isDestroyed:()=>false,webContents:sender}),resolveFfmpegPath:()=>null});
+ const a=path.join(dir,'a.png'),b=path.join(dir,'b.png');
+ try{
+  fs.writeFileSync(a,Buffer.from([1,2,3]));fs.writeFileSync(b,Buffer.from([4,5,6]));
+  assert.equal(await handlers['photo:read'](e,a),null);
+  openTarget=a;const picked=await handlers['photo:pick'](e);assert.ok(picked);
+  assert.deepEqual([...new Uint8Array((await handlers['photo:read'](e,picked)).bytes)],[1,2,3]);
+  assert.equal(await handlers['photo:read'](e,b),null);
+  assert.equal(await handlers['photo:read']({sender,senderFrame:{}},picked),null);
+ }finally{openTarget=null;fs.rmSync(dir,{recursive:true,force:true});}
 });

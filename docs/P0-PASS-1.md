@@ -60,3 +60,6 @@ Pass 16 general CI 175/175 and native CI passed. K-Lite Mega 20.1.0 installation
 
 ## Pass 18 — Media Foundation actual decode diagnostic
 Added native Windows Media Foundation Source Reader path, independent of VLC/DirectShow, negotiated PCM and NV12 output validation and sample count/byte/timestamp evidence. Added generated WAV and H.264/AAC MP4 CI tests with 30s process timeout. Native playback adapter, presentation, selected transform identity and policy remain pending; implementation has not yet passed CI.
+
+## Pass 19 — photo file access policy
+Photo picker grants canonical selected images only (bounded session set); arbitrary path IPC denied, one asynchronous capped file read at a time with before/after size/mtime validation. Drag/drop uses browser File directly. Added unit and real renderer denial checks. Existing filesystem TOCTOU limitations remain; this is not an OS sandbox. Converter grant migration remains pending.

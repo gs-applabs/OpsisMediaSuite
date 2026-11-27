@@ -138,14 +138,30 @@ function init({ getMainWin, resolveFfmpegPath }) {
   ipcMain.handle('vp:exists', (e, list) => (trusted(e) && Array.isArray(list) ? list.slice(0, 500).map((p) => isFile(p)) : []));
 
   /* ---------------- photo editor ---------------- */
+  const imageGrants=new Set();
+  const imageTypes=new Set(IMG_EXTS);
+  function approveImage(p){const f=allowedFile(p,imageTypes);if(!f)return null;if(imageGrants.size>=128)imageGrants.delete(imageGrants.values().next().value);imageGrants.add(f);return f;}
+  let imageReadBusy=false;
   ipcMain.handle('photo:pick', async (e) => {
     if (!trusted(e)) return null;
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Images', extensions: IMG_EXTS }] });
-    return r.canceled || !isFile(r.filePaths[0]) || !IMG_EXTS.includes(extOf(r.filePaths[0])) ? null : r.filePaths[0];
+    return r.canceled ? null : approveImage(r.filePaths[0]);
   });
-  ipcMain.handle('photo:read', (e, p) => {
-    if (!trusted(e) || !isFile(p) || !IMG_EXTS.includes(extOf(p))) return null;
-    try { const st = fs.statSync(p); if (st.size > MAX_IMAGE_BYTES) return { error: 'too-large' }; const b = fs.readFileSync(p); return { name: path.basename(p), bytes: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; } catch (_) { return null; }
+  ipcMain.handle('photo:read', async (e, p) => {
+    if (!trusted(e) || imageReadBusy) return null;
+    const f=allowedFile(p,imageTypes);
+    if(!f||!imageGrants.has(f))return null;
+    imageReadBusy=true;let handle;
+    try{
+      handle=await fs.promises.open(f,'r');
+      const st=await handle.stat();
+      if(!st.isFile()||st.size>MAX_IMAGE_BYTES)return {error:'too-large'};
+      const bytes=new ArrayBuffer(st.size),b=new Uint8Array(bytes);
+      let offset=0;
+      while(offset<b.length){const r=await handle.read(b,offset,b.length-offset,offset);if(!r.bytesRead)return null;offset+=r.bytesRead;}
+      const after=await handle.stat();if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)return null;
+      return {name:path.basename(f),bytes};
+    }catch(_){return null;}finally{try{if(handle)await handle.close();}catch{}imageReadBusy=false;}
   });
   ipcMain.handle('photo:save', async (e, req) => {
     if (!trusted(e) || !req || !SAVE_FORMATS[req.format] || !(req.bytes instanceof ArrayBuffer || ArrayBuffer.isView(req.bytes)) || req.bytes.byteLength > MAX_SAVE_BYTES) return { ok: false };
@@ -223,6 +239,9 @@ function init({ getMainWin, resolveFfmpegPath }) {
       const W = 64, H = 48, buf = Buffer.alloc(W * H * 4);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; buf[i] = 40 + x * 2; buf[i + 1] = 90; buf[i + 2] = 160 - y; buf[i + 3] = 255; } // BGRA
       const png = path.join(dir, 'photo.png'); fs.writeFileSync(png, nativeImage.createFromBitmap(buf, { width: W, height: H }).toPNG());
+      const deniedPhoto=await js(`waveframe.photoRead(${JSON.stringify(png)}).then(r=>r===null)`);
+      check('photo IPC denies unapproved image path',deniedPhoto);
+      approveImage(png);
       await js("document.querySelector('.tab-btn[data-tab=\"photo\"]').click(); loadPhoto().then(() => 1)");
       await until("!!window.WaveframePhotoUi", 8000);
       await js(`WaveframePhotoUi.open(${JSON.stringify(png)}); 1`);
