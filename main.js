@@ -462,6 +462,26 @@ function createWindow() {
     }
   });
 
+  let metadataBusy=false;
+  ipcMain.handle('metadata:complete',async(event,mode,values)=>{
+    if(!fromMain(event)||metadataBusy||!['auto','manual'].includes(mode))return {error:'busy or denied'};
+    metadataBusy=true;
+    try{
+      const tags=require('./music-tags');
+      const picked=await dialog.showOpenDialog(win,{title:'Select MP3 files / Επιλογή MP3',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3',extensions:['mp3']}]});
+      if(picked.canceled)return {cancelled:true};
+      if(picked.filePaths.length>50)return {error:'Maximum 50 files per batch'};
+      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Automatic mode uses Artist - Title filenames only. Close any player using these files.'});
+      if(confirm.response!==1)return {cancelled:true};
+      const rows=[];
+      for(const file of picked.filePaths){
+        try{rows.push({file,...await tags.complete(file,mode==='auto'?tags.infer(file):tags.clean(values))});}
+        catch(err){rows.push({file,status:'failed',error:String(err.message).slice(0,250)});}
+      }
+      return {rows};
+    }catch(err){return {error:String(err.message).slice(0,250)};}
+    finally{metadataBusy=false;}
+  });
   ipcMain.handle('metadata:read', async (event, filePath) => {
     try {
       // tags are only read from absolute paths of real audio files

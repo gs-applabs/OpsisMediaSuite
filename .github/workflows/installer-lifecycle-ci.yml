@@ -1,7 +1,7 @@
 name: Installer lifecycle CI (test only)
 on:
   pull_request:
-    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js']
+    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js','installer/**','music-tags.js']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,7 +23,42 @@ jobs:
           dotnet-version: '10.0.x'
       - run: npm ci
       - run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
-      - name: Build unsigned isolated NSIS version fixtures
+      - name: Install pinned Inno Setup 7 compiler
+        shell: pwsh
+        run: |
+          $release=Invoke-RestMethod 'https://api.github.com/repos/jrsoftware/issrc/releases/tags/is-7_1_1'
+          $asset=@($release.assets | Where-Object name -eq 'innosetup-7.1.1-x64.exe')
+          if($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:[0-9a-f]{64}
+        run: |
+          node test/build-installer-ci.js 2.4.2
+          if ($LASTEXITCODE) { throw 'base fixture build failed' }
+          node test/build-installer-ci.js 3.0.0
+          if ($LASTEXITCODE) { throw 'upgrade fixture build failed' }
+        shell: pwsh
+      - name: Test installation, upgrade and removal
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          ./test/installer-lifecycle.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-lifecycle-evidence
+          path: |
+            installer-first.log
+            installer-upgrade.log
+          retention-days: 7
+){throw 'missing official compiler digest'}
+          $setup=Join-Path $env:RUNNER_TEMP 'inno7.exe'
+          Invoke-WebRequest $asset[0].browser_download_url -OutFile $setup
+          if((Get-FileHash $setup -Algorithm SHA256).Hash -ne $asset[0].digest.Substring(7)){throw 'compiler hash mismatch'}
+          $sig=Get-AuthenticodeSignature $setup
+          if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Pyrsys'){throw 'compiler signature mismatch'}
+          $dir=Join-Path $env:RUNNER_TEMP 'inno7'
+          $p=Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=`"$dir`"") -PassThru -Wait
+          if($p.ExitCode -ne 0 -or !(Test-Path "$dir/ISCC.exe")){throw 'Inno compiler install failed'}
+          "OPSIS_ISCC=$dir/ISCC.exe" >> $env:GITHUB_ENV
+      - name: Build unsigned Inno Setup version fixtures
         run: |
           node test/build-installer-ci.js 2.4.2
           if ($LASTEXITCODE) { throw 'base fixture build failed' }

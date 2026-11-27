@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 18F
+- Installer lifecycle CI uses existing Inno Setup 7 script instead of synthetic NSIS; same AppId and legacy migration, no release publication. Synthetic upgrade 2.4.2 to 3.0.0 remains a test, not a released upgrade.
+- MP3 missing-tag completion: on-demand fields or batch filename inference, original backups, lossless frame insertion, refuses unsupported ID3 layouts; no internet lookup or writes during playback by default. Windows CI and real-file validation pending.
+
 ## 2.4.2 — Opsis family: plugin bridge, documentation
 - **`opsis-plugin/`** (new, 1.0.0): a small .NET plugin (net11.0-windows, plugin contract `OpsisNewsCrawler.Plugin.Abstractions` 1.0.0.0, SHA-256 `514f2a3e…`, requires Opsis 2.8) that shows the Media Suite as a page, a widget and a tray entry inside Opsis and launches the installed app; shown only when the Suite is installed. Opsis keeps enabling its own "Audio management" tab by itself. There is no "now playing" link: the Suite exposes none. The launcher only starts the real `Opsis Media Suite.exe` under Program Files or LocalAppDataPrograms (a registry path elsewhere is ignored). 12 unit tests; loading checked with Opsis against a temporary `OPSIS_APPDATA` (a real Opsis release was not tested).
 - **Family status** (documentation only): Opsis 2.8.0, Opsis News Crawler 0.28.x, Chronikologio 1.1.0, Opsis.UI 0.6.0. The News Crawler exports M3U playlists; the Suite's Video tab imports M3U, and plays only the files and web addresses its player supports (it does not play every source).

@@ -1498,6 +1498,32 @@ function addFilesToPlaylist(files) {
   added.forEach((item) => enrichTrackMetadata(item));
 }
 
+async function completeMusicTags(mode){
+  const values={};
+  if(mode==='manual'){
+    for(const [key,label] of Object.entries({title:'Title / Τίτλος',artist:'Artist / Καλλιτέχνης',album:'Album / Άλμπουμ',genre:'Genre / Είδος',year:'Year / Έτος'})){
+      const value=await showInputDialog(label+' (blank = skip / κενό = παράλειψη)','');
+      if(value===null||value===undefined)return;
+      if(value)values[key]=value;
+    }
+  }
+  const buttons=['metadataAuto','metadataManual'].map(id=>document.getElementById(id));
+  buttons.forEach(b=>b.disabled=true);
+  try{
+    const result=await window.waveframe.completeMetadata(mode,values);
+    if(result.cancelled)return;
+    if(result.error){await showAlertDialog('Metadata',result.error);return;}
+    const rows=result.rows||[];
+    for(const row of rows.filter(r=>r.status==='updated')){
+      for(const item of playlist.filter(x=>x.path===row.file))await enrichTrackMetadata(item);
+    }
+    await showAlertDialog('Metadata',rows.map(r=>r.file+' — '+r.status+(r.error?': '+r.error:'')+(r.backup?' | Backup: '+r.backup:'')).join('\n'));
+  }catch(err){await showAlertDialog('Metadata',String(err.message||err));}
+  finally{buttons.forEach(b=>b.disabled=false);}
+}
+document.getElementById('metadataAuto').addEventListener('click',()=>completeMusicTags('auto'));
+document.getElementById('metadataManual').addEventListener('click',()=>completeMusicTags('manual'));
+
 async function enrichTrackMetadata(item) {
   if (!item.path) return;
   const meta = await window.waveframe.readMetadata(item.path);
