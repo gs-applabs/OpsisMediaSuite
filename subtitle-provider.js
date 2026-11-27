@@ -8,8 +8,19 @@ const secret=(v,n=2048)=>typeof v==='string'&&v.length<=n&&!/[\r\n\x00]/.test(v)
 function downloadUrl(value){
  try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['dl.opensubtitles.com','api.opensubtitles.com','www.opensubtitles.com'].includes(u.hostname)&&u.pathname.startsWith('/download/')?u.href:null;}catch{return null;}
 }
+function retrySeconds(value,now=Date.now()){
+ const raw=String(value||'').trim();
+ const seconds=/^\d+$/.test(raw)?Number(raw):raw?Math.ceil((Date.parse(raw)-now)/1000):NaN;
+ return Number.isFinite(seconds)?Math.max(30,Math.min(86400,seconds)):60;
+}
 async function boundedBody(response,limit=MAX){
- if(!response.ok){const e=new Error('http-'+response.status);e.code=response.status===429||response.status===406?'quota':response.status===401||response.status===403?'auth':'http-'+response.status;throw e;}
+ const html=/\btext\/html\b/i.test(response.headers.get('content-type')||'');
+ if(!response.ok||html){
+  const e=new Error('http-'+response.status);
+  e.code=response.status===429||response.status===406?'quota':html||response.status===403?'provider-blocked':response.status===401?'auth':'http-'+response.status;
+  if(['quota','provider-blocked'].includes(e.code))e.retryAfter=retrySeconds(response.headers.get('retry-after'));
+  try{await response.body?.cancel();}catch{}throw e;
+ }
  const length=Number(response.headers.get('content-length'));if(length>limit){await response.body?.cancel();throw Error('too-large');}
  const reader=response.body?.getReader();if(!reader)throw Error('empty');
  const chunks=[];let total=0;
@@ -33,7 +44,7 @@ async function movieHash(file){
  }finally{await h.close();}
 }
 function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('utf-8',{fatal:true}).decode(b)}={}){
- let key='',token='',busy=false,results=new Map(),last=0;
+ let key='',token='',busy=false,results=new Map(),last=0,cooldownUntil=0;
  async function request(url,options={},limit=MAX){
   const res=await fetchImpl(url,{...options,redirect:'error',signal:AbortSignal.timeout(20000)});
   return boundedBody(res,limit);
@@ -43,7 +54,7 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
   if(token)headers.Authorization='Bearer '+token;
   return JSON.parse((await request(API+endpoint,{method,headers,...(body?{body:JSON.stringify(body)}:{})},1024*1024)).toString('utf8'));
  }
- async function exclusive(fn){if(busy)return {ok:false,code:'busy'};if(Date.now()-last<750)return {ok:false,code:'rate-limited'};busy=true;last=Date.now();try{return await fn();}catch(e){return {ok:false,code:e.code||(['too-large','bad-subtitle','bad-link','bad-response'].includes(e.message)?e.message:'network-or-provider')};}finally{busy=false;}}
+ async function exclusive(fn){if(busy)return {ok:false,code:'busy'};if(Date.now()<cooldownUntil)return {ok:false,code:'provider-cooldown',retryAfter:Math.ceil((cooldownUntil-Date.now())/1000)};if(Date.now()-last<750)return {ok:false,code:'rate-limited'};busy=true;last=Date.now();try{return await fn();}catch(e){if(e.retryAfter)cooldownUntil=Date.now()+e.retryAfter*1000;return {ok:false,code:e.code||(['too-large','bad-subtitle','bad-link','bad-response'].includes(e.message)?e.message:'network-or-provider'),...(e.retryAfter?{retryAfter:e.retryAfter}:{})};}finally{busy=false;}}
  return {
   search(req){return exclusive(async()=>{
    results.clear();
@@ -78,9 +89,9 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
    const bytes=await request(url,{headers:{'Accept':'text/plain, application/octet-stream','User-Agent':'OpsisMediaSuite v3.0.0'}});
    const text=decode(bytes);
    if(text.includes('\0')||!VP.subtitleToVtt(text,'srt',0).cues)throw Error('bad-subtitle');
-   return {ok:true,subtitle:{name:row.name.replace(/\.[^.]+$/,'')+'.srt',ext:'srt',text},remaining:Number.isSafeInteger(reply.remaining)?reply.remaining:null};
+   return {ok:true,language:row.language,subtitle:{name:row.name.replace(/\.[^.]+$/,'')+'.srt',ext:'srt',text},remaining:Number.isSafeInteger(reply.remaining)?reply.remaining:null};
   });},
   clear(){if(busy)return false;key='';token='';results.clear();return true;}
  };
 }
-module.exports={createProvider,downloadUrl,boundedBody,movieHash};
+module.exports={createProvider,downloadUrl,boundedBody,movieHash,retrySeconds};

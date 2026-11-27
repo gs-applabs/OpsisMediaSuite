@@ -2,7 +2,7 @@
 // IPC glue for the video player (file picker, subtitle discovery, a read-only "wfmedia" protocol with range support), the photo editor (open / save)
 // and M3U playlist import. Only the main window may call these channels; payloads are validated here.
 
-const { ipcMain, dialog, protocol, app } = require('electron');
+const { ipcMain, dialog, protocol, app, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const M3U = require('./m3u.js');
@@ -12,6 +12,7 @@ const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
+const {saveBesideVideo,website}=require('./subtitle-sidecar.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -161,7 +162,39 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }
     return subtitleProvider.search({query:req.query,language:req.language,apiKey:req.apiKey,username:req.username,password:req.password,moviehash:hash});
   });
-  ipcMain.handle('vp:sub-download',async(e,id)=>trusted(e)?subtitleProvider.download(id):{ok:false,code:'denied'});
+  let sidecarBusy=false;
+  async function saveDownloaded(e,video,subtitle,language){
+    if(!trusted(e))return {ok:false,code:'denied'};
+    if(sidecarBusy)return {ok:false,code:'busy'};
+    sidecarBusy=true;
+    try{return await saveBesideVideo({video,subtitle,language,extensions:new Set(VIDEO_EXTS),approved:p=>trusted(e)&&approved.has(p)});}
+    finally{sidecarBusy=false;}
+  }
+  ipcMain.handle('vp:sub-website',async(e,id)=>{
+    const url=trusted(e)&&website(id);if(!url)return false;
+    try{await shell.openExternal(url);return true;}catch{return false;}
+  });
+  ipcMain.handle('vp:sub-import-beside',async(e,video,language)=>{
+    if(!trusted(e)||sidecarBusy)return {ok:false,code:'denied-or-busy'};
+    const p=allowedFile(video,new Set(VIDEO_EXTS));if(!p||!approved.has(p))return {ok:false,code:'video-not-approved'};
+    const pick=await dialog.showOpenDialog(getMainWin(),{defaultPath:app.getPath('downloads'),properties:['openFile'],filters:[{name:'Text subtitles (extract ZIP/RAR first)',extensions:['srt','vtt','ass','ssa']}]});
+    if(pick.canceled||!trusted(e))return {ok:false,code:'cancelled'};
+    const f=allowedFile(pick.filePaths[0],new Set(['srt','vtt','ass','ssa']));
+    if(!f)return {ok:false,code:'invalid-subtitle'};
+    try{const sub=readSubtitle(f);if(!sub)return {ok:false,code:'invalid-subtitle'};
+      const saved=await saveDownloaded(e,p,sub,language);
+      if(!saved.ok)return {ok:false,code:saved.code};
+      return {ok:true,subtitle:sub,saved};
+    }catch{return {ok:false,code:'invalid-subtitle'};}
+  });
+  ipcMain.handle('vp:sub-download',async(e,id,video,save)=>{
+    if(!trusted(e))return {ok:false,code:'denied'};
+    const p=save===true?allowedFile(video,new Set(VIDEO_EXTS)):null;
+    const result=await subtitleProvider.download(id);
+    if(!result.ok||!trusted(e))return !trusted(e)?{ok:false,code:'denied'}:result;
+    if(save===true)result.saved=await saveDownloaded(e,p,result.subtitle,result.language);
+    return result;
+  });
   ipcMain.handle('vp:sub-disconnect',e=>trusted(e)?subtitleProvider.clear():false);
   let autoSyncBusy=false,autoSyncWorker=null,autoSyncCancelled=false;
   ipcMain.handle('vp:sub-autosync-cancel',e=>{if(!trusted(e)||!autoSyncBusy)return false;autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');return true;});
@@ -299,6 +332,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
             await js("document.getElementById('vpSubDownload').click();1");
             const loaded=await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>t.mode==='showing'&&t.cues?.length===2)",5000);
             check('online subtitle real HTTP fixture search and download attaches two Greek cues',found&&loaded&&requests.length===3,JSON.stringify(requests));
+            check('downloaded Greek subtitle automatically saved beside approved video',await until("document.getElementById('vpSubOnlineStatus').textContent.includes('clip.el.srt')",4000)&&fs.readFileSync(path.join(dir,'clip.el.srt'),'utf8').includes('Δοκιμή υποτίτλων')&&fs.readFileSync(path.join(dir,'clip.srt'),'utf8').includes('Καλημέρα'));
             const seek=async t=>{await js("(()=>{const v=document.getElementById('vpVideo');v.pause();v.currentTime="+t+";return 1})()");return until("!document.getElementById('vpVideo').seeking&&Math.abs(document.getElementById('vpVideo').currentTime-"+t+")<.15",4000);};
             const active=()=>js("Array.from(document.getElementById('vpVideo').textTracks).flatMap(t=>t.mode==='showing'?Array.from(t.activeCues||[]).map(c=>c.text):[])");
             await seek(0.5);check('downloaded subtitle not active before start',(await active()).length===0);

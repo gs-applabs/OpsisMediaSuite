@@ -484,6 +484,21 @@
     $('vpSubLoad').addEventListener('click', loadSubFile);
     let searchGeneration=0;
     const onlineStatus=t=>{$('vpSubOnlineStatus').textContent=t;};
+    $('vpSubSaveBeside').checked=get('waveframe.video.subSaveBeside',true)!==false;
+    $('vpSubSaveBeside').addEventListener('change',()=>put('waveframe.video.subSaveBeside',$('vpSubSaveBeside').checked));
+    function providerStatus(result){const code=result?.code||'unavailable';return ['provider-blocked','provider-cooldown','quota','rate-limited'].includes(code)?'Provider paused / Περιορισμός παρόχου'+(result?.retryAfter?(' · '+result.retryAfter+' s'):'')+' — use browser or try later':code;}
+    for(const [button,site] of [['vpSubs4Series','subs4series'],['vpSubs4Free','subs4free']]){
+      $(button).addEventListener('click',async()=>{if(await api.vpSubWebsite(site).catch(()=>false))onlineStatus('Complete download in browser, then Import / Κατεβάστε και εισαγάγετε τον υπότιτλο');else onlineStatus('Browser unavailable');});
+    }
+    $('vpSubImportBeside').addEventListener('click',async()=>{
+      const p=current(),g=generation,rev=++subRevision;if(!p||VP.isUrl(p)||(handoff&&handoff.engine!=='libvlc')){onlineStatus('Choose a local video first / Επιλέξτε τοπικό βίντεο');return;}
+      $('vpSubImportBeside').disabled=true;
+      try{const result=await api.vpSubImportBeside(p,$('vpSubLanguage').value);
+        if(g!==generation||rev!==subRevision)return;
+        if(!result?.ok){if(result?.code!=='cancelled')onlineStatus(providerStatus(result));return;}
+        attachSubtitle(result.subtitle);onlineStatus('Imported and saved / Αποθηκεύτηκε: '+result.saved.name);
+      }catch{onlineStatus('Import failed');}finally{$('vpSubImportBeside').disabled=false;}
+    });
     $('vpSubOnlineToggle').addEventListener('click',()=>{$('vpSubOnline').hidden=!$('vpSubOnline').hidden;if(current()&&!$('vpSubQuery').value)$('vpSubQuery').value=VP.titleOf(current());});
     $('vpSubSearch').addEventListener('click',async()=>{
       const g=generation,n=++searchGeneration;
@@ -492,7 +507,7 @@
       $('vpSubKey').value='';$('vpSubPassword').value='';$('vpSubUser').value='';onlineStatus('Searching…');
       try{
         const r=await api.vpSubSearch(req);if(g!==generation||n!==searchGeneration)return;
-        if(!r?.ok){onlineStatus(r?.code||'Search failed');return;}
+        if(!r?.ok){onlineStatus(providerStatus(r));return;}
         for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':'');$('vpSubResults').append(o);}
         $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα');
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
@@ -500,9 +515,9 @@
     $('vpSubDownload').addEventListener('click',async()=>{
       if(!current()||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
       $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
-      try{const r=await api.vpSubDownload(id);if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
-        if(!r?.ok){onlineStatus(r?.code||'Download failed');return;}
-        attachSubtitle(r.subtitle);onlineStatus('Downloaded and selected / Λήψη και επιλογή'+(r.remaining===null?'':' · remaining '+r.remaining));
+      try{const r=await api.vpSubDownload(id,current(),$('vpSubSaveBeside').checked&&!VP.isUrl(current()));if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
+        if(!r?.ok){onlineStatus(providerStatus(r));return;}
+        attachSubtitle(r.subtitle);onlineStatus('Downloaded and selected / Λήψη και επιλογή'+(r.saved?.ok?' · Saved / Αποθηκεύτηκε: '+r.saved.name:r.saved?' · Not saved / Δεν αποθηκεύτηκε: '+r.saved.code:'')+(r.remaining===null?'':' · remaining '+r.remaining));
       }catch{onlineStatus('Download failed');}finally{if(g===generation&&n===searchGeneration)$('vpSubDownload').disabled=!$('vpSubResults').options.length;}
     });
     $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});

@@ -44,6 +44,7 @@
       "codec-inventory.js",
       "native-host.js",
       "subtitle-provider.js",
+      "subtitle-sidecar.js",
       "subtitle-autosync.js",
       "subtitle-sync-worker.js",
       "suite-apps.json",

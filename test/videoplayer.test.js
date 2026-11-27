@@ -345,3 +345,32 @@ test('native Media Foundation engine still uses fixed bounded transport commands
  assert.equal(normalizeCommand('open','https://example.com'),null);
  assert.equal(normalizeCommand('rate',5),null);
 });
+
+
+test('safe subtitle sidecars use approved video stem and never overwrite original',async()=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const {saveBesideVideo,website}=require('../subtitle-sidecar');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-sidecar-'));
+ try{
+  const video=path.join(dir,'Episode.mkv');await fs.writeFile(video,'fixture');
+  const source=require('../local-media-policy').localPath(video);
+  const old=path.join(dir,'Episode.el.srt');await fs.writeFile(old,'original');
+  const req={video,subtitle:{ext:'srt',text:'1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα',name:'../../bad.srt'},language:'el',extensions:new Set(['mkv']),approved:p=>p===source};
+  const saved=await saveBesideVideo(req);assert.deepEqual(saved,{ok:true,name:'Episode.el.2.srt'});
+  assert.equal(await fs.readFile(old,'utf8'),'original');assert.match(await fs.readFile(path.join(dir,saved.name),'utf8'),/Καλημέρα/);
+  assert.equal((await saveBesideVideo({...req,approved:()=>false})).code,'video-not-approved');
+  assert.equal((await saveBesideVideo({...req,subtitle:{ext:'srt',text:'<html>verify</html>'}})).code,'invalid-subtitle');
+  assert.equal(website('subs4series'),'https://www.subs4series.com/');assert.equal(website('https://untrusted.example'),null);assert.equal(website('__proto__'),null);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('provider refuses HTML challenges and respects rate limits without automatic retry',async()=>{
+ const {createProvider,retrySeconds}=require('../subtitle-provider');let calls=0;
+ const provider=createProvider({fetchImpl:async()=>{calls++;return new Response('<html>Verify</html>',{status:403,headers:{'content-type':'text/html','retry-after':'120'}});}});
+ const req={query:'Example',language:'el',apiKey:'fixture'};
+ const first=await provider.search(req);assert.equal(first.code,'provider-blocked');assert.equal(first.retryAfter,120);
+ const second=await provider.search(req);assert.equal(second.code,'provider-cooldown');assert.equal(calls,1);
+ assert.equal(retrySeconds('0'),30);assert.equal(retrySeconds('not-a-date'),60);
+ const limited=createProvider({fetchImpl:async()=>new Response('quota',{status:429,headers:{'retry-after':'90'}})});
+ assert.equal((await limited.search(req)).code,'quota');assert.equal((await limited.search(req)).code,'provider-cooldown');
+});
