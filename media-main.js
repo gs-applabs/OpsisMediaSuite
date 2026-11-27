@@ -359,6 +359,25 @@ function init({ getMainWin, resolveFfmpegPath }) {
         check('downloaded public subtitle follows 2s timing correction',shifted,target+' s');
         fs.writeFileSync(path.join(source,'sintel-caption-synced.png'),(await win.webContents.capturePage()).toPNG());
       }
+      // Real file decode + authorized IPC + timing estimator. The waveform
+      // is synthetic and has known irregular audio activity, not spoken words.
+      if(ff){
+        const cues=[{start:2,end:3.1},{start:6,end:7.7},{start:11,end:12.4},{start:18,end:20.3},{start:27,end:28.2},{start:36,end:38.5},{start:46,end:47.5},{start:53,end:55.1}];
+        const rate=8000,seconds=65,samples=rate*seconds;
+        const wav=Buffer.alloc(44+samples*2);
+        wav.write('RIFF',0);wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(samples*2,40);
+        for(const c of cues){const a=Math.round((c.start+1.7)*rate),b=Math.round((c.end+1.7)*rate);for(let i=a;i<b;i++)wav.writeInt16LE(Math.round(10000*Math.sin(i*2*Math.PI*440/rate)),44+i*2);}
+        const file=path.join(dir,'audio-sync.wav');fs.writeFileSync(file,wav);
+        const req={path:file,cues};
+        const denied=await js("waveframe.vpSubAutoSync("+JSON.stringify(req)+")");
+        check('audio sync refuses unapproved source',denied?.code==='denied');
+        remember(allowedFile(file,PLAY_EXTS));
+        const result=await js("waveframe.vpSubAutoSync("+JSON.stringify(req)+")");
+        check('real FFmpeg audio activity sync recovers 1.7s offset',result?.ok&&Math.abs(result.delay-1.7)<=.15&&result.scale===1,JSON.stringify(result));
+        const silent=path.join(dir,'audio-sync-silence.wav');wav.fill(0,44);fs.writeFileSync(silent,wav);remember(allowedFile(silent,PLAY_EXTS));
+        const silence=await js("waveframe.vpSubAutoSync("+JSON.stringify({path:silent,cues})+")");
+        check('real FFmpeg silent audio gives no sync suggestion',silence?.ok===false,JSON.stringify(silence));
+      }
       const codecReport = await inventory();
       check('Windows codec inventory returns bounded registry metadata', process.platform !== 'win32' || (codecReport.status==='ok' && Array.isArray(codecReport.packs) && Array.isArray(codecReport.filters) && Array.isArray(codecReport.transforms)), JSON.stringify({status:codecReport.status,arch:codecReport.arch,packs:codecReport.packs.length,filters:codecReport.filters.length,transforms:codecReport.transforms.length}));
       /* photo editor */

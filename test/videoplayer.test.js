@@ -270,3 +270,9 @@ test('local audio activity sync detects known offset and rejects constant or amb
  assert.equal(A.estimate(new Uint8Array(650).fill(1),cues).ok,false);
  assert.equal(A.activityFromPcm(Buffer.alloc(16000*15)),null);
 });
+
+test('audio activity envelope recognizes intermittent PCM signal and rejects silence',()=>{
+ const A=require('../subtitle-autosync'),b=Buffer.alloc(16000*15);
+ for(let i=8000;i<24000;i++)b.writeInt16LE(Math.round(10000*Math.sin(i*Math.PI/10)),i*2);
+ const a=A.activityFromPcm(b);assert.ok(a);assert.equal(a[0],0);assert.equal(a[15],1);assert.equal(a[50],0);
+});

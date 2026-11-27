@@ -102,3 +102,6 @@ Read only first/last 64KiB of an already authorized local media file, compute un
 
 ## Pass 32 — offline audio activity synchronization suggestions
 Added bounded FFmpeg mono PCM analysis (first 30 minutes, max 120s execution), 100ms energy/activity envelope, normalized correlation of subtitle intervals across offsets and common FPS ratios. Reject constant/weak/ambiguous signals; explicit preview and apply, no network, only previously approved local files. This is heuristic audio activity alignment, not speech recognition or guaranteed dialogue alignment; first audio stream only. Unit fixture and new CI pending.
+
+## Pass 33 — real local audio sync validation
+Added generated 65s WAV with eight irregular activity regions offset by exactly +1.7s; real FFmpeg decode via scoped renderer IPC, recovery check, unauthorized-file denial and silent-file rejection. Adjusted activity threshold for sparse signals and stale suggestion handling. Generated tones are not speech; film-dialogue reliability remains unverified. CI pending.

@@ -12,7 +12,7 @@ function activityFromPcm(bytes){
   energy[i]=Math.log10(1e-8+Math.sqrt(sum/FRAME)*.65+Math.sqrt(diff/FRAME)*.35);
  }
  if(n<100)return null;
- const sorted=Array.from(energy).sort((a,b)=>a-b),floor=sorted[Math.floor(n*.2)],high=sorted[Math.floor(n*.8)];
+ const sorted=Array.from(energy).sort((a,b)=>a-b),floor=sorted[Math.floor(n*.2)],high=sorted[Math.floor(n*.95)];
  if(high-floor<.35)return null;
  const threshold=floor+Math.max(.18,(high-floor)*.35);
  const activity=Uint8Array.from(energy,x=>x>threshold?1:0);

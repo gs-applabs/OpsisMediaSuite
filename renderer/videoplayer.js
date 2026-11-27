@@ -221,7 +221,7 @@
     else { if(subSrc.length>=24){subSrc.shift();}subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
     fillSubSelect(); rebuildTrack();
   }
-  function setDelay(d) { if(!Number.isFinite(d))return;subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 1000) / 1000)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; $('vpSubDelayExact').value=String(subDelay);rebuildTrack(); }
+  function setDelay(d) { if(!Number.isFinite(d))return;clearSuggestion();subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 1000) / 1000)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; $('vpSubDelayExact').value=String(subDelay);rebuildTrack(); }
   function applySubStyle() {
     const s = get(K.subs, {}) || {};
     const size = Number($('vpSubSize').value) || 16, color = $('vpSubColor').value || '#ffffff';
@@ -456,11 +456,11 @@
     $('vpSubAnchorB').addEventListener('click',()=>{const r=VP.twoPointSync(syncAnchor,marker());if(!r){$('vpSubAnchorStatus').textContent='Select two ordered cues at least 2s apart';return;}subScale=r.scale;$('vpSubFps').value='custom';setDelay(r.delay);$('vpSubAnchorStatus').textContent='Scale '+r.scale.toFixed(6)+' · '+subDelay.toFixed(3)+' s';});
     $('vpSubAutoSync').addEventListener('click',async()=>{
       const s=subSrc[subSel],p=current();if(!s||!p||VP.isUrl(p)||handoff)return;
-      const g=generation,rev=subRevision,selected=subSel,original=VP.subtitleToVtt(s.text,s.ext,0,1,subFps);
+      const g=generation,rev=subRevision,selected=subSel,sourceFps=subFps,original=VP.subtitleToVtt(s.text,s.ext,0,1,subFps);
       clearSuggestion();$('vpSubAutoSync').disabled=true;$('vpSubAutoStatus').textContent='Analyzing local audio (up to 30 min of media)…';
       try{
         const r=await api.vpSubAutoSync({path:p,cues:original.entries.map(c=>({start:c.start,end:c.end}))});
-        if(g!==generation||rev!==subRevision||selected!==subSel)return;
+        if(g!==generation||rev!==subRevision||selected!==subSel||sourceFps!==subFps)return;
         if(!r?.ok){$('vpSubAutoStatus').textContent='No reliable suggestion: '+(r?.code||'unavailable');return;}
         autoSuggestion=r;$('vpSubApplySync').disabled=false;
         $('vpSubAutoStatus').textContent='Suggested '+r.delay.toFixed(3)+' s · scale '+r.scale.toFixed(6)+' · activity score '+r.score.toFixed(3)+' (verify dialogue manually)';
