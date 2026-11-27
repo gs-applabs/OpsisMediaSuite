@@ -28,27 +28,7 @@ jobs:
         run: |
           $release=Invoke-RestMethod 'https://api.github.com/repos/jrsoftware/issrc/releases/tags/is-7_1_1'
           $asset=@($release.assets | Where-Object name -eq 'innosetup-7.1.1-x64.exe')
-          if($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:[0-9a-f]{64}
-        run: |
-          node test/build-installer-ci.js 2.4.2
-          if ($LASTEXITCODE) { throw 'base fixture build failed' }
-          node test/build-installer-ci.js 3.0.0
-          if ($LASTEXITCODE) { throw 'upgrade fixture build failed' }
-        shell: pwsh
-      - name: Test installation, upgrade and removal
-        shell: pwsh
-        run: |
-          ./.github/scripts/ensure-ffmpeg.ps1
-          ./test/installer-lifecycle.ps1
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: installer-lifecycle-evidence
-          path: |
-            installer-first.log
-            installer-upgrade.log
-          retention-days: 7
-){throw 'missing official compiler digest'}
+          if($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:[0-9a-f]{64}$'){throw 'missing official compiler digest'}
           $setup=Join-Path $env:RUNNER_TEMP 'inno7.exe'
           Invoke-WebRequest $asset[0].browser_download_url -OutFile $setup
           if((Get-FileHash $setup -Algorithm SHA256).Hash -ne $asset[0].digest.Substring(7)){throw 'compiler hash mismatch'}
@@ -62,7 +42,7 @@ jobs:
         run: |
           node test/build-installer-ci.js 2.4.2
           if ($LASTEXITCODE) { throw 'base fixture build failed' }
-          node test/build-installer-ci.js 3.0.0-rc.1
+          node test/build-installer-ci.js 3.0.0
           if ($LASTEXITCODE) { throw 'upgrade fixture build failed' }
         shell: pwsh
       - name: Test installation, upgrade and removal
