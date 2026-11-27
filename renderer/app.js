@@ -1509,7 +1509,7 @@ window.waveframe.onMetadataProgress(p=>{if(metadataUiBusy&&Number.isInteger(p.do
 async function completeMusicTags(mode){
   if(metadataUiBusy)return;
   metadataUiBusy=true;
-  const buttons=['metadataAuto','metadataManual','metadataOnline'].map(id=>document.getElementById(id));
+  const buttons=['metadataAuto','metadataManual','metadataOnline','metadataFingerprint'].map(id=>document.getElementById(id));
   buttons.forEach(b=>b.disabled=true);
   try{
   const values={};
@@ -1536,6 +1536,7 @@ async function completeMusicTags(mode){
 document.getElementById('metadataAuto').addEventListener('click',()=>completeMusicTags('auto'));
 document.getElementById('metadataManual').addEventListener('click',()=>completeMusicTags('manual'));
 document.getElementById('metadataOnline').addEventListener('click',()=>completeMusicTags('online'));
+document.getElementById('metadataFingerprint').addEventListener('click',()=>completeMusicTags('fingerprint'));
 
 async function enrichTrackMetadata(item) {
   if (!item.path) return;

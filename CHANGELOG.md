@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 18H.1
+- Optional acoustic identification via installed FFmpeg Chromaprint and AcoustID POST, requiring explicit consent, configured application key and review. No audio upload. Provider response fixture added; real provider and compatible FFmpeg validation pending.
+
 ## Unreleased — Ultra Mega Pass 18I (batch controls)
 - Batch preview, bounded progress and cooperative cancellation between files; prevent overlapping metadata dialogs; optional remembered filename suggestions for display only, no silent writes on import; cap displayed embedded cover images.
 

@@ -465,22 +465,37 @@ function createWindow() {
   let metadataBusy=false, metadataCancelled=false;
   ipcMain.handle('metadata:cancel',e=>{if(!fromMain(e)||!metadataBusy)return false;metadataCancelled=true;return true;});
   ipcMain.handle('metadata:complete',async(event,mode,values)=>{
-    if(!fromMain(event)||metadataBusy||!['auto','manual','online'].includes(mode))return {error:'busy or denied'};
+    if(!fromMain(event)||metadataBusy||!['auto','manual','online','fingerprint'].includes(mode))return {error:'busy or denied'};
     metadataBusy=true;metadataCancelled=false;
     try{
       const tags=require('./music-tags');
       const picked=await dialog.showOpenDialog(win,{title:'Select MP3 / FLAC files',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3 / FLAC',extensions:['mp3','flac']}]});
       if(picked.canceled)return {cancelled:true};
       if(picked.filePaths.length>50)return {error:'Maximum 50 files per batch'};
-      if(mode==='online'){
+      if(mode==='online'||mode==='fingerprint'){
         const file=picked.filePaths[0], stat=await fs.promises.lstat(file);
         if(!stat.isFile()||stat.size>512*1024*1024||/^(\\\\|\/\/)/.test(file))return {error:'Unsupported local file'};
-        const mm=await import('music-metadata');const m=await mm.parseFile(file,{duration:false,skipCovers:true});
-        const guessed=tags.infer(file), artist=m.common.artist||guessed.artist, title=m.common.title||guessed.title;
-        if(!artist||!title)return {error:'Artist and title needed / Απαιτούνται καλλιτέχνης και τίτλος'};
-        const consent=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Search MusicBrainz'],defaultId:0,cancelId:0,message:'Send artist and title to MusicBrainz?',detail:artist+' — '+title+'\nNo file, path or audio is uploaded.'});
-        if(consent.response!==1)return {cancelled:true};
-        const lookup=require('./music-lookup'), choices=await lookup.search({artist,title});
+        const real=await fs.promises.realpath(file);
+        if(path.resolve(file).toLowerCase()!==real.toLowerCase()||stat.nlink!==1)return {error:'Redirected or linked file'};
+        const mm=await import('music-metadata');const m=await mm.parseFile(file,{duration:mode==='fingerprint',skipCovers:true});
+        const lookup=require('./music-lookup');let choices;
+        if(mode==='fingerprint'){
+          const key=process.env.OPSIS_ACOUSTID_APP_KEY;
+          if(!key)return {error:'AcoustID application key is not configured. Fingerprint identification is unavailable in this build.'};
+          const ffmpeg=await resolveFfmpegPath();
+          if(!ffmpeg)return {error:'FFmpeg is not installed'};
+          if(!Number.isFinite(m.format.duration))return {error:'Audio duration unavailable'};
+          const consent=await dialog.showMessageBox(win,{type:'question',message:'Send acoustic fingerprint and duration to AcoustID?',detail:'The fingerprint is derived locally from up to 120 seconds. No audio file, file name or path is uploaded.',buttons:['Cancel / Ακύρωση','Identify / Αναγνώριση'],defaultId:0,cancelId:0});
+          if(consent.response!==1)return {cancelled:true};
+          const fp=await lookup.fingerprint(ffmpeg,file);
+          choices=await lookup.acousticSearch(fp,m.format.duration,key);
+        }else{
+          const guessed=tags.infer(file), artist=m.common.artist||guessed.artist, title=m.common.title||guessed.title;
+          if(!artist||!title)return {error:'Artist and title needed / Απαιτούνται καλλιτέχνης και τίτλος'};
+          const consent=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Search MusicBrainz'],defaultId:0,cancelId:0,message:'Send artist and title to MusicBrainz?',detail:artist+' — '+title+'\nNo file, path or audio is uploaded.'});
+          if(consent.response!==1)return {cancelled:true};
+          choices=await lookup.search({artist,title});
+        }
         if(!choices.length)return {error:'No matches / Χωρίς αποτελέσματα'};
         // Native dialog buttons are intentionally limited to five candidates per page.
         let selected=null;
