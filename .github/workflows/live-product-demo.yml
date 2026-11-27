@@ -1,0 +1,86 @@
+name: Real application interaction demo
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['tools/capture-live-demo.cjs','.github/workflows/live-product-demo.yml']
+permissions:
+  contents: write
+concurrency:
+  group: real-product-demo
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: github.ref == 'refs/heads/master'
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: python -m pip install imageio-ffmpeg==0.6.0
+      - name: Record actual application interactions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:GS_LIVE_DEMO_DIR = Join-Path $env:RUNNER_TEMP 'real-demo'
+          $env:WAVEFRAME_USER_DATA = Join-Path $env:RUNNER_TEMP 'live-demo-profile'
+          $env:WAVEFRAME_NO_SPLASH = '1'
+          Add-Content -LiteralPath 'main.js' -Value "`nrequire('./tools/capture-live-demo.cjs');" -Encoding utf8
+          $exe = (Resolve-Path node_modules/electron/dist/electron.exe).Path
+          $p = Start-Process -FilePath $exe -ArgumentList '.' -PassThru
+          if (!$p.WaitForExit(170000)) { Stop-Process -Id $p.Id -Force; throw 'Real demo timeout' }
+          if ($p.ExitCode -ne 0) {
+            $log = Join-Path $env:GS_LIVE_DEMO_DIR 'capture-error.txt'
+            if (Test-Path $log) { Get-Content $log }
+            throw "Actual capture failed: $($p.ExitCode)"
+          }
+      - name: Encode and validate continuous capture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'real-demo'
+          $info = Get-Content (Join-Path $src 'capture.json') -Raw | ConvertFrom-Json
+          $count = @(Get-ChildItem (Join-Path $src 'frames') -Filter '*.png').Count
+          if ($count -ne 240 -or $info.uniqueFrames -lt 12) { throw 'Missing real captures' }
+          $encoder = python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg unavailable' }
+          $dest = 'docs/live-demo'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          & $encoder -v error -y -framerate 8 -i "$src/frames/frame-%04d.png" -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -t 30 -c:v libx264 -preset fast -crf 22 -pix_fmt yuv420p -movflags +faststart -an "$dest/media-suite-live.mp4"
+          if ($LASTEXITCODE -ne 0 -or (Get-Item "$dest/media-suite-live.mp4").Length -lt 20000) { throw 'Video encoding failed' }
+          Copy-Item "$src/capture.json" "$dest/capture.json" -Force
+          $lines = @('# Real application interaction demo / Ζωντανή παρουσίαση λειτουργιών','',"Source commit: $($info.sourceCommit)","Application version: $($info.version)","Captured frames: $($info.frames), unique frames: $($info.uniqueFrames), rate: $($info.fps) fps",'','[Play the 30-second silent MP4](media-suite-live.mp4)','','Actual Electron renderer frames with real UI controls activated. Uses a built-in test tone; no licensed external music, no real user data. Video is not a complete acceptance test. CPU and memory samples in capture.json include capture overhead; do not compare them to an idle benchmark.','','| Frame | Event | Detail |','|---:|---|---|')
+          foreach($event in $info.events) {
+            $detail = ($event.detail -replace '\|','/' -replace '[\r\n]+',' ')
+            $lines += "| $($event.frame) | $($event.event) | $detail |"
+          }
+          $lines | Set-Content "$dest/README.md" -Encoding utf8
+          $readme = Get-Content README.md -Raw
+          if (!$readme.Contains('docs/live-demo/README.md')) {
+            $readme += "`n`n## Real interaction video / Βίντεο πραγματικής λειτουργίας`n`n[30-second real UI capture and recorded actions](docs/live-demo/README.md)`n"
+            Set-Content README.md $readme -Encoding utf8
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/live-demo README.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m 'docs: publish real Electron interaction capture'
+          if ($LASTEXITCODE -ne 0) { throw 'Commit failed' }
+          git push origin HEAD:master
+          if ($LASTEXITCODE -ne 0) { throw 'Push rejected; no forced update' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-media-suite-demo
+          path: |
+            docs/live-demo/
+            ${{ runner.temp }}/real-demo/capture*.json
+            ${{ runner.temp }}/real-demo/capture-error.txt
+          if-no-files-found: warn
