@@ -57,3 +57,6 @@ Added dedicated Windows disposable-runner workflow for pinned Chocolatey K-Lite 
 
 ## Pass 17 — installed K-Lite inventory and path correction
 Pass 16 general CI 175/175 and native CI passed. K-Lite Mega 20.1.0 installation succeeded; logs show all four LAV CLSIDs for x64 and x86, but pack display label absent, so test stopped before graph. K-Lite installs under Program Files (x86), including x64 PE files. Expand known display labels/product registry detection; retain architecture/path and explicit consent; allow both Program Files roots, not arbitrary paths. CI now requires actual x64 machine LAV source/audio/video registrations rather than product label, records Chocolatey and registry product metadata separately. Real LAV decode still pending.
+
+## Pass 18 — Media Foundation actual decode diagnostic
+Added native Windows Media Foundation Source Reader path, independent of VLC/DirectShow, negotiated PCM and NV12 output validation and sample count/byte/timestamp evidence. Added generated WAV and H.264/AAC MP4 CI tests with 30s process timeout. Native playback adapter, presentation, selected transform identity and policy remain pending; implementation has not yet passed CI.

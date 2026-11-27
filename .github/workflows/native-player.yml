@@ -48,6 +48,17 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'DirectShow timeout' }
           Get-Content directshow-result.json,directshow-error.log
           if ($p.ExitCode -ne 0) { throw "DirectShow test failed: $($p.ExitCode)" }
+      - name: Media Foundation real PCM and NV12 decoding
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=3 -f lavfi -i sine=frequency=440:duration=3 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart -shortest mf-fixture.mp4
+          if ($LASTEXITCODE) { throw 'MF fixture failed' }
+          foreach ($case in @(@{mode='--mf-audio-selftest';file='fixture.wav';name='mf-wav'},@{mode='--mf-selftest';file='mf-fixture.mp4';name='mf-mp4'})) {
+            $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @($case.mode, ('"' + (Resolve-Path $case.file).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput ($case.name+'-result.json') -RedirectStandardError ($case.name+'-error.log')
+            if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'MF timeout' }
+            Get-Content ($case.name+'-result.json'),($case.name+'-error.log')
+            if ($p.ExitCode -ne 0) { throw "MF decode failed: $($p.ExitCode)" }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -58,3 +69,5 @@ jobs:
             native-error.log
             directshow-result.json
             directshow-error.log
+            mf-*-result.json
+            mf-*-error.log

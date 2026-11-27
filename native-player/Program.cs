@@ -24,8 +24,10 @@ internal static class Program
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
-        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--directshow" && args[0]!="--directshow-selftest")return 2;
+        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
         try {
+            if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
+            if (args[0] == "--mf-audio-selftest") return MediaFoundationProbe.Run(args[1],false);
             if (args[0] == "--directshow-selftest") return DirectShowHost.SelfTest(args[1]);
             if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1]); }
             Core.Initialize();

@@ -7,3 +7,6 @@ Explicit `--directshow` path builds LAV source -> LAV audio/video decoders -> ex
 Codec-pack CI uses a pinned Chocolatey K-Lite Mega 20.1.0 on a disposable Windows VM only. Test build defines CODEC_CI_TEST; this build is not distributable and is never published. The test explicitly connects installed LAV filters to null renderers and records graph progress plus hashes; no interactive consent is skipped in normal binaries. No claims of actual screen/audio quality or verified publisher identity from this test.
 
 K-Lite may install x64 modules under Program Files (x86). Both standard Program Files roots are allowed; PE x64 remains independently mandatory. Product label detection is advisory, actual machine CLSID registration is required for codec CI.
+
+## Media Foundation (decode diagnostic)
+Source Reader independently negotiates PCM and NV12 and reads actual decoded samples from local WAV and H.264/AAC MP4 fixtures. No video renderer, audio endpoint or app playback adapter yet. Windows selects its own transforms; this does not verify active decoder identity or third-party transform trust. Parent CI imposes process timeout. This diagnostic is not advertised as a production player.
