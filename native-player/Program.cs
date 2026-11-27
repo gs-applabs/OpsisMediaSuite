@@ -23,6 +23,13 @@ internal static class Program
     private static int Main(string[] args)
     {
         if(args.Length==1&&args[0]=="--embed-selftest"){ApplicationConfiguration.Initialize();return EmbeddedViewport.SelfTest();}
+        string decoder="auto";
+        if(args.Length>=4&&args[^2]=="--decode-mode"){
+            if(args[0]!="--open"&&args[0]!="--embed"&&args[0]!="--selftest")return 2;
+            decoder=args[^1];
+            if(decoder!="auto"&&decoder!="d3d11va"&&decoder!="dxva2"&&decoder!="none")return 2;
+            args=args[..^2];
+        }
         bool embedded=args.Length==6&&args[0]=="--embed";
         if (args.Length < 2 || (!embedded&&args.Length > 4) || !SafeLocal(args[1], MediaExt)) return 2;
         EmbeddedViewport? viewport=null;
@@ -52,8 +59,8 @@ internal static class Program
             // No remote URL or caller-supplied VLC arguments. Separate process;
             // this is not an OS sandbox for hostile bitstreams.
             using var vlc = selftest
-                ? new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--vout=dummy","--aout=dummy")
-                : new LibVLC("--no-video-title-show","--no-sub-autodetect-file");
+                ? new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--vout=dummy","--aout=dummy","--avcodec-hw="+decoder)
+                : new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--avcodec-hw="+decoder);
             using var player = new MediaPlayer(vlc);
             using var media = new Media(vlc, args[1], FromType.FromPath);
             if (args[0]=="--selftest-sub") return SelfTestSubtitle(player,media,sidecar!);

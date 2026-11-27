@@ -11,6 +11,8 @@ const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
+const {gpuSummary}=require('./gpu-diagnostics.js');
+const {detectEncoders}=require('./conv-video.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
@@ -90,16 +92,32 @@ function init({ getMainWin, resolveFfmpegPath }) {
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
-  ipcMain.handle('vp:native-open',async(e,p,engine,positionMs,subtitleText,embedded)=>{
+  ipcMain.handle('vp:native-open',async(e,p,engine,positionMs,subtitleText,embedded,decode='auto')=>{
     if(!trusted(e))return {ok:false,code:'denied'};
-    if(embedded!==true)return nativeHost.open(p,engine,positionMs,subtitleText);
+    if(embedded!==true)return nativeHost.open(p,engine,positionMs,subtitleText,null,decode);
     if(engine!=='libvlc'||process.platform!=='win32')return {ok:false,code:'unsupported-engine'};
     try{
       const handle=getMainWin().getNativeWindowHandle();
       const value=handle.length===8?handle.readBigUInt64LE():handle.length===4?BigInt(handle.readUInt32LE()):0n;
       if(value===0n||value>0x7fffffffffffffffn)return {ok:false,code:'bad-window'};
-      return nativeHost.open(p,engine,positionMs,subtitleText,{handle:value.toString(),pid:process.pid});
+      return nativeHost.open(p,engine,positionMs,subtitleText,{handle:value.toString(),pid:process.pid},decode);
     }catch{return {ok:false,code:'bad-window'};}
+  });
+  let gpuBusy=false,gpuCache=null,gpuCacheTime=0;
+  ipcMain.handle('vp:gpu-diagnostics',async e=>{
+    if(!trusted(e)||gpuBusy)return null;
+    if(gpuCache&&Date.now()-gpuCacheTime<60000)return {...gpuCache,native:nativeHost.status()};
+    gpuBusy=true;
+    try{
+      const info=await Promise.race([app.getGPUInfo('basic').catch(()=>null),new Promise(resolve=>{const timer=setTimeout(()=>resolve(null),3000);timer.unref?.();})]);
+      const summary=gpuSummary(app.getGPUFeatureStatus(),info);
+      const ff=await resolveFfmpegPath();
+      const caps=ff?await detectEncoders(ff).catch(()=>null):null;
+      const methods=Array.isArray(caps?.hwaccels)?caps.hwaccels.filter(x=>typeof x==='string').slice(0,32):[];
+      gpuCache={...summary,ffmpegAvailable:!!ff,ffmpegMethods:methods};
+      gpuCacheTime=Date.now();
+      return trusted(e)?{...gpuCache,native:nativeHost.status()}:null;
+    }catch{return null;}finally{gpuBusy=false;}
   });
   ipcMain.handle('vp:native-viewport',(e,session,rect)=>{
     if(!trusted(e))return {ok:false,code:'denied'};

@@ -50,6 +50,13 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'native timeout' }
           Get-Content native-result.json,native-error.log
           if ($p.ExitCode -ne 0) { throw "native test failed: $($p.ExitCode)" }
+      - name: Explicit software decoding fallback
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--selftest', ('"' + (Resolve-Path fixture.mkv).Path + '"'), '--decode-mode', 'none') -PassThru -NoNewWindow -RedirectStandardOutput software-result.json -RedirectStandardError software-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'software decoding timeout' }
+          Get-Content software-result.json,software-error.log
+          if ($p.ExitCode -ne 0) { throw "software decode failed: $($p.ExitCode)" }
       - name: Real LibVLC command parsing and seek
         shell: pwsh
         run: |
@@ -109,6 +116,8 @@ jobs:
             embed-result.json
             embed-error.log
             native-result.json
+            software-result.json
+            software-error.log
             native-error.log
             control-result.json
             pipe-result.json

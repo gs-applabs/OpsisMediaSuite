@@ -2,6 +2,7 @@
 const path=require('node:path');
 const fs=require('node:fs'),os=require('node:os');
 const VP=require('./renderer/vplib');
+const {decoderMode}=require('./gpu-diagnostics');
 function prepareSubtitle(text){
  if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>5*1024*1024)return null;
  const parsed=VP.subtitleToVtt(text,'srt',0),body=VP.exportSubtitles(parsed.entries,'srt');
@@ -55,9 +56,10 @@ function createNativeHost({app,extensions,authorize}){
  const hostPath=()=>path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'native-player','publish'),...(app.isPackaged?['native-player']:[]),'Opsis.NativePlayer.exe');
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
  const status=()=>({available:available(),...state});
- async function open(value,engine='libvlc',positionMs=0,subtitleText=null,embedding=null){
+ async function open(value,engine='libvlc',positionMs=0,subtitleText=null,embedding=null,decode='auto'){
   if(!['libvlc','directshow','media-foundation'].includes(engine))return {ok:false,code:'bad-engine'};
   if(!available())return {ok:false,code:'native-not-built'};
+  if(!decoderMode(decode)||(engine!=='libvlc'&&decode!=='auto'))return {ok:false,code:'bad-decoder-mode'};
   if(embedding!==null&&(engine!=='libvlc'||typeof embedding.handle!=='string'||!/^\d{1,20}$/.test(embedding.handle)||!Number.isSafeInteger(embedding.pid)||embedding.pid<=0))return {ok:false,code:'bad-embedding'};
   if(engine==='media-foundation'&&(typeof value!=='string'||!['.mp4','.m4v','.mov','.wmv','.wav','.mp3','.m4a','.aac','.wma'].includes(path.extname(value).toLowerCase())))return {ok:false,code:'unsupported-format'};
   if(child||opening)return {ok:false,code:'native-busy'};
@@ -74,11 +76,11 @@ function createNativeHost({app,extensions,authorize}){
      try{scratch=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-native-sub-'));sidecar=path.join(scratch,'synced.srt');fs.writeFileSync(sidecar,body,{encoding:'utf8',flag:'wx',mode:0o600});subtitleSession={token,dir:scratch,revision:0,bytes:Buffer.byteLength(body,'utf8')};}
      catch{cleanup();return {ok:false,code:'subtitle-temp-failed'};}
    }
-   state={phase:'starting',engine,embedded:embedding!==null,positionMs:pos,durationMs:0,session:token,subtitleTransferred:engine==='libvlc'&&subtitleText!==null};
+   state={phase:'starting',engine,decoderRequested:decode,embedded:embedding!==null,positionMs:pos,durationMs:0,session:token,subtitleTransferred:engine==='libvlc'&&subtitleText!==null};
    return await new Promise(resolve=>{
     let proc,settled=false,timer;
     const finish=r=>{if(settled)return;settled=true;clearTimeout(timer);resolve(r);};
-    try{proc=spawn(exe,[engine==='directshow'?'--directshow':engine==='media-foundation'?'--mf-play':embedding?'--embed':'--open',valid,String(pos),...(sidecar?[sidecar]:[]),...(embedding?[embedding.handle,String(embedding.pid)]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
+    try{proc=spawn(exe,[engine==='directshow'?'--directshow':engine==='media-foundation'?'--mf-play':embedding?'--embed':'--open',valid,String(pos),...(sidecar?[sidecar]:[]),...(embedding?[embedding.handle,String(embedding.pid)]:[]),...(engine==='libvlc'?['--decode-mode',decode]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
     catch(_){cleanup();state={...state,phase:'error'};finish({ok:false,code:'launch-failed'});return;}
     timer=setTimeout(()=>{if(child===proc){state={...state,phase:'error'};try{proc.kill();}catch{}}finish({ok:false,code:'native-timeout'});},120000);
     proc.stdin?.on('error',()=>{if(child===proc)finishCommand({ok:false,code:'pipe-error'});});
@@ -90,7 +92,7 @@ function createNativeHost({app,extensions,authorize}){
       if(event.event==='ready'&&state.phase!=='starting')return;
       if(event.event==='position'&&state.phase!=='playing')return;
       const fields={};for(const k of ['playing','muted','volume'])if(Object.hasOwn(event,k))fields[k]=event[k];state={...state,...fields};
-      if(event.event==='ready'){state={...state,phase:'playing',positionMs:event.positionMs,durationMs:event.durationMs,subtitleAccepted:event.subtitleAccepted??null};finish({ok:true,engine,embedded:state.embedded,status:'ready',session:token,subtitleAccepted:state.subtitleAccepted});}
+      if(event.event==='ready'){state={...state,phase:'playing',positionMs:event.positionMs,durationMs:event.durationMs,subtitleAccepted:event.subtitleAccepted??null};finish({ok:true,engine,decoderRequested:state.decoderRequested,embedded:state.embedded,status:'ready',session:token,subtitleAccepted:state.subtitleAccepted});}
       else if(event.event==='position'&&state.phase==='playing')state={...state,positionMs:event.positionMs,durationMs:event.durationMs};
       else if(event.event==='closed'){state={...state,phase:'closed',positionMs:event.positionMs,durationMs:event.durationMs};finishCommand({ok:false,code:'native-closed'});finish({ok:false,code:'native-closed'});}
       else if(event.event==='error'){state={...state,phase:'error'};finishCommand({ok:false,code:'native-playback-failed'});finish({ok:false,code:'native-playback-failed'});try{proc.kill();}catch{}}

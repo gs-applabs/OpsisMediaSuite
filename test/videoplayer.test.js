@@ -570,3 +570,13 @@ test('embedded viewport accepts only bounded normalized rectangles and dedicated
  for(const rect of [{x:-1,y:0,w:1,h:1},{x:900,y:0,w:101,h:1},{x:0,y:0,w:0,h:1},{x:0,y:0,w:1.5,h:1},{x:0,y:0,w:1000,h:1001},{}])assert.equal(normalizeViewport(rect),null);
  assert.equal(normalizeCommand('viewport',1),null);
 });
+
+
+test('decoder policy accepts only named LibVLC modes, never arbitrary arguments',()=>{
+ const {decoderMode,gpuSummary}=require('../gpu-diagnostics');
+ for(const mode of ['auto','d3d11va','dxva2','none'])assert.equal(decoderMode(mode),mode);
+ assert.equal(decoderMode('--sout=file'),null);assert.equal(decoderMode(null),null);
+ const summary=gpuSummary({video_decode:'enabled',arbitrary:'secret'},{gpuDevice:[{active:true,deviceId:123,deviceString:'Adapter',driverVersion:'1.2',extra:'private'}]});
+ assert.deepEqual(summary,{features:{video_decode:'enabled'},devices:[{active:true,deviceId:123,deviceString:'Adapter',driverVersion:'1.2'}]});
+ assert.equal(Object.hasOwn(summary,'hardwareActive'),false);
+});

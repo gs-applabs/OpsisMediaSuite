@@ -94,12 +94,13 @@
     const text=engine==='libvlc'&&sub?VP.exportSubtitles(VP.subtitleToVtt(sub.text,sub.ext,subDelay*1000,subScale,subFps).entries,'srt'):null;
     marker.subtitle={track:sub,text:sub?.text,scale:subScale,fps:subFps,delay:subDelay,transferred:!!text,requested:0};
     marker.subtitleDesired=marker.subtitle;
-    const r=await api.vpNativeOpen(p,engine,resume,text||null,embedded).catch(()=>null);
+    const decode=engine==='libvlc'?$('vpNativeDecode').value:'auto';
+    const r=await api.vpNativeOpen(p,engine,resume,text||null,embedded,decode).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
     marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;
     if(marker.embedded)startViewport(marker);marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
-    say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine!=='libvlc'&&sub?' · subtitle handoff unavailable':''));
+    say(engine+' — native playback ready'+(engine==='libvlc'?' · decoder requested: '+decode:'')+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine!=='libvlc'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
       if(handoff!==marker)return;
       const s=await api.vpNativeStatus().catch(()=>null);
@@ -724,6 +725,23 @@
     $('vpNative').addEventListener('click',()=>nativeHandoff('libvlc',current(),generation));
     $('vpNativeEmbed').addEventListener('click',()=>nativeHandoff('libvlc',current(),generation,true));
     $('vpNativeStop').addEventListener('click',stopNative);
+    const decoderPref=get('waveframe.video.nativeDecoder','auto');
+    $('vpNativeDecode').value=['auto','d3d11va','dxva2','none'].includes(decoderPref)?decoderPref:'auto';
+    $('vpNativeDecode').addEventListener('change',()=>{put('waveframe.video.nativeDecoder',$('vpNativeDecode').value);say('Decoder preference applies to next LibVLC session / Ισχύει στην επόμενη αναπαραγωγή');});
+    $('vpGpuDiagnostics').addEventListener('click',async()=>{
+      const button=$('vpGpuDiagnostics');button.disabled=true;
+      try{
+        const report=await api.vpGpuDiagnostics();
+        if(!report){say('GPU diagnostics unavailable');return;}
+        const lines=['GPU capabilities / Δυνατότητες — not per-video proof'];
+        for(const [key,value] of Object.entries(report.features||{}))lines.push(key+': '+value);
+        for(const device of report.devices||[])lines.push((device.active?'Active GPU: ':'GPU: ')+(device.deviceString||'device '+String(device.deviceId??'unknown'))+(device.driverVersion?' · driver '+device.driverVersion:''));
+        lines.push('FFmpeg compiled hardware methods: '+(report.ffmpegMethods?.join(', ')||'none reported'));
+        lines.push('LibVLC requested decoder: '+(report.native?.decoderRequested||'not started'));
+        lines.push('Actual hardware decoder for this video: not verified / Μη πιστοποιημένο');
+        await showAlertDialog('GPU diagnostics',lines.join('\n'));
+      }catch{say('GPU diagnostics unavailable');}finally{button.disabled=false;}
+    });
     $('vpCodecs').addEventListener('click', async () => {
       const report=await api.vpCodecInventory().catch(()=>null);
       if(!report){await showAlertDialog('Codec Manager','Inventory unavailable / Μη διαθέσιμη ανίχνευση');return;}
