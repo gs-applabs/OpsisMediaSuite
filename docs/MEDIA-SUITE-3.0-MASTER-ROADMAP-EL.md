@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## 21B.2 — mutually exclusive live-source ownership (2026-11-27)
+
+- Prior 21A general run 46066296150 passed 282/282, real Electron and new DSP/transport assertions. Five-sample startup CPU 0.08%, working set 533505.6 KiB; post-short-soak 0.05% / 580451.2 KiB. Eight of nine workflows passed; installer 46066296253 was still running. 21B.1 initially four specialist workflows passed, five pending.
+- Existing AudioEngine gains a scoped live-start generation gate, only for music/resume/microphone/test tone. Wait for actual native-close acknowledgment, newest request wins, Stop/Pause/new video intent cancels deferred start, removed playlist item/source change invalidates request. No new AudioContext allocation until actual start; no native stop uses synchronous fast path. Timeout denies live start with explicit error.
+- Video renderer keeps unconfirmed stop sticky until successful retry, awaits previous native stop before Chromium open as well as native handoff, and requests actual child cleanup after terminal poll. Native sound ownership is announced before launching the host, not only after ready. Selected parked state retained for failed resume. No new permanent polling or background service.
+- Six renderer gate assertions cover pending, latest wins, cancellation, failure, stale item and fast path. Controlled promises are not physical active-native playback proof; mixed-mode conversion/photo tests and physical audio timing remain open. No changes to converter/photo/metadata ownership, no release/merge. New CI pending.
+
 ## 21B.1 — native process ownership and parked controls (2026-11-27)
 
 - Prior head `238c870e709f26c5c43b6116a0b7d4aa1029b544`: at inspection RAR, DSP, worklet, native, plugin, K-Lite and packaged candidate workflows passed. General 46066296150 and Inno lifecycle 46066296253 still running; do not mark as passed.

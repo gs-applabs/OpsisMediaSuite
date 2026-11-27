@@ -65,7 +65,7 @@
   function stop() { parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
   function parkForAudio(){
-    if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return nativeStopping||Promise.resolve(true);
+    if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return nativeStopping||(nativeStopUnconfirmed?stopNative():true);
     parked={path:current(),seconds:handoff?Number(handoff.status?.positionMs||0)/1000:video.currentTime||0,fx:$('vpFx').getAttribute('aria-pressed')==='true'};
     // Keep the selected subtitle and unsaved edits; release only the playback machinery.
     saveResume();++generation;const stopped=stopNative();releaseTicket();disposeSession();playbackEngine=null;resumePath=null;
@@ -74,7 +74,7 @@
     return stopped;
   }
 
-  let handoff=null,nativePoll=null,viewportTimer=null,nativeStopping=null;
+  let handoff=null,nativePoll=null,viewportTimer=null,nativeStopping=null,nativeStopUnconfirmed=false;
   function clearViewport(){clearInterval(viewportTimer);viewportTimer=null;}
   function viewportRect(){
     const frame=$('vpFrame');
@@ -95,6 +95,7 @@
   }
   async function nativeHandoff(engine,p,g,embedded=false){
     if(handoff||!p||VP.isUrl(p))return false;
+    window.dispatchEvent(new CustomEvent('waveframe:video-intent'));
     const wasPlaying=!video.paused,pos=Number.isFinite(video.currentTime)?Math.round(video.currentTime*1000):0;
     const resume=pos||Number(get(K.resume,{})[p])||0;
     saveResume();video.pause();
@@ -107,11 +108,14 @@
     marker.subtitleDesired=marker.subtitle;
     const decode=engine==='libvlc'?$('vpNativeDecode').value:'auto';
     // Do not race a previous native child that has only been asked to exit.
-    if(nativeStopping){
-      const stopped=await nativeStopping;
+    if(nativeStopping||nativeStopUnconfirmed){
+      // A prior timeout is sticky until an explicit retry is acknowledged.
+      const stopped=await (nativeStopping||requestNativeStop(g));
       if(handoff!==marker||g!==generation)return false;
       if(!stopped){handoff=null;$('vpNativeStop').hidden=true;say('Native stop not confirmed');if(wasPlaying)video.play().catch(()=>{});return false;}
     }
+    // Native hosts may produce sound before the ready event reaches Electron.
+    window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     const r=await api.vpNativeOpen(p,engine,resume,text||null,embedded,decode).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
@@ -128,7 +132,7 @@
         if(force||!marker.lastResumeAt||Date.now()-marker.lastResumeAt>=15000){checkpoint(p,s.positionMs,s.durationMs,force);marker.lastResumeAt=Date.now();}
       }
       if(s?.session===marker.session){marker.status=s;syncTime();syncTransport();if(!seeking&&Number.isFinite(s.volume))$('vpVolume').value=String(s.volume);}
-      if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){clearViewport();handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
+      if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){stopNative();syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
       nativePoll=setTimeout(poll,1000);
     };
     syncNativeSubtitle();poll();return true;
@@ -178,26 +182,30 @@
     if(m.engine!=='libvlc'){say(m.engine+' subtitle handoff unavailable');return;}
     if(nativeCommand('subtitle-sync',next))m.subtitleDesired=next;
   }
-  function stopNative(){
-    clearViewport();
-    if(!handoff)return nativeStopping||Promise.resolve(true);
-    const old=handoff;
-    if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);
-    handoff=null;clearTimeout(nativePoll);nativePoll=null;playbackEngine=null;$('vpNativeStop').hidden=true;
+  function requestNativeStop(g){
     if(nativeStopping)return nativeStopping;
+    nativeStopUnconfirmed=true;
     const pending=api.vpNativeStop().then(ok=>ok===true,()=>false);
     nativeStopping=pending;
     pending.then(ok=>{
       if(nativeStopping!==pending)return;
-      nativeStopping=null;
-      // Do not overwrite a newer media status with a stale stop result.
-      if(!ok&&!handoff&&generation===old.g)say('Native stop not confirmed');
+      nativeStopping=null;nativeStopUnconfirmed=!ok;
+      if(!ok&&!handoff&&generation===g)say('Native stop not confirmed');
     });
     return pending;
   }
+  function stopNative(){
+    clearViewport();
+    if(!handoff)return nativeStopping||(nativeStopUnconfirmed?requestNativeStop(generation):true);
+    const old=handoff;
+    if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);
+    handoff=null;clearTimeout(nativePoll);nativePoll=null;playbackEngine=null;$('vpNativeStop').hidden=true;
+    return requestNativeStop(generation);
+  }
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
-    stopNative();saveResume(); releaseTicket();
+    window.dispatchEvent(new CustomEvent('waveframe:video-intent'));
+    const stopped=stopNative();saveResume(); releaseTicket();
     const g = ++generation;
     disposeSession(); playbackEngine=null;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
@@ -209,6 +217,7 @@
     const restoreFx = !VP.isUrl(p) && (resumeParked?.fx||$('vpFx').getAttribute('aria-pressed') === 'true');
     replaceVideo();
     renderList(); renderBookmarks();
+    if(stopped!==true){const ok=await stopped;if(g!==generation)return;if(!ok){parked=resumeParked;say('Native stop not confirmed');return;}}
     const source = VP.isUrl(p) ? p : await api.vpOpenSource(p).catch(() => null);
     if (g !== generation) { if (source && !VP.isUrl(p)) api.vpReleaseSource(source).catch(() => {}); return; }
     if (!source) { $('vpFrame').classList.remove('has-media'); say(t('vp.cantPlay')); return; }
@@ -878,7 +887,7 @@
       if(video&&!video.paused)video.pause();
     },
     parkForAudio,
-    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,selected:idx};},
+    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();

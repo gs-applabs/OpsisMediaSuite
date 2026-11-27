@@ -275,22 +275,47 @@ class AudioEngine {
 
   get activeEl() { return this.slots[this.activeSlot].el; }
 
-  play() {
-    if(!this.activeEl.getAttribute('src'))return Promise.resolve();
-    window.WaveframeVideoPlayer?.parkForAudio();
-    this.resume();
-    this.cancelCrossfade(true);
+  // This gate coordinates only mutually exclusive live sound sources. Offline
+  // conversion, photo work and metadata jobs do not acquire this gate.
+  cancelLiveStart(){this.liveStartEpoch=(this.liveStartEpoch||0)+1;this.pendingLiveStart=null;}
+  runAfterVideoPark(action,valid=()=>true,park=()=>window.WaveframeVideoPlayer?.parkForAudio()??true,blocked=()=>{
+    void showAlertDialog(t('player.loadErrorTitle'),document.documentElement.lang==='el'?'Ο τερματισμός του προηγούμενου μηχανισμού βίντεο δεν επιβεβαιώθηκε. Δοκίμασε ξανά.':'Previous video engine stop was not confirmed. Please retry.');
+  }){
+    this.cancelLiveStart();
+    const epoch=this.liveStartEpoch;
+    // Invalidate a pending microphone permission before another source starts.
     this.stopAlternateSources();
-    const slot = this.slots[this.activeSlot];
-    slot.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
-    slot.el.playbackRate = this.state.tempo;
-    slot.el.preservesPitch = this.state.preservePitch;
-    return slot.el.play().catch((e) => { if (e && e.name !== 'AbortError') throw e; });
+    const finish=ok=>{
+      if(epoch!==this.liveStartEpoch)return false;
+      this.pendingLiveStart=null;
+      if(ok!==true){blocked();return false;}
+      if(!valid())return false;
+      return action();
+    };
+    let result;
+    try{result=park();}catch{return finish(false);}
+    if(!result||typeof result.then!=='function')return finish(result);
+    this.pendingLiveStart=epoch;
+    return Promise.resolve(result).then(finish,()=>finish(false));
   }
 
-  pauseActive() { this.cancelCrossfade(true);this.slots.forEach((s) => s.el.pause()); }
+  play() {
+    if(!this.activeEl.getAttribute('src'))return Promise.resolve();
+    const slot=this.slots[this.activeSlot],src=slot.el.getAttribute('src');
+    return Promise.resolve(this.runAfterVideoPark(()=>{
+      this.resume();
+      this.cancelCrossfade(true);
+      slot.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
+      slot.el.playbackRate = this.state.tempo;
+      slot.el.preservesPitch = this.state.preservePitch;
+      return slot.el.play().catch((e) => { if (e && e.name !== 'AbortError') throw e; });
+    },()=>this.slots[this.activeSlot]===slot&&slot.el.getAttribute('src')===src));
+  }
+
+  pauseActive() { this.cancelLiveStart();this.cancelCrossfade(true);this.slots.forEach((s) => s.el.pause()); }
 
   togglePlay() {
+    if(this.pendingLiveStart){this.cancelLiveStart();return Promise.resolve();}
     if (this.activeEl.paused) return this.play();
     this.pauseActive();
     return Promise.resolve();
@@ -1045,7 +1070,9 @@ initFeatureGuide();
 document.getElementById('fileInputLabel').addEventListener('keydown',e=>{if(e.target.id==='fileInputLabel'&&(e.key==='Enter'||e.key===' ')){e.preventDefault();document.getElementById('fileInput').click();}});
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it
 window.waveframe.onOpenVideo((filePath) => { showTab('video'); loadVideoPlayer().then(() => window.WaveframeVideoPlayer.open(filePath)); });
-// only one thing plays at a time
+// Only live audio sources are mutually exclusive. A new video intent also
+// invalidates an audio start that is waiting for a native stop acknowledgement.
+window.addEventListener('waveframe:video-intent',()=>engine.cancelLiveStart());
 window.addEventListener('waveframe:video-playing', () => { try { engine.pauseActive();engine.stopAlternateSources();syncPlayButton(); } catch (_) { /* nothing playing */ } });
 
 /* The converter (UI + helpers) is only fetched and run the first time its tab is opened. */
@@ -1507,10 +1534,9 @@ async function analyzeLoudness(item) {
 
 function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
-  engine.stopAlternateSources();
-  window.WaveframeVideoPlayer?.parkForAudio();
-  currentTrackIndex = index;
   const item = playlist[index];
+  return engine.runAfterVideoPark(()=>{
+  currentTrackIndex = playlist.indexOf(item);
   if(item.path&&!musicArtCache.has(item)&&!noArtwork.has(item))void enrichTrackMetadata(item,true);
   engine.switchTrack((slotIndex) => {
     const slot=engine.slots[slotIndex],old=slot.objectUrl;
@@ -1529,6 +1555,7 @@ function playTrackAt(index) {
     if(selected&&ok)requestLoudness(selected);
     updateTrackNameUi();syncPlayButton();renderPlaylist();
   });
+  },()=>playlist.includes(item));
 }
 function showLoudnessInfo(item) {
   const el = document.getElementById('loudnessInfo');
@@ -1834,14 +1861,11 @@ els.btnUrl.addEventListener('click', async () => {
   if (wasEmpty) playTrackAt(playlist.length - 1);
 });
 els.btnMic.addEventListener('click', async () => {
-  window.WaveframeVideoPlayer?.parkForAudio();
-  try { if(await engine.startMic())els.trackName.textContent = t('player.micLabel'); }
+  try { if(await engine.runAfterVideoPark(()=>engine.startMic()))els.trackName.textContent = t('player.micLabel'); }
   catch (err) { await showAlertDialog(t('player.micErrorTitle'), err.message); }
 });
 els.btnTestTone.addEventListener('click', () => {
-  window.WaveframeVideoPlayer?.parkForAudio();
-  engine.playTestTone();
-  els.trackName.textContent = t('player.toneLabel');
+  engine.runAfterVideoPark(()=>{engine.playTestTone();els.trackName.textContent=t('player.toneLabel');});
 });
 
 function renderPlaylist(persist=true) {
@@ -3051,6 +3075,25 @@ window.__selfTest = async function () {
     engine.ensureGraph();
     check('first audio use allocates real graph and retains settings',!!engine.ctx&&!!engine.analyser&&engine.state.bassBoost===3);
     engine.setVolume(.8);engine.setBassBoost(0);
+    // Exercise ownership independently of a physical native video device.
+    const gate=Object.create(AudioEngine.prototype);gate.stopAlternateSources=()=>{};
+    let starts=0,blocks=0,resolveStop;
+    const waitStop=new Promise(r=>{resolveStop=r;});
+    const oldRequest=gate.runAfterVideoPark(()=>++starts,()=>true,()=>waitStop,()=>++blocks);
+    const newRequest=gate.runAfterVideoPark(()=>++starts,()=>true,()=>waitStop,()=>++blocks);
+    check('native stop gates audio start while pending',starts===0&&!!gate.pendingLiveStart);
+    resolveStop(true);await Promise.all([oldRequest,newRequest]);
+    check('only newest waiting live source starts',starts===1&&!gate.pendingLiveStart);
+    let cancelStop;const pendingStop=new Promise(r=>{cancelStop=r;});
+    const cancelled=gate.runAfterVideoPark(()=>++starts,()=>true,()=>pendingStop,()=>++blocks);
+    gate.cancelLiveStart();cancelStop(true);await cancelled;
+    check('cancelled live start cannot resume after native close',starts===1);
+    await gate.runAfterVideoPark(()=>++starts,()=>true,()=>Promise.resolve(false),()=>++blocks);
+    check('unconfirmed native stop blocks live source only',starts===1&&blocks===1);
+    gate.runAfterVideoPark(()=>++starts,()=>false,()=>true,()=>++blocks);
+    check('removed queued item cannot start',starts===1);
+    gate.runAfterVideoPark(()=>++starts,()=>true,()=>true,()=>++blocks);
+    check('no native stop uses synchronous fast path',starts===2);
     // Exercise the real transition methods without opening an audio device.
     const fake=Object.create(AudioEngine.prototype);
     const makeSlot=()=>({el:{paused:false,pause(){this.paused=true;},play(){this.paused=false;return new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});}},gain:{gain:{cancelScheduledValues(){},setValueAtTime(){},linearRampToValueAtTime(){}}}});
