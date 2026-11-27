@@ -78,7 +78,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
-  ipcMain.handle('vp:native-open',async(e,p,engine,positionMs)=>trusted(e)?nativeHost.open(p,engine,positionMs):{ok:false,code:'denied'});
+  ipcMain.handle('vp:native-open',async(e,p,engine,positionMs,subtitleText)=>trusted(e)?nativeHost.open(p,engine,positionMs,subtitleText):{ok:false,code:'denied'});
   ipcMain.handle('vp:native-stop',e=>{if(trusted(e)){nativeHost.stop();return true;}return false;});
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');

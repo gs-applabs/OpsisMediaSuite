@@ -20,19 +20,25 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length < 2 || args.Length > 3 || !SafeLocal(args[1], MediaExt)) return 2;
-        long resume=0;if(args.Length==3&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow")))return 2;
+        if (args.Length < 2 || args.Length > 4 || !SafeLocal(args[1], MediaExt)) return 2;
+        string? sidecar=null;
+        if(args.Length==4&&args[0]!="--open")return 2;
+        if(args.Length==4||args[0]=="--selftest-sub"){
+            if(args[0]=="--selftest-sub"&&args.Length!=3)return 2;
+            sidecar=args[^1];if(!SafeLocal(sidecar,new HashSet<string>(StringComparer.OrdinalIgnoreCase){".srt"})||new FileInfo(sidecar).Length>5*1024*1024)return 2;
+        }
+        long resume=0;if(args.Length>=3&&args[0]!="--selftest-sub"&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow")))return 2;
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
-        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
+        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
         try {
             if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
             if (args[0] == "--mf-audio-selftest") return MediaFoundationProbe.Run(args[1],false);
             if (args[0] == "--directshow-selftest") return DirectShowHost.SelfTest(args[1]);
             if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1],resume); }
             Core.Initialize();
-            bool selftest = args[0] == "--selftest";
+            bool selftest = args[0] == "--selftest" || args[0]=="--selftest-sub";
             // No remote URL or caller-supplied VLC arguments. Separate process;
             // this is not an OS sandbox for hostile bitstreams.
             using var vlc = selftest
@@ -40,14 +46,29 @@ internal static class Program
                 : new LibVLC("--no-video-title-show","--no-sub-autodetect-file");
             using var player = new MediaPlayer(vlc);
             using var media = new Media(vlc, args[1], FromType.FromPath);
+            if (args[0]=="--selftest-sub") return SelfTestSubtitle(player,media,sidecar!);
             if (selftest) return SelfTest(player, media);
             ApplicationConfiguration.Initialize();
-            using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume);
+            using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume,sidecar);
             Application.Run(form);
             return 0;
         } catch (Exception ex) { Console.Error.WriteLine(ex.GetType().Name); HostEvent("error",0,0); return 1; }
     }
 
+    private static int SelfTestSubtitle(MediaPlayer player,Media media,string subtitle){
+        if(!player.Play(media))return 3;
+        var clock=Stopwatch.StartNew();
+        while(clock.ElapsedMilliseconds<8000&&!player.IsPlaying)Thread.Sleep(50);
+        if(!player.IsPlaying)return 4;
+        bool added=player.AddSlave(MediaSlaveType.Subtitle,new Uri(subtitle).AbsoluteUri,true);
+        clock.Restart();
+        while(clock.ElapsedMilliseconds<4000&&player.SpuDescription.All(t=>t.Id<0))Thread.Sleep(50);
+        var tracks=player.SpuDescription.Where(t=>t.Id>=0).ToArray();
+        bool selected=tracks.Length>0&&player.SetSpu(tracks[^1].Id);
+        if(selected){clock.Restart();while(clock.ElapsedMilliseconds<1000&&player.Spu!=tracks[^1].Id)Thread.Sleep(50);selected=player.Spu==tracks[^1].Id;}
+        Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",externalSubtitleAccepted=added,externalSubtitleSelected=selected,tracks=tracks.Length}));
+        player.Stop();return added&&selected?0:5;
+    }
     private static int SelfTest(MediaPlayer player, Media media)
     {
         if (!player.Play(media)) return 3;
@@ -74,7 +95,7 @@ internal static class Program
         player.Stop(); return 5;
     }
 
-    internal static void HostEvent(string kind,long position,long duration){Console.WriteLine(JsonSerializer.Serialize(new{ @event=kind,positionMs=Math.Max(0,position),durationMs=Math.Max(0,duration)}));Console.Out.Flush();}
+    internal static void HostEvent(string kind,long position,long duration,bool? subtitleAccepted=null){Console.WriteLine(JsonSerializer.Serialize(new{ @event=kind,positionMs=Math.Max(0,position),durationMs=Math.Max(0,duration),subtitleAccepted}));Console.Out.Flush();}
     private sealed record TrackItem(int Id, string Name) { public override string ToString() => Name; }
 
     private sealed class PlayerWindow : Form
@@ -90,10 +111,11 @@ internal static class Program
         private readonly System.Windows.Forms.Timer timer = new() { Interval=250 };
         private bool updating, seeking, closing,ready,resumed;
         private readonly long resume;
+        private readonly string? sidecar;
         private long lastReport;
-        public PlayerWindow(MediaPlayer player, Media media, string title,long resume)
+        public PlayerWindow(MediaPlayer player, Media media, string title,long resume,string? sidecar)
         {
-            this.player=player; this.media=media;this.resume=resume; Text="OPSIS Native Player — "+title;
+            this.player=player; this.media=media;this.resume=resume;this.sidecar=sidecar; Text="OPSIS Native Player — "+title;
             Width=1050;Height=690;MinimumSize=new Size(650,420);
             var transport=new FlowLayoutPanel { Dock=DockStyle.Fill, AutoScroll=true, WrapContents=true };
             Button Button(string label, Action action) { var b=new Button{Text=label,AutoSize=true}; b.Click+=(_,_)=>action(); transport.Controls.Add(b);return b; }
@@ -128,7 +150,7 @@ internal static class Program
             if(closing)return;
             if(player.State==VLCState.Error){HostEvent("error",player.Time,player.Length);Close();return;}
             if(!resumed&&player.IsSeekable&&player.Length>0){resumed=true;if(resume>0)player.Time=Math.Min(resume,Math.Max(0,player.Length-500));}
-            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;HostEvent("ready",player.Time,player.Length);lastReport=Environment.TickCount64;}
+            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;bool? accepted=sidecar==null?null:player.AddSlave(MediaSlaveType.Subtitle,new Uri(sidecar).AbsoluteUri,true);HostEvent("ready",player.Time,player.Length,accepted);lastReport=Environment.TickCount64;}
             else if(ready&&Environment.TickCount64-lastReport>=1000){lastReport=Environment.TickCount64;HostEvent("position",player.Time,player.Length);}
             time.Text=Clock(player.Time)+" / "+Clock(player.Length);
             seek.Enabled=player.IsSeekable&&player.Length>0;

@@ -105,3 +105,6 @@ Added bounded FFmpeg mono PCM analysis (first 30 minutes, max 120s execution), 1
 
 ## Pass 33 — real local audio sync validation
 Added generated 65s WAV with eight irregular activity regions offset by exactly +1.7s; real FFmpeg decode via scoped renderer IPC, recovery check, unauthorized-file denial and silent-file rejection. Adjusted activity threshold for sparse signals and stale suggestion handling. Generated tones are not speech; film-dialogue reliability remains unverified. CI pending.
+
+## Pass 34 — LibVLC synchronized external subtitle handoff
+Current selected corrected SRT is canonicalized and bounded in main, written to unique temporary sidecar, passed only to LibVLC via fixed argv, deleted on child close/error. Native host reports AddSlave acceptance; dedicated native selftest loads/selects a synchronized external Greek SRT on an MKV without embedded subtitles. DirectShow subtitle handoff not supported. Acceptance is not visual/timing verification. CI pending. Prior two-point sync 183/183 and renderer self-test passed.

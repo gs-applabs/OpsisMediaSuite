@@ -72,11 +72,13 @@
     const marker={p,g,session:null};handoff=marker;
     $('vpNativeStop').hidden=false;
     say(engine+' — opening native player…');
-    const r=await api.vpNativeOpen(p,engine,resume).catch(()=>null);
+    const sub=subSrc[subSel];
+    const text=engine==='libvlc'&&sub?VP.exportSubtitles(VP.subtitleToVtt(sub.text,sub.ext,subDelay*1000,subScale,subFps).entries,'srt'):null;
+    const r=await api.vpNativeOpen(p,engine,resume,text||null).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
     marker.session=r.session;playbackEngine=engine;resumePath=null;
-    say(engine+' — native playback ready');
+    say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine==='directshow'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
       if(handoff!==marker)return;
       const s=await api.vpNativeStatus().catch(()=>null);

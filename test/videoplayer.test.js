@@ -276,3 +276,10 @@ test('audio activity envelope recognizes intermittent PCM signal and rejects sil
  for(let i=8000;i<24000;i++)b.writeInt16LE(Math.round(10000*Math.sin(i*Math.PI/10)),i*2);
  const a=A.activityFromPcm(b);assert.ok(a);assert.equal(a[0],0);assert.equal(a[15],1);assert.equal(a[50],0);
 });
+
+test('native subtitle handoff canonicalizes synchronized SRT and rejects invalid input',()=>{
+ const {prepareSubtitle}=require('../native-host');
+ assert.match(prepareSubtitle('1\n00:00:01,200 --> 00:00:04,000\nΚαλημέρα'),/00:00:01,200 --> 00:00:04,000/);
+ assert.equal(prepareSubtitle('not a subtitle'),null);
+ assert.equal(prepareSubtitle('x'.repeat(5*1024*1024+1)),null);
+});

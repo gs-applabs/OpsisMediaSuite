@@ -39,6 +39,16 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'native timeout' }
           Get-Content native-result.json,native-error.log
           if ($p.ExitCode -ne 0) { throw "native test failed: $($p.ExitCode)" }
+      - name: Real LibVLC external synchronized SRT
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -i fixture.mkv -map 0:v -map 0:a:0 -c copy no-sub.mkv
+          if ($LASTEXITCODE) { throw 'no-sub fixture failed' }
+          Set-Content -Encoding utf8 -Path synced.srt -Value @('1','00:00:01,200 --> 00:00:04,000','Συγχρονισμένος υπότιτλος')
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--selftest-sub', ('"' + (Resolve-Path no-sub.mkv).Path + '"'), ('"' + (Resolve-Path synced.srt).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput external-sub-result.json -RedirectStandardError external-sub-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'external subtitle timeout' }
+          Get-Content external-sub-result.json,external-sub-error.log
+          if ($p.ExitCode -ne 0) { throw "external subtitle test failed: $($p.ExitCode)" }
       - name: Explicit DirectShow graph test (Windows built-in filters)
         shell: pwsh
         run: |
@@ -67,6 +77,8 @@ jobs:
             audit.txt
             native-result.json
             native-error.log
+            external-sub-result.json
+            external-sub-error.log
             directshow-result.json
             directshow-error.log
             mf-*-result.json

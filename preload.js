@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   onConvProgress: (cb) => ipcRenderer.on('conv:progress', (event, data) => cb(data)),
   onOpenVideo: (cb) => ipcRenderer.on('open-video', (event, filePath) => cb(filePath)),
   vpNativeStatus: () => ipcRenderer.invoke('vp:native-status'),
-  vpNativeOpen: (p,engine,positionMs) => ipcRenderer.invoke('vp:native-open', p,engine,positionMs),
+  vpNativeOpen: (p,engine,positionMs,subtitleText) => ipcRenderer.invoke('vp:native-open', p,engine,positionMs,subtitleText),
   vpNativeStop: ()=>ipcRenderer.invoke('vp:native-stop'),
   vpCodecInventory: () => ipcRenderer.invoke('vp:codec-inventory'),
   vpOpenSource: (p) => ipcRenderer.invoke('vp:open-source', p),
