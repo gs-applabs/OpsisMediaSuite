@@ -80,7 +80,7 @@
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
     marker.session=r.session;marker.engine=engine;marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
-    say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine==='directshow'&&sub?' · subtitle handoff unavailable':''));
+    say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine!=='libvlc'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
       if(handoff!==marker)return;
       const s=await api.vpNativeStatus().catch(()=>null);
@@ -133,7 +133,7 @@
     const track=subSrc[subSel],next={track,text:track?.text,scale:subScale,fps:subFps,delay:subDelay};
     const last=m.subtitleDesired;
     if(last.track===next.track&&last.text===next.text&&last.scale===next.scale&&last.fps===next.fps&&last.delay===next.delay)return;
-    if(m.engine!=='libvlc'){say('DirectShow subtitle handoff unavailable');return;}
+    if(m.engine!=='libvlc'){say(m.engine+' subtitle handoff unavailable');return;}
     if(nativeCommand('subtitle-sync',next))m.subtitleDesired=next;
   }
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
@@ -579,8 +579,9 @@
     $('vpAB').addEventListener('click', toggleAB);
     $('vpSnap').addEventListener('click', snapshot);
     $('vpInfo').addEventListener('click', fileInfo);
-    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;$('vpNativeFallbackLabel').hidden=!r?.available;}).catch(()=>{});
+    api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;$('vpMediaFoundation').hidden=!r?.available;$('vpNativeFallbackLabel').hidden=!r?.available;}).catch(()=>{});
     $('vpDirectShow').addEventListener('click',()=>nativeHandoff('directshow',current(),generation));
+    $('vpMediaFoundation').addEventListener('click',()=>nativeHandoff('media-foundation',current(),generation));
     $('vpNative').addEventListener('click',()=>nativeHandoff('libvlc',current(),generation));
     $('vpNativeStop').addEventListener('click',stopNative);
     $('vpCodecs').addEventListener('click', async () => {

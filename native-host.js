@@ -49,8 +49,9 @@ function createNativeHost({app,extensions,authorize}){
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
  const status=()=>({available:available(),...state});
  async function open(value,engine='libvlc',positionMs=0,subtitleText=null){
-  if(!['libvlc','directshow'].includes(engine))return {ok:false,code:'bad-engine'};
+  if(!['libvlc','directshow','media-foundation'].includes(engine))return {ok:false,code:'bad-engine'};
   if(!available())return {ok:false,code:'native-not-built'};
+  if(engine==='media-foundation'&&(typeof value!=='string'||!['.mp4','.m4v','.mov','.wmv','.wav','.mp3','.m4a','.aac','.wma'].includes(path.extname(value).toLowerCase())))return {ok:false,code:'unsupported-format'};
   if(child||opening)return {ok:false,code:'native-busy'};
   const p=allowedFile(value,extensions);if(!p)return {ok:false,code:'denied'};
   opening=true;const token=++epoch;
@@ -69,7 +70,7 @@ function createNativeHost({app,extensions,authorize}){
    return await new Promise(resolve=>{
     let proc,settled=false,timer;
     const finish=r=>{if(settled)return;settled=true;clearTimeout(timer);resolve(r);};
-    try{proc=spawn(exe,[engine==='directshow'?'--directshow':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
+    try{proc=spawn(exe,[engine==='directshow'?'--directshow':engine==='media-foundation'?'--mf-play':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['pipe','pipe','ignore']});child=proc;}
     catch(_){cleanup();state={...state,phase:'error'};finish({ok:false,code:'launch-failed'});return;}
     timer=setTimeout(()=>{if(child===proc){state={...state,phase:'error'};try{proc.kill();}catch{}}finish({ok:false,code:'native-timeout'});},120000);
     proc.stdin?.on('error',()=>{if(child===proc)finishCommand({ok:false,code:'pipe-error'});});
@@ -92,7 +93,7 @@ function createNativeHost({app,extensions,authorize}){
   }finally{opening=false;}
  }
  function command(session,name,value){
-  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow'].includes(state.engine)||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||!['libvlc','directshow','media-foundation'].includes(state.engine)||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
   if(name==='subtitle-delay'&&state.engine!=='libvlc')return Promise.resolve({ok:false,code:'unsupported-engine'});
   return sendCommand(cmd);
  }

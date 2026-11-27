@@ -86,6 +86,13 @@ jobs:
             Get-Content ($case.name+'-result.json'),($case.name+'-error.log')
             if ($p.ExitCode -ne 0) { throw "MF decode failed: $($p.ExitCode)" }
           }
+      - name: Experimental Media Foundation playback and transport
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--mf-play-selftest', ('"' + (Resolve-Path mf-fixture.mp4).Path + '"')) -PassThru -RedirectStandardOutput mf-play-result.json -RedirectStandardError mf-play-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'MF playback timeout' }
+          Get-Content mf-play-result.json,mf-play-error.log
+          if ($p.ExitCode -ne 0) { throw "MF playback test failed: $($p.ExitCode)" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

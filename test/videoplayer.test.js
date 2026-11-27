@@ -337,3 +337,11 @@ test('renderer cannot submit arbitrary native subtitle revision paths as command
  assert.equal(prepareSubtitle('C:\\untrusted.srt'),null);
  assert.ok(prepareSubtitle('1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα'));
 });
+
+
+test('native Media Foundation engine still uses fixed bounded transport commands',()=>{
+ const {normalizeCommand}=require('../native-host');
+ assert.deepEqual(normalizeCommand('seek',1000),{name:'seek',value:1000});
+ assert.equal(normalizeCommand('open','https://example.com'),null);
+ assert.equal(normalizeCommand('rate',5),null);
+});

@@ -29,12 +29,13 @@ internal static class Program
             if(args[0]=="--selftest-sub"&&args.Length!=3)return 2;
             sidecar=args[^1];if(!SafeSubtitle(sidecar))return 2;
         }
-        long resume=0;if(args.Length>=3&&args[0]!="--selftest-sub"&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow")))return 2;
+        long resume=0;if(args.Length>=3&&args[0]!="--selftest-sub"&&(!long.TryParse(args[2],out resume)||resume<0||resume>360000000||(args[0]!="--open"&&args[0]!="--directshow"&&args[0]!="--mf-play")))return 2;
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
-        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--selftest-pipe" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--directshow-pipe" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
+        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--selftest-pipe" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--directshow-pipe" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest" && args[0]!="--mf-play" && args[0]!="--mf-play-selftest")return 2;
         try {
+            if(args[0]=="--mf-play"||args[0]=="--mf-play-selftest"){ApplicationConfiguration.Initialize();return MediaFoundationPlayback.Run(args[1],resume,args[0]=="--mf-play-selftest");}
             if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
             if (args[0] == "--mf-audio-selftest") return MediaFoundationProbe.Run(args[1],false);
             if (args[0] == "--directshow-selftest"||args[0]=="--directshow-pipe") return DirectShowHost.SelfTest(args[1],args[0]=="--directshow-pipe");
