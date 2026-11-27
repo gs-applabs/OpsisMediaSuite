@@ -485,7 +485,9 @@
     let searchGeneration=0,resultsProvider=null;
     $('vpSubProvider').addEventListener('change',()=>{
       ++searchGeneration;resultsProvider=null;
-      for(const id of ['vpSubKey','vpSubUser','vpSubPassword'])$(id).value='';
+      for(const id of ['vpSubKey','vpSubUser','vpSubPassword','vpSubBothKey'])$(id).value='';
+      $('vpSubBothKeyRow').hidden=$('vpSubProvider').value!=='both';
+      $('vpSubBatchStart').disabled=$('vpSubProvider').value==='both';
       $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;
       const subdl=$('vpSubProvider').value==='subdl';
       $('vpSubUser').disabled=subdl;$('vpSubPassword').disabled=subdl;$('vpSubHash').disabled=subdl;
@@ -500,20 +502,20 @@
       }
       if(Array.from(batchResults.options).some(o=>o.value===selected))batchResults.value=selected;
       $('vpSubBatchOpen').disabled=!batchResults.options.length||batchBusy;
-      batchStatus.textContent=(state.done??state.rows?.length??0)+' / '+state.total+(state.running?' · Searching…':'')+(state.stopped?' · '+state.stopped:'')+(state.truncated?' · First 10 episodes only':'');
+      batchStatus.textContent=(state.done??state.rows?.length??0)+' / '+state.total+(state.running?' · Searching…':'')+(state.stopped?' · '+state.stopped:'')+(Number.isInteger(state.offset)?' · Items '+(state.offset+1)+'–'+(state.offset+state.total)+' / '+state.seasonTotal:'')+(state.nextOffset!=null?' · Next starts at '+(state.nextOffset+1):'');
     }
     $('vpSubBatchStart').addEventListener('click',async()=>{
       const anchor=current();
-      if(batchBusy||!anchor||VP.isUrl(anchor)||VP.releaseInfo(anchor).season===null){batchStatus.textContent='Select a local single episode / Επιλέξτε επεισόδιο S01E01';return;}
+      if(batchBusy||$('vpSubProvider').value==='both'||!anchor||VP.isUrl(anchor)||VP.releaseInfo(anchor).season===null){batchStatus.textContent='Select a local single episode / Επιλέξτε επεισόδιο S01E01';return;}
       batchBusy=true;
       for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDownload','vpSubDisconnect','vpSubProvider','vpSubBatchOpen'])$(id).disabled=true;
       $('vpSubBatchCancel').disabled=false;
       ++searchGeneration;resultsProvider=null;$('vpSubResults').textContent='';
       batchResults.textContent='';batchStatus.textContent='Preparing / Προετοιμασία…';
-      const req={anchor,videos:list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),provider:$('vpSubProvider').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashEnabled:$('vpSubHash').checked&&!$('vpSubHash').disabled,autoSave:$('vpSubBatchAuto').checked};
+      const req={anchor,offset:Number($('vpSubBatchOffset').value)-1,videos:list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),provider:$('vpSubProvider').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashEnabled:$('vpSubHash').checked&&!$('vpSubHash').disabled,autoSave:$('vpSubBatchAuto').checked};
       for(const id of ['vpSubKey','vpSubUser','vpSubPassword'])$(id).value='';
       batchPoll=setInterval(()=>api.vpSubBatchStatus().then(showBatch).catch(()=>{}),750);
-      try{const res=await api.vpSubBatchStart(req);if(res?.ok)showBatch(res);else batchStatus.textContent=res?.code||'Batch failed';}
+      try{const res=await api.vpSubBatchStart(req);if(res?.ok){showBatch(res);if(res.nextOffset!=null)$('vpSubBatchOffset').value=String(res.nextOffset+1);}else batchStatus.textContent=res?.code||'Batch failed';}
       catch{batchStatus.textContent='Batch failed';}
       finally{clearInterval(batchPoll);batchPoll=null;batchBusy=false;
         for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDisconnect','vpSubProvider'])$(id).disabled=false;
@@ -592,18 +594,19 @@
       if(batchBusy)return;
       const g=generation,n=++searchGeneration;
       $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubSearch').disabled=true;
-      const req={provider:$('vpSubProvider').value,query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashPath:$('vpSubHash').checked&&current()&&!VP.isUrl(current())?current():null};
-      $('vpSubKey').value='';$('vpSubPassword').value='';$('vpSubUser').value='';onlineStatus('Searching…');
+      const req={provider:$('vpSubProvider').value,query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,subdlKey:$('vpSubBothKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashPath:$('vpSubHash').checked&&current()&&!VP.isUrl(current())?current():null};
+      $('vpSubKey').value='';$('vpSubBothKey').value='';$('vpSubPassword').value='';$('vpSubUser').value='';onlineStatus('Searching…');
       try{
         const r=await api.vpSubSearch(req);if(g!==generation||n!==searchGeneration)return;
-        if(!r?.ok){onlineStatus(providerStatus(r));return;}
+        const providerNotes=r?.statuses?.map(s=>s.provider+': '+(s.ok?'OK':providerStatus(s))).join(' · ');
+        if(!r?.ok){onlineStatus(providerNotes||providerStatus(r));return;}
         resultsProvider=req.provider;
-        for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':row.matchScore>0?' · release match '+row.matchScore:'');$('vpSubResults').append(o);}
-        $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα');
+        for(const row of r.items){const o=document.createElement('option');o.value=row.selection;o.textContent=(row.provider?row.provider+' · ':'')+row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':row.matchScore>0?' · release match '+row.matchScore:'');$('vpSubResults').append(o);}
+        $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα'+(providerNotes?' · '+providerNotes:''));
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
     });
     $('vpSubDownload').addEventListener('click',async()=>{
-      if(!current()||!resultsProvider||resultsProvider!==$('vpSubProvider').value||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
+      if(!current()||!resultsProvider||resultsProvider!==$('vpSubProvider').value||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=$('vpSubResults').value;
       $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
       try{const r=await api.vpSubDownload(id,current(),$('vpSubSaveBeside').checked&&!VP.isUrl(current()),resultsProvider);if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
         if(!r?.ok){onlineStatus(providerStatus(r));return;}

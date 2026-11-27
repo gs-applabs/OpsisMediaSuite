@@ -67,9 +67,10 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
    const hash=typeof req?.moviehash==='string'&&/^[a-f0-9]{16}$/.test(req.moviehash)?req.moviehash:null;
    const info=VP.releaseInfo(query);
    const q=new URLSearchParams({languages:lang,order_by:'download_count',order_direction:'desc'});
-   let reply;
-   if(hash){q.set('moviehash',hash);reply=await json('subtitles?'+q);q.delete('moviehash');}
+   let reply,hashResponse=false;
+   if(hash){q.set('moviehash',hash);reply=await json('subtitles?'+q);hashResponse=true;q.delete('moviehash');}
    if(!reply||Array.isArray(reply.data)&&reply.data.length===0){
+    hashResponse=false;
     q.set('query',info.season!==null&&info.title?info.title:query);
     if(info.season!==null){q.set('season_number',String(info.season));q.set('episode_number',String(info.episode));}
     reply=await json('subtitles?'+q);
@@ -80,7 +81,7 @@ function createProvider({fetchImpl=globalThis.fetch,decode=b=>new TextDecoder('u
     for(const f of a.files.slice(0,4)){
      if(!Number.isSafeInteger(f?.file_id)||f.file_id<=0||results.size>=50)continue;
      const name=clean(f.file_name)||'subtitle.srt';
-     const item={id:f.file_id,name,release:clean(a.release),language:lang,hearingImpaired:!!a.hearing_impaired,hashMatch:a.moviehash_match===true,downloads:Math.max(0,Math.min(1e9,Number(a.download_count)||0)),fps:Number.isFinite(a.fps)?a.fps:null};
+     const item={id:f.file_id,name,release:clean(a.release),language:lang,hearingImpaired:!!a.hearing_impaired,hashMatch:hashResponse&&a.moviehash_match===true,downloads:Math.max(0,Math.min(1e9,Number(a.download_count)||0)),fps:Number.isFinite(a.fps)?a.fps:null};
      const score=VP.releaseScore(query,item.release||item.name);
      const nameScore=VP.releaseScore(query,item.name);
      if(!item.hashMatch&&(score===-1000||nameScore===-1000))continue;

@@ -16,7 +16,8 @@ const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-s
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
 const {resolveProbe,probeMkv,canExtract,extractMkv}=require('./subtitle-probe.js');
 const {createSubdl}=require('./subtitle-subdl.js');
-const {seasonPlan,runSeasonBatch,MAX_BATCH}=require('./subtitle-batch.js');
+const {seasonPlan,runSeasonBatch,MAX_BATCH,seasonPage}=require('./subtitle-batch.js');
+const {searchProviders}=require('./subtitle-multi.js');
 const VP=require('./renderer/vplib');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
@@ -155,22 +156,39 @@ function init({ getMainWin, resolveFfmpegPath }) {
   let subtitleProvider=createProvider({decode:decodeText});
   const subdlProvider=createSubdl({decode:decodeText});
   const providerFor=id=>id==='subdl'?subdlProvider:id==='opensubtitles'||id===undefined?subtitleProvider:null;
-  let hashBusy=false,batchState=null;
+  let hashBusy=false,batchState=null,providerBusy=false;
+  let providerResults=new Map();
+  function bindResults(reply,source){
+    providerResults.clear();
+    if(reply?.ok&&Array.isArray(reply.items)){
+      reply.items=reply.items.map(row=>{
+        const provider=source==='both'?row.provider:source;
+        const id=randomBytes(16).toString('hex');
+        providerResults.set(id,{provider,id:row.id});
+        return {...row,provider,selection:id};
+      });
+    }
+    return reply;
+  }
   ipcMain.handle('vp:sub-search',async(e,req)=>{
     if(!trusted(e)||!req||typeof req!=='object')return {ok:false,code:'denied'};
-    if(batchState?.running)return {ok:false,code:'batch-busy'};
-    const provider=providerFor(req.provider);if(!provider)return {ok:false,code:'bad-provider'};
-    if(req.provider==='subdl')return provider.search({query:req.query,language:req.language,apiKey:req.apiKey});
-    // Do not accept renderer-supplied hash/path as a general read primitive.
-    let hash=null;
-    if(req.hashPath){
-      if(hashBusy)return {ok:false,code:'busy'};
-      const p=allowedFile(req.hashPath,PLAY_EXTS);
-      if(!p||!approved.has(p))return {ok:false,code:'denied'};
-      hashBusy=true;try{hash=await movieHash(p);}catch{}finally{hashBusy=false;}
+    if(batchState?.running||providerBusy)return {ok:false,code:'busy'};
+    const source=req.provider===undefined?'opensubtitles':req.provider;
+    const provider=providerFor(source);if(!provider&&source!=='both')return {ok:false,code:'bad-provider'};
+    providerBusy=true;providerResults.clear();
+    try{
+      let hash=null;
+      if(source!=='subdl'&&req.hashPath){
+        const p=allowedFile(req.hashPath,PLAY_EXTS);
+        if(!p||!approved.has(p))return {ok:false,code:'denied'};
+        hashBusy=true;try{hash=await movieHash(p);}catch{}finally{hashBusy=false;}
+        if(!trusted(e))return {ok:false,code:'denied'};
+      }
+      const result=source==='both'?await searchProviders({providers:{opensubtitles:subtitleProvider,subdl:subdlProvider},query:req.query,language:req.language,moviehash:hash,credentials:{openKey:req.apiKey,subdlKey:req.subdlKey,username:req.username,password:req.password},allowed:()=>trusted(e)}):
+        await provider.search({query:req.query,language:req.language,apiKey:req.apiKey,...(source==='opensubtitles'?{username:req.username,password:req.password,moviehash:hash}:{})});
       if(!trusted(e))return {ok:false,code:'denied'};
-    }
-    return provider.search({query:req.query,language:req.language,apiKey:req.apiKey,username:req.username,password:req.password,moviehash:hash});
+      return bindResults(result,source);
+    }finally{providerBusy=false;}
   });
   let sidecarBusy=false;
   async function saveDownloaded(e,video,subtitle,language,synced=false){
@@ -229,28 +247,40 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }catch{return {ok:false,code:'invalid-or-unsupported-archive-or-subtitle'};}
     finally{subtitleImportBusy=false;}
   });
-  ipcMain.handle('vp:sub-download',async(e,id,video,save,providerId)=>{
+  ipcMain.handle('vp:sub-download',async(e,selection,video,save,providerId)=>{
     if(!trusted(e))return {ok:false,code:'denied'};
-    if(batchState?.running)return {ok:false,code:'batch-busy'};
+    if(batchState?.running||providerBusy)return {ok:false,code:'busy'};
+    const row=providerResults.get(selection);
+    if(!row||!(providerId==='both'||providerId===row.provider))return {ok:false,code:'not-in-results'};
     const p=save===true?allowedFile(video,new Set(VIDEO_EXTS)):null;
-    const provider=providerFor(providerId);if(!provider)return {ok:false,code:'bad-provider'};
-    const result=await provider.download(id);
-    if(!result.ok||!trusted(e))return !trusted(e)?{ok:false,code:'denied'}:result;
-    if(save===true)result.saved=await saveDownloaded(e,p,result.subtitle,result.language);
-    return result;
+    const provider=providerFor(row.provider);if(!provider)return {ok:false,code:'bad-provider'};
+    providerBusy=true;
+    try{
+      const result=await provider.download(row.id);
+      if(!result.ok||!trusted(e))return !trusted(e)?{ok:false,code:'denied'}:result;
+      if(save===true)result.saved=await saveDownloaded(e,p,result.subtitle,result.language);
+      return result;
+    }finally{providerBusy=false;}
   });
-  ipcMain.handle('vp:sub-disconnect',(e,id)=>trusted(e)&&!batchState?.running?providerFor(id)?.clear()===true:false);
+  ipcMain.handle('vp:sub-disconnect',(e,id)=>{
+    if(!trusted(e)||batchState?.running||providerBusy)return false;
+    providerResults.clear();
+    if(id==='both'){const a=subtitleProvider.clear(),b=subdlProvider.clear();return a&&b;}
+    return providerFor(id)?.clear()===true;
+  });
   ipcMain.handle('vp:sub-batch-status',e=>trusted(e)&&batchState?{...batchState,rows:batchState.rows.slice()}:null);
   ipcMain.handle('vp:sub-batch-cancel',e=>{if(!trusted(e)||!batchState?.running)return false;batchState.cancelled=true;return true;});
   ipcMain.handle('vp:sub-batch-start',async(e,req)=>{
-    if(!trusted(e)||batchState?.running||!req||!Array.isArray(req.videos)||req.videos.length>2000||req.videos.some(x=>typeof x!=='string'||x.length>32767))return {ok:false,code:'denied-or-busy'};
+    if(!trusted(e)||batchState?.running||providerBusy||!req||!Array.isArray(req.videos)||req.videos.length>2000||req.videos.some(x=>typeof x!=='string'||x.length>32767))return {ok:false,code:'denied-or-busy'};
     const provider=providerFor(req.provider);if(!provider)return {ok:false,code:'bad-provider'};
     const exts=new Set(VIDEO_EXTS),isApproved=p=>trusted(e)&&allowedFile(p,exts)===p&&approved.has(p);
     const anchor=allowedFile(req.anchor,exts);if(!anchor||!isApproved(anchor))return {ok:false,code:'video-not-approved'};
-    const files=seasonPlan([...new Set(req.videos.map(x=>allowedFile(x,exts)).filter(p=>p&&isApproved(p)))],anchor);
-    if(!files.length)return {ok:false,code:'no-single-episode-season'};
+    const plan=seasonPlan([...new Set(req.videos.map(x=>allowedFile(x,exts)).filter(p=>p&&isApproved(p)))],anchor);
+    const page=seasonPage(plan,req.offset??0);if(!page)return {ok:false,code:'no-episodes-at-offset'};
+    const files=page.files;
+    providerResults.clear();
     const autoSave=req.autoSave===true&&req.provider==='opensubtitles'&&req.hashEnabled===true;
-    const state={running:true,cancelled:false,rows:[],done:0,total:Math.min(files.length,MAX_BATCH),truncated:files.length>MAX_BATCH,stopped:null};
+    const state={running:true,cancelled:false,rows:[],done:0,total:files.length,offset:page.offset,seasonTotal:page.total,truncated:page.next!==null,nextOffset:page.next,stopped:null};
     batchState=state;
     try{
       const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Start / Έναρξη'],defaultId:0,cancelId:0,message:'Search Greek subtitles for up to '+state.total+' episodes?',detail:'Sends episode titles'+(req.hashEnabled===true&&req.provider==='opensubtitles'?' and optional movie hashes':'')+' to the selected provider. '+(autoSave?'Only a single exact hash match can be downloaded and saved beside its video.':'Search only; review matches manually.')});
@@ -260,8 +290,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
         return out.rows[0]?.status||'incomplete';
       };
       const result=await runSeasonBatch({files,provider,providerId:req.provider,credentials:{apiKey:req.apiKey,username:req.username,password:req.password},autoSave,hashEnabled:req.hashEnabled===true,approved:isApproved,audit,hash:movieHash,save:(p,sub,lang)=>saveDownloaded(e,p,sub,lang),cancelled:()=>state.cancelled||!trusted(e),progress:p=>Object.assign(state,p)});
-      Object.assign(state,result,{done:result.rows.length});
-      return {ok:true,...result};
+      Object.assign(state,result,{done:result.rows.length,offset:page.offset,seasonTotal:page.total,truncated:page.next!==null,nextOffset:result.stopped?(page.offset+result.rows.length<page.total?page.offset+result.rows.length:null):page.next});
+      return {ok:true,...result,offset:state.offset,seasonTotal:state.seasonTotal,truncated:state.truncated,nextOffset:state.nextOffset};
     }catch{state.stopped='batch-failed';return {ok:false,code:'batch-failed'};}
     finally{state.running=false;}
   });

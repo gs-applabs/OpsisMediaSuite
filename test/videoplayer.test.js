@@ -519,3 +519,29 @@ test('season batch respects cancellation and never auto-downloads SubDL or ambig
  const second=await runSeasonBatch({...base,providerId:'opensubtitles',provider:{...base.provider,search:async()=>({ok:true,items:[{id:1,language:'el',hashMatch:true},{id:2,language:'el',hashMatch:true}]})}});
  assert.deepEqual(second.rows.map(r=>r.status),['review','review']);assert.equal(downloads,0);
 });
+
+
+test('combined provider results preserve provider identity, independent keys and partial failures',async()=>{
+ const {searchProviders}=require('../subtitle-multi');
+ const calls=[];
+ const reply=await searchProviders({query:'Show.S01E01',language:'el',moviehash:'abcd',credentials:{openKey:'open',subdlKey:'sub',username:'u',password:'p'},providers:{
+  opensubtitles:{search:async req=>{calls.push(req);return {ok:true,items:[{id:1,language:'el',hashMatch:true,name:'open.srt'}]};}},
+  subdl:{search:async req=>{calls.push(req);return {ok:true,items:[{id:1,language:'el',name:'sub.srt'}]};}}
+ }});
+ assert.deepEqual(reply.items.map(x=>[x.provider,x.id]),[['opensubtitles',1],['subdl',1]]);
+ assert.equal(calls[0].apiKey,'open');assert.equal(calls[1].apiKey,'sub');assert.equal(calls[1].moviehash,undefined);assert.equal(calls[1].password,undefined);
+ const partial=await searchProviders({query:'Show',language:'el',providers:{opensubtitles:{search:async()=>({ok:false,code:'quota'})},subdl:{search:async()=>({ok:true,items:[]})}}});
+ assert.equal(partial.ok,true);assert.equal(partial.statuses[0].code,'quota');
+});
+test('season pages cover later episodes without repeating the first ten',()=>{
+ const {seasonPage}=require('../subtitle-batch');const files=Array.from({length:23},(_,i)=>'episode-'+i);
+ assert.equal(seasonPage(files,0).next,10);
+ assert.deepEqual(seasonPage(files,20),{files:files.slice(20),offset:20,total:23,next:null});
+ assert.equal(seasonPage(files,23),null);assert.equal(seasonPage(files,-1),null);
+});
+test('OpenSubtitles fallback title search cannot confer an exact hash match',async()=>{
+ const {createProvider}=require('../subtitle-provider');let calls=0;
+ const provider=createProvider({fetchImpl:async()=>new Response(JSON.stringify({data:++calls===1?[]:[{attributes:{language:'el',moviehash_match:true,files:[{file_id:123,file_name:'Show.S01E01.srt'}]}}]}),{headers:{'content-type':'application/json'}})});
+ const result=await provider.search({query:'Show.S01E01',language:'el',moviehash:'0123456789abcdef',apiKey:'fixture'});
+ assert.equal(result.items[0].hashMatch,false);assert.equal(calls,2);
+});

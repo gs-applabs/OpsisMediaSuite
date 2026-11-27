@@ -63,4 +63,9 @@ async function runSeasonBatch({files,provider,providerId,credentials={},autoSave
  }
  return {rows,stopped,total,truncated:files.length>MAX_BATCH};
 }
-module.exports={seasonPlan,runSeasonBatch,MAX_BATCH};
+function seasonPage(plan,offset=0){
+ if(!Array.isArray(plan)||!Number.isInteger(offset)||offset<0||offset>=plan.length)return null;
+ const files=plan.slice(offset,offset+MAX_BATCH),next=offset+files.length;
+ return {files,offset,total:plan.length,next:next<plan.length?next:null};
+}
+module.exports={seasonPlan,runSeasonBatch,MAX_BATCH,seasonPage};
