@@ -251,6 +251,34 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
         const w = L.readWav(fs.readFileSync(b.output).buffer.slice(0));
         check('WAV output has the requested format', w.sampleRate === 22050 && w.channels === 1 && w.bits === 24 && Math.abs(w.frames / w.sampleRate - 2) < 0.05, JSON.stringify({ r: w.sampleRate, c: w.channels, b: w.bits, s: w.frames / w.sampleRate }));
       }
+      // Actual Electron renderer -> trusted IPC -> C++ child -> converter WAV.
+      const available=await win.webContents.executeJavaScript('waveframe.nativeDspAvailable()');
+      if(available){
+        const native=await win.webContents.executeJavaScript(`(async()=>{
+          await loadConverter();
+          const buffer=new AudioBuffer({length:48000*2,numberOfChannels:1,sampleRate:48000});
+          const input=buffer.getChannelData(0);
+          for(let i=0;i<input.length;i++)input[i]=.025*Math.sin(2*Math.PI*1000*i/48000);
+          const cfg=WaveframeAudio.nativeDspConfigV2({masterEnabled:true,eqBands:[0,0,0,0,0,6]});
+          const options={...WaveframeConv.DEFAULTS,effects:true,nativeDsp:true,nativeDspConfig:cfg,sampleRate:48000,trimStart:.25,trimEnd:1.75,channels:2};
+          const r=await WaveframeConverter.processBuffer(buffer,options);
+          let a=0,b=0,delta=0;
+          for(let i=24000;i<r.channels[0].length;i++){a+=input[i+12000]**2;b+=r.channels[0][i]**2;delta=Math.max(delta,Math.abs(r.channels[0][i]-r.channels[1][i]));}
+          const bypass=await WaveframeConverter.processBuffer(buffer,{...options,nativeDspConfig:{...cfg,base:{...cfg.base,enabled:0}},sampleRate:44100});
+          return {boost:10*Math.log10(b/a),frames:r.channels[0].length,delta,resampled:bypass.channels[0].length,original:input[12001]};
+        })()`);
+        check('native DSP Electron IPC: one 6 dB EQ pass, trim, mono duplication and resample',native.frames===72000&&Math.abs(native.boost-6)<.2&&native.delta<1e-6&&native.resampled===66150&&Math.abs(native.original-.025*Math.sin(2*Math.PI*1000*12001/48000))<1e-6,JSON.stringify(native));
+        const opts={format:'wav',depth:24,effects:true,sampleRate:48000,channels:2,trimStart:1,trimEnd:3,suffix:'-native-selftest'};
+        const result=await win.webContents.executeJavaScript(`(async()=>{
+          const o=WaveframeConv.validateOptions(${JSON.stringify(opts)}).options;
+          o.nativeDsp=true;o.nativeDspConfig=WaveframeAudio.nativeDspConfigV2({masterEnabled:true});
+          return WaveframeConverter.convertFile({id:'selfnative',path:${JSON.stringify(src)}},o,{ffmpeg:${!!ff},outMode:'source',cancelled:()=>false,report(){},setBase(){}});
+        })()`);
+        const bytes=fs.readFileSync(result.output),w=L.readWav(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+        check('native DSP converter saves real trimmed stereo 48 kHz WAV',w.sampleRate===48000&&w.channels===2&&w.bits===24&&w.frames===96000);
+      }else if(process.env.GITHUB_ACTIONS==='true'&&!app.isPackaged){
+        check('CI native DSP renderer adapter available',false,'missing developer adapter');
+      }
       // 3. direct route
       if (ff) {
         const d = await run({ format: 'mp3', bitrate: 128, suffix: '-selftest-direct' });

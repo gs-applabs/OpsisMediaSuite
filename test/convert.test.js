@@ -178,3 +178,11 @@ test('mapChannels: mono average, stereo duplication, multichannel front pair, un
   assert.equal(C.mapChannels([a, b], 0).length, 2);
   assert.equal(C.mapChannels([a, b], 2).length, 2);
 });
+
+
+test('normalization gain is applied once to shared mono-to-stereo buffers',()=>{
+ const mono=new Float32Array([.1,-.2]),stereo=C.mapChannels([mono],2);
+ C.applyGainDb(stereo,20*Math.log10(2));
+ assert.ok(Math.abs(stereo[0][0]-.2)<1e-7);
+ assert.ok(Math.abs(stereo[1][1]+.4)<1e-7);
+});

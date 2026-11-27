@@ -146,6 +146,13 @@
     return chs.length === 1 ? [chs[0], chs[0]] : [chs[0], chs[1]];
   }
 
+  // Mono duplication intentionally shares one array; apply a gain only once
+  // per channel array. Converter-produced arrays are either identical or disjoint.
+  function applyGainDb(chs, db) {
+    const gain=Math.pow(10,db/20);
+    for(const ch of new Set(chs))for(let i=0;i<ch.length;i++)ch[i]*=gain;
+  }
+
   /* ---------- ffmpeg arguments ---------- */
 
   function codecArgs(o) {
@@ -221,5 +228,5 @@
     };
   }
 
-  return { RATES, FORMATS, DEFAULTS, sanitizeSuffix, validateOptions, buildOutputPath, targetGainDb, peakSafeGainDb, mapChannels, writeWav, readWav, buildFfmpegArgs, parseFfmpegTime, parseProbe, createQueue };
+  return { RATES, FORMATS, DEFAULTS, sanitizeSuffix, validateOptions, buildOutputPath, targetGainDb, peakSafeGainDb, mapChannels, applyGainDb, writeWav, readWav, buildFfmpegArgs, parseFfmpegTime, parseProbe, createQueue };
 });

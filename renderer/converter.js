@@ -54,30 +54,38 @@
       if(decoded.numberOfChannels>2||rateOut<44100||rateOut>96000||len/sr>300)throw Object.assign(new Error('Experimental native DSP: mono/stereo, 44.1–96 kHz, max 5 minutes'),{code:'native-dsp-format'});
       const frames=Math.round(len/sr*rateOut);
       if(!frames||frames>rateOut*300||frames*8>128*1024*1024)throw new Error('Native DSP: 128 MiB PCM limit');
-      // Match the existing stereo offline path. Resample only, no Web Audio effects.
-      const ctx=new OfflineAudioContext(2,frames,rateOut);
-      const tb=new AudioBuffer({length:len,numberOfChannels:decoded.numberOfChannels,sampleRate:sr});
-      for(let ch=0;ch<decoded.numberOfChannels;ch++)tb.copyToChannel(decoded.getChannelData(ch).subarray(start,end),ch);
-      const src=ctx.createBufferSource();src.buffer=tb;src.connect(ctx.destination);src.start();
-      const dry=await ctx.startRendering();
+      // Same-rate input is read directly from the decoded channel views.
+      // For resampling use the original buffer with a trim offset, then reuse
+      // the private resampled output as destination. Never mutate the source.
+      let l,rr,inputOffset=0,output;
+      if(rateOut===sr){
+        l=decoded.getChannelData(0);rr=decoded.getChannelData(decoded.numberOfChannels===1?0:1);
+        inputOffset=start;output=[new Float32Array(frames),new Float32Array(frames)];
+      }else{
+        const ctx=new OfflineAudioContext(2,frames,rateOut);
+        const src=ctx.createBufferSource();src.buffer=decoded;src.connect(ctx.destination);
+        src.start(0,start/sr,len/sr);
+        const dry=await ctx.startRendering();
+        l=dry.getChannelData(0);rr=dry.getChannelData(1);output=[l,rr];
+      }
       if(hooks.cancelled?.())throw Object.assign(new Error('cancelled'),{code:'cancelled'});
-      const l=dry.getChannelData(0),rr=dry.getChannelData(1);
       const cfg=o.nativeDspConfig||WaveframeAudio.nativeDspConfigV2(engine.state,'native',false);
       const opened=await api.nativeDspOpen(rateOut,2,frames,cfg);
       if(!opened?.ok)throw new Error(opened?.code||'native-dsp-failed');
       const session=opened.session;activeDspSession=session;
       try{
         if(opened.blockFrames!==32768)throw new Error('native-dsp-protocol');
-        chs=[new Float32Array(frames),new Float32Array(frames)];
+        chs=output;
         for(let offset=0;offset<frames;offset+=opened.blockFrames){
           if(hooks.cancelled?.())throw Object.assign(new Error('cancelled'),{code:'cancelled'});
           const count=Math.min(opened.blockFrames,frames-offset),pcm=new Uint8Array(count*8),view=new DataView(pcm.buffer);
-          for(let i=0;i<count;i++){view.setFloat32(i*8,l[offset+i],true);view.setFloat32(i*8+4,rr[offset+i],true);}
+          for(let i=0;i<count;i++){view.setFloat32(i*8,l[inputOffset+offset+i],true);view.setFloat32(i*8+4,rr[inputOffset+offset+i],true);}
           const result=await api.nativeDspChunk(session,pcm);
           if(hooks.cancelled?.())throw Object.assign(new Error('cancelled'),{code:'cancelled'});
           if(!result?.ok||!(result.pcm instanceof Uint8Array)||result.pcm.byteLength!==pcm.byteLength)throw new Error(result?.code||'native-dsp-failed');
           const out=new DataView(result.pcm.buffer,result.pcm.byteOffset,result.pcm.byteLength);
           for(let i=0;i<count;i++){chs[0][offset+i]=out.getFloat32(i*8,true);chs[1][offset+i]=out.getFloat32(i*8+4,true);}
+          hooks.progress?.((offset+count)/frames);
         }
         const done=await api.nativeDspFinish(session);
         if(!done?.ok)throw new Error(done?.code||'native-dsp-failed');
@@ -106,7 +114,7 @@
       for (const ch of chs) for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > peak) peak = a; }
       const safe = C.peakSafeGainDb(C.targetGainDb(lufs, o.targetLufs), peak);
       gainDb = safe.gainDb; limited = safe.limited;
-      if (gainDb !== 0) { const g = Math.pow(10, gainDb / 20); for (const ch of chs) for (let i = 0; i < ch.length; i++) ch[i] *= g; }
+      if (gainDb !== 0) C.applyGainDb(chs,gainDb);
     }
     return { channels: chs, sampleRate: rateOut, lufs, gainDb, limited };
   }
@@ -142,7 +150,7 @@
     read = null;
     if (ctx.cancelled()) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
     ctx.report(0.25);
-    const p = await processBuffer(decoded, o,{cancelled:ctx.cancelled});
+    const p = await processBuffer(decoded, o,{cancelled:ctx.cancelled,progress:f=>ctx.report(.25+.25*f)});
     if (ctx.cancelled()) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
     ctx.report(0.5);
     const depth = o.format === 'wav' ? o.depth : 24;

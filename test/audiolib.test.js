@@ -211,3 +211,13 @@ test('native stream bounds and session state; preserves ambience across PCM chun
   assert.ok(measured);assert.equal((await bridge.finish(s.session)).ok,true);
  }finally{bridge.cancel(s.session);}
 });
+
+
+test('bounded loudness accumulation rejects malformed input and stays stable on a long quiet tail',()=>{
+ const fs=8000,a=sine(997,2,fs,dbfs(-23));
+ const long=new Float32Array(fs*120);long.set(a);
+ const short=new Float32Array(fs*4);short.set(a);
+ assert.ok(Math.abs(lib.integratedLufs([long,long],fs)-lib.integratedLufs([short,short],fs))<.05);
+ assert.equal(lib.integratedLufs([a,a.subarray(1)],fs),-Infinity);
+ assert.equal(lib.integratedLufs([a],NaN),-Infinity);
+});
