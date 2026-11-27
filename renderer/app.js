@@ -929,13 +929,18 @@ function initFeatureGuide(){
  const lang=()=>localStorage.getItem('waveframe.lang')||'el';
  const gr=()=>lang()==='el';
  const group=document.getElementById('featureGuideGroup'),quick=document.getElementById('featureGuideQuick');
- function renderGroups(){const chosen=group.value;group.replaceChildren();for(const [key,label] of [['',gr()?'Όλες οι καρτέλες':'All tabs'],...Object.entries(OpsisFeatureGuide.tabs).map(([k,v])=>[k,v[gr()?0:1]])]){const opt=document.createElement('option');opt.value=key;opt.textContent=label;group.append(opt);}group.value=chosen;}
+ const dictionary=()=>I18N[lang()]||I18N.en||{};
+ let navGeneration=0;
+ function renderGroups(){const chosen=group.value;group.replaceChildren();for(const [key,label] of [['',gr()?'Όλες οι καρτέλες':'All tabs'],...Object.entries(OpsisFeatureGuide.tabs).map(([k,v])=>[k,dictionary()['tab.'+k]||v[gr()?0:1]])]){const opt=document.createElement('option');opt.value=key;opt.textContent=label;group.append(opt);}group.value=chosen;}
  async function navigate(row){
+  const generation=++navGeneration;
   showTab(row.tab);
   try{if(row.tab==='converter')await loadConverter();if(row.tab==='video')await loadVideoPlayer();if(row.tab==='photo')await loadPhoto();}
   catch{status.textContent=gr()?'Η καρτέλα δεν φορτώθηκε.':'Tab failed to load.';showTab('settings');return;}
-  if(row.tab==='player'&&row.target?.startsWith('metadata'))document.getElementById('playlistDrawer').classList.add('open');
+  if(generation!==navGeneration||document.querySelector('.tab-btn.active')?.dataset.tab!==row.tab)return;
+  if(row.tab==='player'&&(row.target?.startsWith('metadata')||row.target==='crossfade'))document.getElementById('playlistDrawer').classList.add('open');
   const target=row.target&&document.getElementById(row.target);
+  if(row.tab==='video'&&target?.closest('#vpSubOnline'))document.getElementById('vpSubOnline').hidden=false;
   if(target)for(let p=target.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;
   const visible=target&&target.getClientRects().length&&!target.closest('[hidden],.dep-hidden');
   const dest=visible?target:document.querySelector('.tab-btn[data-tab="'+row.tab+'"]');
@@ -950,9 +955,9 @@ function initFeatureGuide(){
   document.getElementById('featureGuideQuickLabel').textContent=gr()?'Εύρεση':'Find';
   document.getElementById('featureGuideGroupLabel').textContent=gr()?'Καρτέλα':'Tab';
   quick.title=gr()?'Εύρεση λειτουργιών της τρέχουσας καρτέλας':'Find features in the current tab';quick.setAttribute('aria-label',quick.title);
-  const rows=OpsisFeatureGuide.list(lang(),input.value).filter(r=>!group.value||r.tab===group.value);results.replaceChildren();
+  const rows=OpsisFeatureGuide.list(lang(),input.value,dictionary()).filter(r=>!group.value||r.tab===group.value);results.replaceChildren();
   for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
-  status.textContent=gr()?rows.length+' αποτελέσματα':rows.length+' results';
+  status.textContent=rows.length?(gr()?rows.length+' αποτελέσματα':rows.length+' results'):(gr()?'Δεν βρέθηκε λειτουργία. Δοκίμασε άλλη λέξη ή καρτέλα.':'No features found. Try another word or tab.');
  }
  input.addEventListener('input',render);group.addEventListener('change',render);document.addEventListener('waveframe:language-changed',()=>{renderGroups();render();});renderGroups();render();
  // The same clearly labelled entry point works from every tab, without intercepting right-click.
