@@ -188,3 +188,13 @@ test('the shared queue handles video jobs: sequential, progress, per-file errors
   const done = q2.start(); q2.cancel(); release('late');
   assert.deepEqual((await done).map((x) => x.status), ['cancelled', 'cancelled']);
 });
+
+
+test('explicit encoder policy is strict and two pass does not silently select one pass',()=>{
+ const set=new Set(['h264_nvenc','libx264','libopenh264']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'software'}),['libx264','libopenh264']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'hardware'}),['h264_nvenc']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'auto',passes:2}),['libx264']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'hardware',passes:2}),[]);
+ assert.equal(V.validateOptions({encoderPolicy:'invalid'}).ok,false);
+});

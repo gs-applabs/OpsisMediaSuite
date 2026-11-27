@@ -133,6 +133,7 @@
     }
     const info = ctx.ffmpeg && !isTrack ? await api.convProbe(item.path) : null;
     if (info && !info.hasAudio) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
+    if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
     ctx.report(0.05);
     let read;
     if (isTrack) {
@@ -140,9 +141,12 @@
       read = { bytes: new Uint8Array(t0.file ? await t0.file.arrayBuffer() : await (await fetch(t0.url)).arrayBuffer()) };
     } else read = await api.convRead(item.path);
     if (!read || read.tooLarge) throw Object.assign(new Error('file too large to process in memory'), { code: 'too-large' });
+    if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
     let decoded;
     try { decoded = await decode(read.bytes, info && info.sampleRate); }
     catch (_) {
+      if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
+      read=null;
       const pre = ctx.ffmpeg && !isTrack ? await api.convPredecode(item.path, info && info.sampleRate) : null; // WMA, AIFF, video containers ...
       if (!pre) throw Object.assign(new Error('decode-failed'), { code: 'decode-failed' });
       decoded = await decode(pre.bytes, info && info.sampleRate);
@@ -155,6 +159,7 @@
     ctx.report(0.5);
     const depth = o.format === 'wav' ? o.depth : 24;
     const wav = C.writeWav(p.channels, p.sampleRate, depth);
+    if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
     ctx.setBase(0.5);
     const r = await api.convEncode({ id, ...(isTrack ? { name: item.name } : { path: item.path }), wav: new Uint8Array(wav), options: o, duration: p.channels[0].length / p.sampleRate, ...out });
     if (!r.ok) throw Object.assign(new Error(r.error || r.code), { code: r.code });

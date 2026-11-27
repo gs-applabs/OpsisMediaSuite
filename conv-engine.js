@@ -18,12 +18,20 @@ function beginShutdown(){shuttingDown=true;cancelActiveRuns();}
 function ensureRunning(){if(shuttingDown)throw Object.assign(Error('cancelled'),{code:'cancelled'});}
 function cancelActiveRuns(){for(const run of activeRuns)run.cancel();}
 function activeRunCount(){return activeRuns.size;}
-function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 * 60 * 60 * 1000 } = {}) {
+function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 * 60 * 60 * 1000, inputBytes = null } = {}) {
   ensureRunning();
-  let child = null, cancelled = false, timedOut = false;
+  let child = null, cancelled = false, timedOut = false, inputError = null;
+  if(inputBytes!==null&&!ArrayBuffer.isView(inputBytes))throw Error('invalid ffmpeg input bytes');
   const promise = new Promise((resolve, reject) => {
     let tail = '';
-    try { child = spawn(ffmpegPath, ['-nostdin', ...args], { windowsHide: true, shell: false }); } catch (e) { return reject(e); }
+    try { child = spawn(ffmpegPath, ['-nostdin', ...args], { windowsHide: true, shell: false,stdio:[inputBytes===null?'ignore':'pipe','pipe','pipe'] }); } catch (e) { return reject(e); }
+    if(inputBytes!==null){
+      // Writable backpressure is handled by Node; subarray views avoid copies.
+      const {Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
+      const bytes=Buffer.isBuffer(inputBytes)?inputBytes:Buffer.from(inputBytes.buffer,inputBytes.byteOffset,inputBytes.byteLength);
+      async function* chunks(){for(let i=0;i<bytes.length;i+=65536){if(cancelled||timedOut)return;yield bytes.subarray(i,i+65536);}}
+      pipeline(Readable.from(chunks()),child.stdin).catch(err=>{inputError=err;});
+    }
     const timer = setTimeout(() => { timedOut = true; try { child.kill(); } catch (_) {} }, timeoutMs);
     timer.unref();
     let outTail = '';
@@ -39,6 +47,7 @@ function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 *
       clearTimeout(timer);
       if (timedOut) return reject(Object.assign(new Error('ffmpeg-timeout'), {code:'timeout'}));
       if (cancelled) return reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }));
+      if(code===0&&inputError)return reject(Object.assign(Error('ffmpeg input pipe failed'),{code:'input-pipe-failed'}));
       resolve({ code, stderr: tail, stdout: outTail });
     });
   });
@@ -92,15 +101,15 @@ function publishOutput(tmp,{input,ext,suffix,outDir}){
 function finalize(tmp,input,options,outDir){
   return publishOutput(tmp,{input,ext:L.FORMATS[options.format].ext,suffix:options.suffix,outDir});
 }
-async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir }) {
+async function runToTemp({ ffmpegPath, input, options, mode, source, duration, onProgress, outDir, inputBytes=null,ensureActive=()=>{} }) {
   ensureRunning();
   const { tmp } = planOutput(input, options, fs.existsSync, outDir);
   const args = L.buildFfmpegArgs({ input: source, output: tmp, options, mode });
   args.splice(args.indexOf('-i'), 0, '-protocol_whitelist','file,pipe');
-  const run = runFfmpeg(ffmpegPath, args, { duration, onProgress });
+  const run = runFfmpeg(ffmpegPath, args, { duration, onProgress,inputBytes });
   const promise = run.promise.then((r) => {
     if(r.code!==0||!fs.existsSync(tmp))throw Error(r.stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(' ')||'ffmpeg exited with code '+r.code);
-    ensureRunning();return {output:finalize(tmp,input,options,outDir)};
+    ensureRunning();ensureActive();return {output:finalize(tmp,input,options,outDir)};
   }).finally(()=>{try{fs.unlinkSync(tmp);}catch{} });
   return { promise, cancel: run.cancel };
 }
@@ -112,38 +121,30 @@ async function convertDirect({ ffmpegPath, input, options, onProgress, outDir, e
   ensureRunning();ensureActive();
   if (!info.hasAudio) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
   const span = (options.trimEnd > 0 ? Math.min(options.trimEnd, info.duration || options.trimEnd) : info.duration) - options.trimStart;
-  return runToTemp({ ffmpegPath, input, options, mode: 'direct', source: input, duration: span > 0 ? span : info.duration, onProgress, outDir });
+  return runToTemp({ ffmpegPath, input, options, mode: 'direct', source: input, duration: span > 0 ? span : info.duration, onProgress, outDir,ensureActive });
 }
 
 // The renderer already applied trim/rate/channels/effects/gain and sent a WAV: for WAV output it is written as is, otherwise ffmpeg encodes it.
-async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress, duration, outDir }) {
+async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress, duration, outDir,ensureActive=()=>{} }) {
   ensureRunning();
+  ensureActive();
   if (wavBytes instanceof ArrayBuffer) wavBytes=Buffer.from(wavBytes);
   if (!ArrayBuffer.isView(wavBytes)) throw Object.assign(new Error('invalid WAV byte payload'),{code:'invalid-wav'});
   if (options.format === 'wav') {
     const { tmp } = planOutput(input, options, fs.existsSync, outDir);
     let created=false;
     try{
-      const handle=fs.openSync(tmp,'wx',0o600);created=true;
-      try{fs.writeFileSync(handle,wavBytes);}finally{fs.closeSync(handle);}
-      const output=finalize(tmp,input,options,outDir);
+      const handle=await fs.promises.open(tmp,'wx',0o600);created=true;
+      try{await handle.writeFile(wavBytes);}finally{await handle.close();}
+      ensureRunning();ensureActive();const output=finalize(tmp,input,options,outDir);
       if(onProgress)onProgress(1);
       return {promise:Promise.resolve({output}),cancel(){}};
     }finally{if(created)try{fs.unlinkSync(tmp);}catch{}}
   }
   if (!ffmpegPath) throw Object.assign(new Error('no-ffmpeg'), { code: 'no-ffmpeg' });
-  const scratch=createScratch('opsis-conv-');
-  const wavTmp=path.join(scratch.dir,'source.wav');
-  let created=false;
-  try{
-    const handle=fs.openSync(wavTmp,'wx',0o600);created=true;
-    try{fs.writeFileSync(handle,wavBytes);}finally{fs.closeSync(handle);}
-  }catch(err){scratch.release();throw err;}
-  let job;
-  try { job = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: wavTmp, duration, onProgress, outDir }); }
-  catch (e) { scratch.release();throw e; }
-  const cleanup = () => {scratch.release();};
-  return { promise: job.promise.finally(cleanup), cancel: job.cancel };
+  // A processed WAV already exists in memory. Feed it directly to FFmpeg.
+  // The only disk write is the exclusive temporary encoded output.
+  return runToTemp({ffmpegPath,input,options,mode:'encode',source:'pipe:0',inputBytes:wavBytes,duration,onProgress,outDir,ensureActive});
 }
 
 // ffmpeg decodes anything it knows to 32-bit float WAV when the renderer's own decoder cannot (WMA, AIFF, some video containers).

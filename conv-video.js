@@ -38,13 +38,15 @@ function capture(ffmpegPath, args, timeoutMs = 15000) {
 
 // Asks ffmpeg what it can encode and which hardware accelerators it knows. Cached per binary.
 async function detectEncoders(ffmpegPath) {
-  if (encoderCache.has(ffmpegPath)) return encoderCache.get(ffmpegPath);
-  if(encoderPending.has(ffmpegPath))return encoderPending.get(ffmpegPath);
+  // Same path may point at a freshly updated FFmpeg binary.
+  let key=ffmpegPath;try{const st=fs.statSync(ffmpegPath);key=ffmpegPath+'|'+st.size+'|'+st.mtimeMs;}catch{}
+  if (encoderCache.has(key)) return encoderCache.get(key);
+  if(encoderPending.has(key))return encoderPending.get(key);
   const task=(async()=>{const res={
     encoders:V.parseEncoders(await capture(ffmpegPath,['-hide_banner','-encoders'])),
     hwaccels:V.parseHwaccels(await capture(ffmpegPath,['-hide_banner','-hwaccels']))
-  };if(res.encoders.size){if(encoderCache.size>=8)encoderCache.delete(encoderCache.keys().next().value);encoderCache.set(ffmpegPath,res);}return res;})();
-  encoderPending.set(ffmpegPath,task);try{return await task;}finally{encoderPending.delete(ffmpegPath);}
+  };if(res.encoders.size){if(encoderCache.size>=8)encoderCache.delete(encoderCache.keys().next().value);encoderCache.set(key,res);}return res;})();
+  encoderPending.set(key,task);try{return await task;}finally{encoderPending.delete(key);}
 }
 
 async function probeVideo(ffmpegPath, file) {
@@ -80,7 +82,7 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   if (!info.video && !options.audioOnly) throw Object.assign(new Error('no-video'), { code: 'no-video' });
   if (options.audioOnly && !info.audio.length) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
   const needsEncoder = !options.audioOnly && !options.gif;
-  const order = needsEncoder ? V.encoderOrder(options.codec, available) : [null];
+  const order = needsEncoder ? V.encoderOrder(options.codec, available,{policy:options.encoderPolicy,passes:options.passes}) : [null];
   if (!order.length) throw Object.assign(new Error('no-encoder'), { code: 'no-encoder' });
   const ext = V.outputExt(options);
   const span = (options.trimEnd > 0 ? Math.min(options.trimEnd, info.duration || options.trimEnd) : info.duration) - options.trimStart;
@@ -126,7 +128,7 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
         cleanup();
         if (cancelled || (e && e.code === 'cancelled')) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
         // A filesystem publication failure is not an encoder failure.
-        if(['publish-failed','denied','invalid-output'].includes(e?.code))throw e;
+        if(['publish-failed','denied','invalid-output','timeout','input-pipe-failed'].includes(e?.code))throw e;
         lastError = e;
         if (!firstTried) firstTried = enc;
       }

@@ -20,7 +20,7 @@
   const LIMITS = { maxHeight: 4320, maxFps: 240, minBitrate: 100, maxBitrate: 200000, maxFiles: 200, maxTrack: 31 };
 
   const DEFAULTS = {
-    preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',
+    preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',encoderPolicy:'auto',
     audioCodec: 'aac', audioBitrate: 192, audioTrack: 0, removeAudio: false, subtitle: 'none', subtitleFile: '', subtitleTrack: 0,
     trimStart: 0, trimEnd: 0, audioOnly: false, audioOnlyFormat: 'm4a', gif: false, suffix: '-video',
   };
@@ -66,6 +66,7 @@
     if (!(o.bitrate >= LIMITS.minBitrate && o.bitrate <= LIMITS.maxBitrate)) errors.push('bitrate');
     if (![1, 2].includes(o.passes)) errors.push('passes');
     if (!SPEEDS.includes(o.speed)) errors.push('speed');
+    if(!['auto','software','hardware'].includes(o.encoderPolicy))errors.push('encoderPolicy');
     if (!AUDIO_CODECS.includes(o.audioCodec)) errors.push('audioCodec');
     if (!(o.audioBitrate >= 32 && o.audioBitrate <= 512)) errors.push('audioBitrate');
     if (!(o.audioTrack >= 0 && o.audioTrack <= LIMITS.maxTrack)) errors.push('audioTrack');
@@ -102,11 +103,13 @@
   }
 
   // Candidate encoders for a codec, best first: hardware (when listed) then software. `available` is a Set of encoder names.
-  function encoderOrder(codec, available, { preferHardware = true } = {}) {
+  function encoderOrder(codec, available, { preferHardware = true,policy='auto',passes=1 } = {}) {
     const c = CODECS[codec];
     if (!c) return [];
     const hw = c.hw.filter((e) => available.has(e)), sw = c.sw.filter((e) => available.has(e));
-    return preferHardware ? [...hw, ...sw] : [...sw, ...hw];
+    const order=policy==='software'?sw:policy==='hardware'?hw:preferHardware?[...hw,...sw]:[...sw,...hw];
+    // Explicit two-pass means two-pass, not silently switching to one pass.
+    return passes===2?order.filter(canTwoPass):order;
   }
   const isHardware = (enc) => /_(nvenc|qsv|amf)$/.test(enc);
   // For the UI: what exists per codec and which one is chosen automatically.

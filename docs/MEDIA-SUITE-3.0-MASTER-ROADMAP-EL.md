@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 3B — pipe-based audio conversion and explicit encoder policy (2026-11-27)
+
+- Prior 3A general and installer CI still running at inspection; DSP and RAR workflows PASS. Last complete baseline remains 2E.
+- Processed WAV already in memory is streamed by bounded 64 KiB views into FFmpeg pipe:0; no intermediate WAV disk write for non-WAV outputs. WAV export uses async exclusive write and checks cancellation before publication. Shared existing run registry, source approval and atomic publication retained. Cancellation checked between renderer decode/encode phases, during main preparation and before final publication. No global process kill.
+- Auto GPU-first with CPU fallback remains default; strict CPU-only and GPU-only user choices added. Explicit two-pass selects capable encoders only, no silent one-pass substitution. Encoder detection cache includes binary file size/mtime. Timeout and publication failure not retried as hardware fallback. No guarantee of available hardware or speed on physical GPU.
+- Hidden video preview stops before thumbnail launch after in-flight probe; resumes without re-probing known info. Existing audio/video job concurrency remains unchanged. Tests for pipe encoding, cancellation before WAV publication and strict encoder choice added. New CI pending; predecode scratch and actual SSD/GPU benchmarks remain open. No release/merge.
+
 ## ULTRA 3A — selective video DSP and on-demand FxSound detection (2026-11-27)
 
 - Frozen 2E head `d04d85f449e07a84155907f45e213484330bee9f`: all nine workflows PASS, general 46071056272 298/298, real Electron SELF-TEST PASSED. Five samples startup CPU 0.11% / 535427.2 KiB summed working set, post-soak 0.04% / 564650.4 KiB; not a controlled benchmark.

@@ -52,7 +52,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     consentBusy=true;
     try{
       const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Allow / Επιτρέπεται'],defaultId:0,cancelId:0,message:'Allow the converter to read '+files.length+' selected media files?',detail:files.slice(0,10).join('\n')+(files.length>10?'\n…':'')});
-      return answer.response===1?files.map(approveSource).filter(Boolean):[];
+      return !closing&&trusted(e)&&answer.response===1?files.map(approveSource).filter(Boolean):[];
     }finally{consentBusy=false;}
   });
   ipcMain.handle('conv:choose-folder',async(e)=>{
@@ -63,7 +63,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   async function approveOutput(req){
     if(req.outMode!=='custom')return true;
     const p=localDirectory(req.outDir);if(!p)return false;if(directoryGrants.has(p))return true;if(consentBusy)return false;
-    consentBusy=true;try{const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Allow / Επιτρέπεται'],defaultId:0,cancelId:0,message:'Allow writing converted files in this folder?',detail:p});if(r.response!==1||localDirectory(p)!==p)return false;boundedAdd(directoryGrants,p,64);return true;}finally{consentBusy=false;}
+    consentBusy=true;try{const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Allow / Επιτρέπεται'],defaultId:0,cancelId:0,message:'Allow writing converted files in this folder?',detail:p});if(closing||r.response!==1||localDirectory(p)!==p)return false;boundedAdd(directoryGrants,p,64);return true;}finally{consentBusy=false;}
   }
   const okId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
   const errorOf = (e) => ({ ok: false, code: e && e.code || 'failed', error: (e && e.message || String(e)).slice(0, 400) });
@@ -124,7 +124,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       const ensureActive=()=>{if(closing||cancelledEarly.has(id))throw Object.assign(Error('cancelled'),{code:'cancelled'});};
       ensureActive();const job = await make(ensureActive);
       jobs.set(id, job);
-      if (closing||cancelledEarly.delete(id)) job.cancel();
+      if (closing||cancelledEarly.has(id)) job.cancel();
       const r = await job.promise;
       const output=localPath(r.output);if(output)boundedAdd(outputGrants,output);
       return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
@@ -160,7 +160,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     // tracks that come from the playlist have no file on disk: name them after the track inside the output folder
     const input = hasSource ? inputFile(req.path) : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
     if(!input)throw Object.assign(Error('source unavailable'),{code:'denied'});
-    ensureActive();return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
+    ensureActive();return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, ensureActive,onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
     });
   });
 
@@ -219,7 +219,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.on('conv:cancel', (e, id) => {
     if (!trusted(e) || !okId(id)) return;
-    if (jobs.has(id)) jobs.get(id).cancel(); else if (pending.has(id)) cancelledEarly.add(id);
+    if(pending.has(id))cancelledEarly.add(id);if (jobs.has(id)) jobs.get(id).cancel();
   });
   ipcMain.on('conv:reveal', (e, p) => { if(trusted(e)){const f=localPath(p);if(f&&outputGrants.has(f))shell.showItemInFolder(f);} });
 
