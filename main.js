@@ -464,13 +464,38 @@ function createWindow() {
 
   let metadataBusy=false;
   ipcMain.handle('metadata:complete',async(event,mode,values)=>{
-    if(!fromMain(event)||metadataBusy||!['auto','manual'].includes(mode))return {error:'busy or denied'};
+    if(!fromMain(event)||metadataBusy||!['auto','manual','online'].includes(mode))return {error:'busy or denied'};
     metadataBusy=true;
     try{
       const tags=require('./music-tags');
       const picked=await dialog.showOpenDialog(win,{title:'Select MP3 files / Επιλογή MP3',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3',extensions:['mp3']}]});
       if(picked.canceled)return {cancelled:true};
       if(picked.filePaths.length>50)return {error:'Maximum 50 files per batch'};
+      if(mode==='online'){
+        const file=picked.filePaths[0], stat=await fs.promises.lstat(file);
+        if(!stat.isFile()||stat.size>512*1024*1024||/^(\\\\|\/\/)/.test(file))return {error:'Unsupported local file'};
+        const mm=await import('music-metadata');const m=await mm.parseFile(file,{duration:false,skipCovers:true});
+        const guessed=tags.infer(file), artist=m.common.artist||guessed.artist, title=m.common.title||guessed.title;
+        if(!artist||!title)return {error:'Artist and title needed / Απαιτούνται καλλιτέχνης και τίτλος'};
+        const consent=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Search MusicBrainz'],defaultId:0,cancelId:0,message:'Send artist and title to MusicBrainz?',detail:artist+' — '+title+'\nNo file, path or audio is uploaded.'});
+        if(consent.response!==1)return {cancelled:true};
+        const lookup=require('./music-lookup'), choices=await lookup.search({artist,title});
+        if(!choices.length)return {error:'No matches / Χωρίς αποτελέσματα'};
+        // Native dialog buttons are intentionally limited to five candidates per page.
+        let selected=null;
+        for(let i=0;i<choices.length;i+=5){
+          const page=choices.slice(i,i+5),more=i+5<choices.length;
+          const labels=page.map((r,j)=>(i+j+1)+'. '+r.title+' — '+r.artist+' | '+(r.album||'—')+' '+r.year);
+          const answer=await dialog.showMessageBox(win,{type:'question',message:'Choose exact recording and album / Επιλέξτε έκδοση',detail:'Search scores are not proof of identity. Existing tags will not be overwritten.',buttons:['Cancel / Ακύρωση',...labels,...(more?['More / Περισσότερα']:[])],defaultId:0,cancelId:0,noLink:true});
+          if(answer.response===0)return {cancelled:true};
+          if(answer.response<=page.length){selected=page[answer.response-1];break;}
+        }
+        if(!selected)return {cancelled:true};
+        const ok=await dialog.showMessageBox(win,{type:'question',message:'Fill only missing tags?',detail:[selected.title,selected.artist,selected.album,selected.year].filter(Boolean).join(' — '),buttons:['Cancel / Ακύρωση','Save tags / Αποθήκευση','View cover online / Εξώφυλλο'],defaultId:0,cancelId:0});
+        if(ok.response===2){const link=lookup.coverURL(selected.releaseId);if(link)await require('electron').shell.openExternal(link);return {cancelled:true};}
+        if(ok.response!==1)return {cancelled:true};
+        return {rows:[{file,...await tags.complete(file,selected)}]};
+      }
       const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Automatic mode uses Artist - Title filenames only. Close any player using these files.'});
       if(confirm.response!==1)return {cancelled:true};
       const rows=[];

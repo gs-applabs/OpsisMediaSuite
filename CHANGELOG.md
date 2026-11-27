@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 18G
+- Explicit MusicBrainz search from existing tags or Artist - Title names; one-second request spacing, bounded response, native candidate review and separate write confirmation. Cover Art Archive link for chosen release, no automatic artwork embedding. No audio or path uploaded.
+
 ## Unreleased — Ultra Mega Pass 18F
 - Installer lifecycle CI uses existing Inno Setup 7 script instead of synthetic NSIS; same AppId and legacy migration, no release publication. Synthetic upgrade 2.4.2 to 3.0.0 remains a test, not a released upgrade.
 - MP3 missing-tag completion: on-demand fields or batch filename inference, original backups, lossless frame insertion, refuses unsupported ID3 layouts; no internet lookup or writes during playback by default. Windows CI and real-file validation pending.
