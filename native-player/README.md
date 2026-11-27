@@ -16,3 +16,6 @@ Native handoff now accepts bounded resume milliseconds, reports JSON ready/posit
 Selected corrected text subtitle is passed to LibVLC as a temporary canonical SRT (main owns path; bounded). Host reports whether AddSlave accepts it; dedicated selftest validates external track selection. Native subtitle timing/visual verification still pending; no DirectShow handoff.
 
 LibVLC central transport uses a bounded stdin JSON command and stdout ack, fixed verbs only, one outstanding command, session check. Native status includes play/mute/volume. DirectShow does not yet support this bridge. Native CLI control test exercises the same parser/actions with dummy output; interactive WinForms IPC remains unverified.
+
+## Integrated test candidate
+The dedicated native-candidate workflow builds a private unsigned directory candidate with the native host in resources/native-player and tests the packaged app, workers and real native pipe. Only evidence logs and inventories are uploaded, not the binaries. The default distribution configuration is unchanged pending licensing review and release gates.

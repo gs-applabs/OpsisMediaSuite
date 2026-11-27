@@ -138,3 +138,6 @@ Pass 41 native pipe CI 45954049506/45954043622 passed actual redirected process 
 
 ## Pass 44 — image decode preflight and deterministic reverb
 Pass 43 public renderer CI 45954475346 passed new photo crop/RGB and audio mix controls, layout 20 languages at 100/150%; native and plugin CI passed. Add bounded header inspection for PNG/JPEG/GIF/BMP/WebP before bitmap allocation (unknown headers/AVIF still use decoder then post-check, not a complete decompression-bomb defense), dimension guard; explicit JPEG matte for transparent exports, default white. Reverb impulse generation is deterministic per channel and uses actual offline sample rate rather than live context, preserving reproducibility at a given rate. No change to legacy tail length. Unit tests; latest CI pending.
+
+## Pass 45 — integrated native directory package test
+Added separate unsigned Windows directory candidate with native publish copied to resources/native-player, packaged worker/ASAR layout assertions, full Electron selftest using packaged executable and native host discovery, real redirected native pipe test from packaged resources, inventory of native files/hashes/notices. CI-only build, no installer/release/binary artifact upload; licensing review and release signing remain pending. Tests are not yet certified.

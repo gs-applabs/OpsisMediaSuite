@@ -406,6 +406,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
         const silence=await js("waveframe.vpSubAutoSync("+JSON.stringify({path:silent,cues})+")");
         check('real FFmpeg silent audio gives no sync suggestion',silence?.ok===false,JSON.stringify(silence));
       }
+      if(process.env.WAVEFRAME_SELFTEST==='1'&&process.env.OPSIS_PACKAGED_SELFTEST_EXE){
+        const nativeStatus=await js('waveframe.vpNativeStatus()');
+        check('packaged native host discovered in resources',app.isPackaged&&nativeStatus?.available===true);
+      }
       const codecReport = await inventory();
       check('Windows codec inventory returns bounded registry metadata', process.platform !== 'win32' || (codecReport.status==='ok' && Array.isArray(codecReport.packs) && Array.isArray(codecReport.filters) && Array.isArray(codecReport.transforms)), JSON.stringify({status:codecReport.status,arch:codecReport.arch,packs:codecReport.packs.length,filters:codecReport.filters.length,transforms:codecReport.transforms.length}));
       /* photo editor */

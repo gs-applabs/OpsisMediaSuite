@@ -1,0 +1,61 @@
+name: Packaged native candidate (test only)
+on:
+  push:
+    branches: ['feat/photo-tools-fxsound-coexistence']
+    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: npm ci
+      - run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
+      - name: Build unsigned directory candidate (no publication)
+        run: node test/build-native-candidate.js
+      - name: Verify native resources and worker placement
+        shell: pwsh
+        run: |
+          $resources='release-native-candidate/win-unpacked/resources'
+          foreach($file in @('native-player/Opsis.NativePlayer.exe','app.asar','app.asar.unpacked/subtitle-sync-worker.js','app.asar.unpacked/subtitle-autosync.js')){
+            if(-not (Test-Path (Join-Path $resources $file))){throw "Missing resource: $file"}
+          }
+          $root=(Resolve-Path "$resources/native-player").Path
+          Get-ChildItem $root -Recurse -File | ForEach-Object {
+            [PSCustomObject]@{path=$_.FullName.Substring($root.Length+1);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
+          } | ConvertTo-Json -Depth 3 | Set-Content native-candidate-inventory.json
+          Get-ChildItem $root -Recurse -File | Where-Object Name -match 'license|copying|notice' | ForEach-Object {$_.FullName.Substring($root.Length+1)} | Set-Content native-notice-inventory.txt
+      - name: Verify actual packaged app, workers and native discovery
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          $env:OPSIS_PACKAGED_SELFTEST_EXE=(Resolve-Path 'release-native-candidate/win-unpacked/Opsis Media Suite.exe').Path
+          npm run selftest 2>&1 | Tee-Object packaged-test.log
+          if ($LASTEXITCODE) {throw 'packaged selftest failed'}
+      - name: Run real native command pipe from packaged resources
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=5 -f lavfi -i sine=frequency=440:duration=5 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest fixture.mkv
+          if ($LASTEXITCODE) {throw 'fixture failed'}
+          $env:OPSIS_NATIVE_TEST_EXE=(Resolve-Path 'release-native-candidate/win-unpacked/resources/native-player/Opsis.NativePlayer.exe').Path
+          node test/native-pipe-fixture.js
+          if ($LASTEXITCODE) {throw 'packaged native pipe test failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-candidate-test-evidence
+          path: |
+            native-candidate-inventory.json
+            native-notice-inventory.txt
+            packaged-test.log
+            pipe-result.json

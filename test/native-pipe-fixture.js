@@ -1,7 +1,7 @@
 'use strict';
 const {spawn}=require('node:child_process'),path=require('node:path'),assert=require('node:assert/strict'),fs=require('node:fs');
 const {normalizeCommand,parseHostEvent}=require('../native-host');
-const child=spawn(path.resolve('native-player/publish/Opsis.NativePlayer.exe'),['--selftest-pipe',path.resolve('fixture.mkv')],{stdio:['pipe','pipe','pipe'],windowsHide:true});
+const child=spawn(path.resolve(process.env.OPSIS_NATIVE_TEST_EXE||'native-player/publish/Opsis.NativePlayer.exe'),['--selftest-pipe',path.resolve('fixture.mkv')],{stdio:['pipe','pipe','pipe'],windowsHide:true});
 const events=[],errors=[];let buffer='',notify=()=>{};
 child.stdout.setEncoding('utf8');child.stdout.on('data',s=>{buffer+=s;let i;while((i=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,i).trim();buffer=buffer.slice(i+1);try{const e=JSON.parse(line);events.push(e);notify();}catch{}}});
 child.stderr.on('data',b=>{if(errors.length<64)errors.push(String(b).slice(0,1024));});

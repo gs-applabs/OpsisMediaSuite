@@ -11,13 +11,14 @@ const fs = require('fs');
 const os = require('os');
 const USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-selftest-')); // isolated profile: never touches the real settings
 
-const ELECTRON_BIN = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
+const packaged=process.env.OPSIS_PACKAGED_SELFTEST_EXE;
+const ELECTRON_BIN=packaged?path.resolve(packaged):path.join(__dirname,'node_modules','.bin',process.platform==='win32'?'electron.cmd':'electron');
 if (!fs.existsSync(ELECTRON_BIN)) { console.error('FAIL: Electron not installed (run npm install)'); process.exit(1); }
 
-const child = spawn(ELECTRON_BIN, ['.'], {
+const child = spawn(ELECTRON_BIN, packaged?[]:['.'], {
   cwd: __dirname,
   env: { ...process.env, WAVEFRAME_SELFTEST: '1', WAVEFRAME_USER_DATA: USER_DATA, ELECTRON_ENABLE_LOGGING: '0' },
-  shell: process.platform === 'win32',
+  shell: !packaged&&process.platform==='win32',
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
