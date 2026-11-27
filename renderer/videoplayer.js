@@ -154,7 +154,7 @@
   }
 
   /* ---------------- subtitles ---------------- */
-  function clearSubs() { ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -169,6 +169,7 @@
       for (const cue of Array.from(nativeSubtitleTrack.cues || [])) nativeSubtitleTrack.removeCue(cue);
       nativeSubtitleTrack.mode = 'disabled';
     }
+    $('vpSubCue').textContent='';
     if (subSel < 0 || !subSrc[subSel]) return;
     const s = subSrc[subSel], r = VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps);
     if (!r.cues) { say(r.needsFps?'MicroDVD: choose source FPS / Επιλέξτε αρχικά FPS':t('vp.subEmpty')); return; }
@@ -190,6 +191,7 @@
       nativeSubtitleTrack.addCue(cue);
     }
     nativeSubtitleTrack.mode = 'showing';
+    const raw=VP.subtitleToVtt(s.text,s.ext,0,subScale,subFps);for(const [i,c] of raw.entries.slice(0,2000).entries()){const o=document.createElement('option');o.value=String(c.start);o.textContent=(i+1)+' · '+VP.clock(c.start*1000)+' · '+c.text.replace(/<[^>]*>/g,'').slice(0,65);$('vpSubCue').append(o);}
   }
   function preferredIndex() { return VP.preferredSubtitle(subSrc,(get(K.subs,{})||{}).languages); }
   async function loadSiblingSubs(p, g, revision) {
@@ -205,12 +207,15 @@
     const g = generation; ++subRevision;
     const f = await api.vpPickSub().catch(() => null);
     if (!f || g !== generation) return;
+    attachSubtitle(f);
+  }
+  function attachSubtitle(f){
     const old = subSrc.findIndex(s => s.name === f.name && s.text === f.text);
     if (old >= 0) subSel = old;
     else if (subSrc.length < 24) { subSrc.push({ name: f.name, ext: f.ext, text: f.text }); subSel = subSrc.length - 1; }
     fillSubSelect(); rebuildTrack();
   }
-  function setDelay(d) { subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 10) / 10)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; rebuildTrack(); }
+  function setDelay(d) { if(!Number.isFinite(d))return;subDelay = Math.max(-3600, Math.min(3600, Math.round(d * 1000) / 1000)); $('vpSubDelay').textContent = `${subDelay > 0 ? '+' : ''}${subDelay} s`; $('vpSubDelayExact').value=String(subDelay);rebuildTrack(); }
   function applySubStyle() {
     const s = get(K.subs, {}) || {};
     const size = Number($('vpSubSize').value) || 16, color = $('vpSubColor').value || '#ffffff';
@@ -414,6 +419,32 @@
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { ++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
+    let searchGeneration=0;
+    const onlineStatus=t=>{$('vpSubOnlineStatus').textContent=t;};
+    $('vpSubOnlineToggle').addEventListener('click',()=>{$('vpSubOnline').hidden=!$('vpSubOnline').hidden;if(current()&&!$('vpSubQuery').value)$('vpSubQuery').value=VP.titleOf(current());});
+    $('vpSubSearch').addEventListener('click',async()=>{
+      const g=generation,n=++searchGeneration;
+      $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubSearch').disabled=true;
+      const req={query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value};
+      $('vpSubKey').value='';$('vpSubPassword').value='';$('vpSubUser').value='';onlineStatus('Searching…');
+      try{
+        const r=await api.vpSubSearch(req);if(g!==generation||n!==searchGeneration)return;
+        if(!r?.ok){onlineStatus(r?.code||'Search failed');return;}
+        for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'');$('vpSubResults').append(o);}
+        $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα');
+      }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
+    });
+    $('vpSubDownload').addEventListener('click',async()=>{
+      if(!current())return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
+      $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
+      try{const r=await api.vpSubDownload(id);if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
+        if(!r?.ok){onlineStatus(r?.code||'Download failed');return;}
+        attachSubtitle(r.subtitle);onlineStatus('Downloaded and selected / Λήψη και επιλογή'+(r.remaining===null?'':' · remaining '+r.remaining));
+      }catch{onlineStatus('Download failed');}finally{if(g===generation&&n===searchGeneration)$('vpSubDownload').disabled=!$('vpSubResults').options.length;}
+    });
+    $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
+    $('vpSubDelayExact').addEventListener('change',()=>setDelay(Number($('vpSubDelayExact').value)));
+    $('vpSubSyncHere').addEventListener('click',()=>{if($('vpSubCue').options.length&&Number.isFinite(video.currentTime))setDelay(video.currentTime-Number($('vpSubCue').value));});
     async function saveSubtitle(format){
       const s=subSrc[subSel];if(!s){say(t('vp.subEmpty'));return;}
       const r=VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps),text=VP.exportSubtitles(r.entries,format);

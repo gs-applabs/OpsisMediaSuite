@@ -84,3 +84,6 @@ SRT/VTT export from processed cues with current delay/FPS, native save dialog, U
 
 ## Full pass 26 — native seek compilation and runtime tests
 Pass 23 native CI failed because DirectShowLib enum lacks AbsolutePosition. Use Windows AM_SEEKING_AbsolutePositioning value 1, check HRESULT, add real DirectShow WAV seek-to-1s and LibVLC MKV seek-to-2s checks. Native ready handoff itself still needs real interactive testing. Latest CI pending.
+
+## Pass 27 — online subtitle search/download and cue alignment
+OpenSubtitles.com REST session client (user API key, optional login, in-memory only), explicit title/language search, bounded result IDs, chosen download, HTTPS allowlist, no redirects or auth forwarding to file link, bounded body/time, validation and direct subtitle selection. Fine millisecond delay and align chosen cue to current video time, existing FPS and export. Unit fixture tests; real provider authenticated access requires user credentials and is not certified. New UI labels bilingual/English until locale round. Prior native seek CI passed, plugin 12/12 passed.

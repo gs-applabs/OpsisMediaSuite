@@ -224,3 +224,20 @@ test('synchronized subtitle export round trips timing without replacing original
  }
  assert.equal(V.exportSubtitles([{start:4,end:2,text:'x'}],'srt'),'');
 });
+
+test('OpenSubtitles provider search, download and hostile link guards',async()=>{
+ const {createProvider,downloadUrl}=require('../subtitle-provider');
+ assert.equal(downloadUrl('https://dl.opensubtitles.com.evil.example/download/a'),null);
+ assert.equal(downloadUrl('http://dl.opensubtitles.com/download/a'),null);
+ assert.equal(downloadUrl('https://dl.opensubtitles.com/download/a'),'https://dl.opensubtitles.com/download/a');
+ const seen=[];const provider=createProvider({fetchImpl:async(url,opts)=>{
+  seen.push({url,opts});
+  if(url.includes('subtitles?'))return Response.json({data:[{attributes:{language:'el',files:[{file_id:123,file_name:'test.el.srt'}]}}]});
+  if(url.endsWith('/download'))return Response.json({link:'https://dl.opensubtitles.com/download/test',remaining:3});
+  return new Response('1\n00:00:00,500 --> 00:00:02,000\nΚαλημέρα\n');
+ }});
+ const r=await provider.search({query:'Example',language:'el',apiKey:'fixture-key'});assert.equal(r.items[0].id,123);
+ await new Promise(r=>setTimeout(r,760));
+ const out=await provider.download(123);assert.equal(out.ok,true);assert.match(out.subtitle.text,/Καλημέρα/);assert.equal(seen[2].opts.headers['Api-Key'],undefined);assert.equal(seen[2].opts.redirect,'error');
+ await new Promise(r=>setTimeout(r,760));assert.equal((await provider.download(456)).code,'not-in-results');
+});

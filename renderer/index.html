@@ -313,6 +313,7 @@
                   <label class="vp-inline"><span data-i18n="vp.subtitles">Υπότιτλοι</span>
                     <select id="vpSubTrack"></select></label>
                   <button class="small-btn" id="vpSubLoad" data-i18n="vp.subLoad">Φόρτωση αρχείου…</button>
+                  <button class="small-btn" id="vpSubOnlineToggle">Online subtitles / Λήψη</button>
                   <button class="small-btn" id="vpSubSaveSrt">Save synced SRT</button><button class="small-btn" id="vpSubSaveVtt">Save synced VTT</button>
                 </div>
                 <div class="vp-bar vp-row">
@@ -323,6 +324,18 @@
                   <label>FPS <select id="vpSubFps" aria-label="Subtitle frame rate conversion"><option value="1">1:1</option><option value="0.95904">23.976 → 25</option><option value="1.042709375">25 → 23.976</option><option value="0.96">24 → 25</option><option value="1.0416666667">25 → 24</option></select></label>
                   <button class="small-btn" id="vpSubPlus" aria-label="+0.5 s">+0,5″</button>
                 </div>
+                <div id="vpSubOnline" hidden>
+                  <p class="hint">OpenSubtitles.com — search sends only your typed title and language. Credentials stay in memory; no automatic download.</p>
+                  <div class="vp-field"><label for="vpSubKey">API key</label><input id="vpSubKey" type="password" maxlength="256" autocomplete="off"></div>
+                  <div class="vp-field"><label for="vpSubUser">Username (optional)</label><input id="vpSubUser" maxlength="256" autocomplete="off"></div>
+                  <div class="vp-field"><label for="vpSubPassword">Password (optional)</label><input id="vpSubPassword" type="password" maxlength="512" autocomplete="off"></div>
+                  <div class="vp-field"><label for="vpSubQuery">Title / Τίτλος</label><input id="vpSubQuery" maxlength="160" type="text"></div>
+                  <div class="vp-bar vp-row"><label>Language <select id="vpSubLanguage"><option value="el">Ελληνικά</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="es">Español</option><option value="pt">Português</option><option value="ru">Русский</option></select></label><button class="small-btn" id="vpSubSearch">Search</button><button class="small-btn" id="vpSubDisconnect">Disconnect</button></div>
+                  <div class="vp-field"><label for="vpSubResults">Results / Αποτελέσματα</label><select id="vpSubResults"></select></div>
+                  <button class="small-btn" id="vpSubDownload" disabled>Download &amp; display</button>
+                  <p class="hint" id="vpSubOnlineStatus" role="status"></p>
+                </div>
+                <div class="vp-bar vp-row"><label>Delay (s) <input id="vpSubDelayExact" type="number" min="-3600" max="3600" step="0.05" value="0"></label><button class="small-btn" id="vpSubSyncHere">Align selected cue to video time</button><select id="vpSubCue" aria-label="Subtitle cue to synchronize"></select></div>
                 <div class="vp-field"><label for="vpSubSize" data-i18n="vp.subSize">Μέγεθος</label><input type="range" id="vpSubSize" min="8" max="48" step="1" value="16" /></div>
                 <div class="vp-bar vp-row">
                   <label class="vp-inline"><span data-i18n="vp.subColor">Χρώμα</span>

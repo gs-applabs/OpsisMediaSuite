@@ -11,6 +11,7 @@ const { randomBytes } = require('node:crypto');
 const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
+const { createProvider }=require('./subtitle-provider.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -142,6 +143,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const f = r.filePaths[0];
     try { return readSubtitle(f); } catch (_) { return null; }
   });
+  let subtitleProvider=createProvider({decode:decodeText});
+  ipcMain.handle('vp:sub-search',async(e,req)=>trusted(e)?subtitleProvider.search(req):{ok:false,code:'denied'});
+  ipcMain.handle('vp:sub-download',async(e,id)=>trusted(e)?subtitleProvider.download(id):{ok:false,code:'denied'});
+  ipcMain.handle('vp:sub-disconnect',e=>trusted(e)?subtitleProvider.clear():false);
   let subtitleSaveBusy=false;
   ipcMain.handle('vp:save-sub',async(e,req)=>{
     if(!trusted(e)||subtitleSaveBusy||!req||!['srt','vtt'].includes(req.format)||typeof req.text!=='string'||!req.text.trim()||Buffer.byteLength(req.text,'utf8')>MAX_SUB_BYTES)return {ok:false};

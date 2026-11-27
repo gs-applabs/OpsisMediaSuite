@@ -43,6 +43,7 @@
       "playback-core.js",
       "codec-inventory.js",
       "native-host.js",
+      "subtitle-provider.js",
       "suite-apps.json",
       "icon.ico",
       "renderer/**/*",
