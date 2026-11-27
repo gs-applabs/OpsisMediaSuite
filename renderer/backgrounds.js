@@ -273,10 +273,16 @@ const Backgrounds = (() => {
   }
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function frame() {
-    // Respect the OS "reduce motion" preference: keep showing the chosen
-    // background (don't force it off), just stop it from continuously animating.
-    if (!reduceMotion) t += 0.016;
+  let lastFrame=0,dirty=true,lastWidth=0,lastHeight=0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if(document.hidden)return;
+    if(W!==lastWidth||H!==lastHeight){dirty=true;lastWidth=W;lastHeight=H;}
+    // 30 fps maximum, static backgrounds draw once unless resized/changed.
+    const staticMode=reduceMotion||mode==='none';
+    if(!dirty&&(staticMode||now-lastFrame<32))return;
+    if(!reduceMotion)t+=Math.min(.1,lastFrame?(now-lastFrame)/1000:.016);
+    lastFrame=now;dirty=false;
     if (mode === 'equalizer') drawEqualizer();
     else if (mode === 'waves') drawWaves();
     else if (mode === 'nebula') drawNebula();
@@ -288,12 +294,15 @@ const Backgrounds = (() => {
     else if (mode === 'grid') drawPulseGrid();
     else if (mode === 'bokeh') drawBokeh();
     else drawNone();
-    requestAnimationFrame(frame);
   }
+  const styleObserver=new MutationObserver(()=>{dirty=true;});
+  styleObserver.observe(document.documentElement,{attributes:true,attributeFilter:['style','class','data-theme','data-skin']});
+  if(document.body)styleObserver.observe(document.body,{attributes:true,attributeFilter:['class','style','data-theme','data-skin']});
+  document.addEventListener('visibilitychange',()=>{dirty=true;lastFrame=0;});
   requestAnimationFrame(frame);
 
   return {
-    setMode(m) { mode = m; },
+    setMode(m) { mode = m;dirty=true; },
     setAnalyser(analyser, freqData) { analyserRef = analyser; freqDataRef = freqData; },
   };
 })();

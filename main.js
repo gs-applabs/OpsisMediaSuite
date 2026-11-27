@@ -156,6 +156,7 @@ function createHelpWindow(parent) {
 }
 
 const WINDOW_STATE_FILE = () => path.join(app.getPath('userData'), 'window-state.json');
+let lastWindowState=null;
 function loadWindowState() {
   try {
     const state = JSON.parse(fs.readFileSync(WINDOW_STATE_FILE(), 'utf-8'));
@@ -163,12 +164,17 @@ function loadWindowState() {
       const b = d.bounds;
       return state.x >= b.x - 50 && state.y >= b.y - 50 && state.x < b.x + b.width && state.y < b.y + b.height;
     });
+    if(onScreen)lastWindowState=JSON.stringify(state);
     return onScreen ? state : null;
   } catch { return null; }
 }
 function saveWindowState(win) {
   if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) return;
-  try { fs.writeFileSync(WINDOW_STATE_FILE(), JSON.stringify(win.getBounds())); } catch { /* best-effort */ }
+  try {
+    const next=JSON.stringify(win.getBounds());
+    if(next===lastWindowState)return;
+    fs.writeFileSync(WINDOW_STATE_FILE(),next);lastWindowState=next;
+  } catch { /* best-effort */ }
 }
 
 const AUDIO_FILE_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.opus', '.wma'];
@@ -273,7 +279,7 @@ function createWindow() {
   };
   win.on('resize', scheduleSaveState);
   win.on('move', scheduleSaveState);
-  win.on('close', () => { if (!isMiniMode) saveWindowState(win); });
+  win.on('close', () => { clearTimeout(saveStateTimeout); if (!isMiniMode) saveWindowState(win); });
 
   const bindMediaKey = (accelerator, action) => {
     globalShortcut.register(accelerator, () => {

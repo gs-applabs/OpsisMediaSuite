@@ -12,6 +12,7 @@ const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const {gpuSummary}=require('./gpu-diagnostics.js');
+const {summarizeMetrics}=require('./resource-diagnostics.js');
 const {detectEncoders}=require('./conv-video.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
@@ -102,6 +103,12 @@ function init({ getMainWin, resolveFfmpegPath }) {
       if(value===0n||value>0x7fffffffffffffffn)return {ok:false,code:'bad-window'};
       return nativeHost.open(p,engine,positionMs,subtitleText,{handle:value.toString(),pid:process.pid},decode);
     }catch{return {ok:false,code:'bad-window'};}
+  });
+  let resourceLast=0,resourceCache=null;
+  ipcMain.handle('vp:resource-diagnostics',e=>{
+    if(!trusted(e))return null;
+    if(resourceCache&&Date.now()-resourceLast<2000)return resourceCache;
+    try{resourceCache=summarizeMetrics(app.getAppMetrics());resourceLast=Date.now();return resourceCache;}catch{return null;}
   });
   let gpuBusy=false,gpuCache=null,gpuCacheTime=0;
   ipcMain.handle('vp:gpu-diagnostics',async e=>{

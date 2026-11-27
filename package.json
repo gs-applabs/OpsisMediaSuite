@@ -44,6 +44,7 @@
       "codec-inventory.js",
       "native-host.js",
       "gpu-diagnostics.js",
+      "resource-diagnostics.js",
       "subtitle-provider.js",
       "subtitle-subdl.js",
       "subtitle-batch.js",

@@ -580,3 +580,27 @@ test('decoder policy accepts only named LibVLC modes, never arbitrary arguments'
  assert.deepEqual(summary,{features:{video_decode:'enabled'},devices:[{active:true,deviceId:123,deviceString:'Adapter',driverVersion:'1.2'}]});
  assert.equal(Object.hasOwn(summary,'hardwareActive'),false);
 });
+
+
+test('resume checkpoints suppress small periodic changes and save explicit pause/close',()=>{
+ const {resumeUpdate}=V;
+ assert.equal(resumeUpdate({clip:20000},'clip',25000,100000),null);
+ assert.deepEqual(resumeUpdate({clip:20000},'clip',25000,100000,true),{clip:25000});
+ assert.deepEqual(resumeUpdate({clip:20000},'clip',35000,100000),{clip:35000});
+ assert.deepEqual(resumeUpdate({clip:20000},'clip',95000,100000),{});
+ assert.equal(resumeUpdate({},'clip',0,100000),null);
+});
+test('long subtitle stems no longer alias distinct videos',()=>{
+ const {sidecarStem,classifyName}=require('../subtitle-sidecar');
+ const a='x'.repeat(220)+'a.mkv',b='x'.repeat(220)+'b.mkv';
+ const sa=sidecarStem(a),sb=sidecarStem(b);
+ assert.notEqual(sa,sb);assert.ok(Buffer.byteLength(sa)<=200);
+ assert.equal(classifyName(a,sa+'.el.srt'),'greek');
+ assert.equal(classifyName(b,sa+'.el.srt'),null);
+});
+test('resource snapshot excludes extra fields and distinguishes missing measurements',()=>{
+ const {summarizeMetrics}=require('../resource-diagnostics');
+ const out=summarizeMetrics([{pid:12,type:'Browser',cpu:{percentCPUUsage:2.345},memory:{workingSetSize:1024,peakWorkingSetSize:2048},extra:'private'},{pid:0}]);
+ assert.deepEqual(out,{rows:[{pid:12,type:'Browser',cpuPercent:2.35,workingSetKiB:1024,peakWorkingSetKiB:2048}],workingSetKiB:1024});
+ assert.equal(summarizeMetrics([{pid:1}]).workingSetKiB,null);
+});

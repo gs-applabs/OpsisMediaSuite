@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpNativeStatus: () => ipcRenderer.invoke('vp:native-status'),
   vpNativeOpen: (p,engine,positionMs,subtitleText,embedded,decode) => ipcRenderer.invoke('vp:native-open', p,engine,positionMs,subtitleText,embedded,decode),
   vpGpuDiagnostics:()=>ipcRenderer.invoke('vp:gpu-diagnostics'),
+  vpResourceDiagnostics:()=>ipcRenderer.invoke('vp:resource-diagnostics'),
   vpNativeViewport:(session,rect)=>ipcRenderer.invoke('vp:native-viewport',session,rect),
   vpNativeSubtitle:(session,text)=>ipcRenderer.invoke('vp:native-subtitle',session,text),
   vpNativeStop: ()=>ipcRenderer.invoke('vp:native-stop'),

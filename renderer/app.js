@@ -852,10 +852,17 @@ els.btnTogglePlaylist.addEventListener('click', () => {
 /* ---- resizable playlist ---- */
 const playlistResizeHandle = document.getElementById('playlistResizeHandle');
 let playlistDragStartY = null, playlistDragStartH = null;
+let pendingPlaylistHeight=null;
 function setPlaylistHeight(px) {
-  const clamped = Math.max(120, Math.min(500, px));
+  const clamped = Math.round(Math.max(120, Math.min(500, px)));
+  if(clamped===pendingPlaylistHeight)return;
+  pendingPlaylistHeight=clamped;
   els.playlist.style.setProperty('--playlist-h', `${clamped}px`);
-  localStorage.setItem('waveframe.playlistHeight', String(clamped));
+}
+function commitPlaylistHeight(){
+  if(pendingPlaylistHeight===null)return;
+  try{const value=String(pendingPlaylistHeight);if(localStorage.getItem('waveframe.playlistHeight')!==value)localStorage.setItem('waveframe.playlistHeight',value);}catch{}
+  pendingPlaylistHeight=null;
 }
 playlistResizeHandle.addEventListener('mousedown', (e) => {
   playlistDragStartY = e.clientY;
@@ -866,7 +873,10 @@ window.addEventListener('mousemove', (e) => {
   if (playlistDragStartY === null) return;
   setPlaylistHeight(playlistDragStartH + (e.clientY - playlistDragStartY));
 });
-window.addEventListener('mouseup', () => { playlistDragStartY = null; });
+function finishPlaylistResize(){playlistDragStartY=null;commitPlaylistHeight();}
+window.addEventListener('mouseup',finishPlaylistResize);
+window.addEventListener('blur',finishPlaylistResize);
+window.addEventListener('beforeunload',finishPlaylistResize);
 const savedPlaylistH = localStorage.getItem('waveframe.playlistHeight');
 if (savedPlaylistH) els.playlist.style.setProperty('--playlist-h', `${savedPlaylistH}px`);
 
@@ -1890,10 +1900,15 @@ hueModeSeg.addEventListener('click', (e) => {
   if (!btn) return;
   applyHueMode(btn.dataset.hueMode);
 });
+let huePending=false;
+function commitHue(){if(!huePending)return;try{if(localStorage.getItem('waveframe.hueValue')!==hueSlider.value)localStorage.setItem('waveframe.hueValue',hueSlider.value);}catch{}huePending=false;}
 hueSlider.addEventListener('input', () => {
-  localStorage.setItem('waveframe.hueValue', hueSlider.value);
+  huePending=true;
   if (hueMode === 'manual') bgCanvasEl.style.filter = `hue-rotate(${hueSlider.value}deg)`;
 });
+hueSlider.addEventListener('change',commitHue);
+hueSlider.addEventListener('blur',commitHue);
+window.addEventListener('beforeunload',commitHue);
 // Re-filtering a full-window canvas is GPU work on every change: update at ~15 fps (same visible speed: bigger step) and
 // not at all while the window is hidden/minimized.
 let lastHueTick = 0;
@@ -2459,8 +2474,10 @@ function updateMiniMeter() {
   });
 }
 const tabPlayerEl = document.getElementById('tab-player');
-function renderLoop() {
-  if (!document.hidden) {
+let lastVisualFrame=0;
+function renderLoop(now=performance.now()) {
+  if (!document.hidden&&now-lastVisualFrame>=32) {
+    lastVisualFrame=now;
     // Skip the (potentially expensive, especially the particle-based) canvas
     // drawing when the Player tab isn't even visible — real CPU/battery win,
     // since a hidden `.tab-pane { display: none }` doesn't stop rAF on its own.
@@ -2473,6 +2490,10 @@ function renderLoop() {
         draw();
       }
     }
+    if(meterBars.length&&!(tabPlayerEl.classList.contains('active')||document.body.classList.contains('mini-mode'))){
+      // Meter remains current even when the full visualizer is skipped.
+      engine.analyser.getByteFrequencyData(freqData);
+    }else if(meterBars.length&&visMode==='none')engine.analyser.getByteFrequencyData(freqData);
     updateMiniMeter();
   }
   requestAnimationFrame(renderLoop);

@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
   const K = { recent: 'waveframe.video.recent', resume: 'waveframe.video.resume', bookmarks: 'waveframe.video.bookmarks', subs: 'waveframe.video.subs', playlists: 'waveframe.video.playlists', speed: 'waveframe.video.speed', queue: 'waveframe.video.queue' };
   const get = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
-  const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage unavailable */ } };
+  const put = (k, v) => { try { const encoded=JSON.stringify(v);if(localStorage.getItem(k)!==encoded)localStorage.setItem(k,encoded); } catch (_) { /* storage unavailable */ } };
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let session = null, playbackEngine = null;
@@ -105,7 +105,10 @@
       if(handoff!==marker)return;
       const s=await api.vpNativeStatus().catch(()=>null);
       if(handoff!==marker)return;
-      if(s?.session===marker.session&&s.durationMs>0){const map=get(K.resume,{}),act=VP.resumeAction(s.positionMs,s.durationMs);if(act==='save'){map[p]=Math.round(s.positionMs);put(K.resume,VP.limitResume(map));}else if(act==='clear'){delete map[p];put(K.resume,map);}}
+      if(s?.session===marker.session&&s.durationMs>0){
+        const force=s.playing===false&&marker.status?.playing!==false||['closed','error','stopping'].includes(s.phase);
+        if(force||!marker.lastResumeAt||Date.now()-marker.lastResumeAt>=15000){checkpoint(p,s.positionMs,s.durationMs,force);marker.lastResumeAt=Date.now();}
+      }
       if(s?.session===marker.session){marker.status=s;syncTime();syncTransport();if(!seeking&&Number.isFinite(s.volume))$('vpVolume').value=String(s.volume);}
       if(!s||['closed','error','stopping'].includes(s.phase)||s.session!==marker.session){clearViewport();handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;syncTime();syncTransport();say(engine+(s?.phase==='error'?' — native playback failed':' — native window closed'));return;}
       nativePoll=setTimeout(poll,1000);
@@ -157,7 +160,7 @@
     if(m.engine!=='libvlc'){say(m.engine+' subtitle handoff unavailable');return;}
     if(nativeCommand('subtitle-sync',next))m.subtitleDesired=next;
   }
-  function stopNative(){clearViewport();if(!handoff)return;handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
+  function stopNative(){clearViewport();if(!handoff)return;const old=handoff;if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
     stopNative();saveResume(); releaseTicket();
@@ -197,12 +200,13 @@
   const next = (d) => { if (list.length) playAt((idx + d + list.length) % list.length); };
 
   /* ---------------- resume ---------------- */
-  function saveResume() {
+  function checkpoint(file,pos,duration,force=false){
+    const map=VP.resumeUpdate(get(K.resume,{}),file,pos,duration,force);
+    if(map)put(K.resume,map);
+  }
+  function saveResume(force=true) {
     const it = resumePath; if (!it || it !== current() || !Number.isFinite(video.duration) || video.duration <= 0) return;
-    const pos = video.currentTime * 1000, act = VP.resumeAction(pos, video.duration * 1000);
-    const map = get(K.resume, {});
-    if (act === 'save') { const value = Math.round(pos); if (map[it] === value) return; map[it] = value; } else if (act === 'clear') { if (!Object.hasOwn(map, it)) return; delete map[it]; } else return;
-    put(K.resume, VP.limitResume(map));
+    checkpoint(it,video.currentTime*1000,video.duration*1000,force!==false);
   }
 
   /* ---------------- bookmarks ---------------- */
@@ -728,6 +732,15 @@
     const decoderPref=get('waveframe.video.nativeDecoder','auto');
     $('vpNativeDecode').value=['auto','d3d11va','dxva2','none'].includes(decoderPref)?decoderPref:'auto';
     $('vpNativeDecode').addEventListener('change',()=>{put('waveframe.video.nativeDecoder',$('vpNativeDecode').value);say('Decoder preference applies to next LibVLC session / Ισχύει στην επόμενη αναπαραγωγή');});
+    $('vpResourceDiagnostics').addEventListener('click',async()=>{
+      const button=$('vpResourceDiagnostics');button.disabled=true;
+      try{const report=await api.vpResourceDiagnostics();if(!report){say('Resource diagnostics unavailable');return;}
+        const lines=['Electron process snapshot / Στιγμιότυπο διεργασιών','Working set total: '+(report.workingSetKiB===null?'unavailable':(report.workingSetKiB/1024).toFixed(1)+' MiB')];
+        for(const row of report.rows)lines.push(row.type+' · PID '+row.pid+' · CPU '+(row.cpuPercent===null?'—':row.cpuPercent+'%')+' · RAM '+(row.workingSetKiB===null?'—':(row.workingSetKiB/1024).toFixed(1)+' MiB'));
+        lines.push('Shared pages may be counted twice. Native/FFmpeg subprocesses and physical SSD writes not included.');
+        await showAlertDialog('Resource diagnostics',lines.join('\n'));
+      }catch{say('Resource diagnostics unavailable');}finally{button.disabled=false;}
+    });
     $('vpGpuDiagnostics').addEventListener('click',async()=>{
       const button=$('vpGpuDiagnostics');button.disabled=true;
       try{
@@ -763,8 +776,8 @@
     aria(); document.addEventListener('waveframe:language-changed', aria);
 
 
-    saveTimer = setInterval(() => { if (!video.paused) saveResume(); }, 5000);
-    window.addEventListener('beforeunload', () => { stopNative();saveResume(); releaseTicket(); });
+    saveTimer = setInterval(() => { if (!video.paused) saveResume(false); }, 15000);
+    window.addEventListener('beforeunload', () => { clearInterval(saveTimer);stopNative();saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
     window.addEventListener('waveframe:dsp-route-changed',refreshFx);

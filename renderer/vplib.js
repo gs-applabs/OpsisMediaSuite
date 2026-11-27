@@ -208,6 +208,17 @@
     return 'save';
   }
 
+  // Periodic checkpoints skip small advances; explicit pause/close checkpoints
+  // save exact position. Return null if no persistent change is needed.
+  function resumeUpdate(map,file,pos,dur,force=false){
+    if(typeof file!=='string'||!file||!map||typeof map!=='object'||Array.isArray(map))return null;
+    const act=resumeAction(pos,dur),old=Object.hasOwn(map,file)?map[file]:null;
+    if(act==='keep')return null;
+    if(act==='clear'){if(old===null)return null;const next={...map};delete next[file];return next;}
+    const value=Math.round(pos);
+    if(old===value||(!force&&Number.isFinite(old)&&Math.abs(value-old)<15000))return null;
+    const next={...map};delete next[file];next[file]=value;return limitResume(next);
+  }
   function pushRecent(list, p, max) {
     const l = (Array.isArray(list) ? list : []).filter((x) => x !== p);
     l.unshift(p);
@@ -256,5 +267,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

@@ -2,6 +2,7 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const {allowedFile,localDirectory,localPath}=require('./local-media-policy');
 const VP=require('./renderer/vplib');
+const {createHash}=require('node:crypto');
 const MAX=5*1024*1024;
 const LANGS=new Set(['el','en','fr','de','it','es','pt','ru','tr','pl','nl','sv','da','no','fi','cs','sk','hu','ro','uk','und']);
 const SITES=Object.freeze({subs4series:'https://www.subs4series.com/',subs4free:'https://www.subs4free.info/'});
@@ -29,8 +30,11 @@ async function sameSubtitle(target,body){
 function sidecarStem(source){
  const stem=path.basename(source,path.extname(source));
  // Windows uses UTF-16 filename units, POSIX commonly uses UTF-8 bytes.
- let base='';for(const ch of stem){if(base.length+ch.length>200||Buffer.byteLength(base+ch,'utf8')>200)break;base+=ch;}
- return base.replace(/[. ]+$/,'')||'video';
+ if(stem.length<=200&&Buffer.byteLength(stem,'utf8')<=200&&!/[. ]$/.test(stem)&&stem)return stem;
+ // A shortened prefix alone aliases distinct long names. Use a digest of
+ // the full original stem; discovery uses this same deterministic function.
+ let base='';for(const ch of stem){if(base.length+ch.length>176||Buffer.byteLength(base+ch,'utf8')>176)break;base+=ch;}
+ return (base.replace(/[. ]+$/,'')||'video')+'~'+createHash('sha256').update(stem).digest('hex').slice(0,20);
 }
 async function saveBesideVideo({video,subtitle,language,extensions,approved,synced=false}){
  const source=allowedFile(video,extensions);
@@ -100,7 +104,7 @@ async function inspectText(file,decode){
  }catch{return 'unknown';}finally{try{await fd?.close();}catch{}}
 }
 async function auditSubtitles({videos,extensions,approved,decode,embeddedProbe}){
- const started=Date.now();let textBudget=96,probeBudget=20;
+ const started=Date.now();let textBudget=96,probeBudget=20,dirBudget=20000,compareBudget=200000,statBudget=1000;
  const rows=[],dirs=new Map(),seen=new Set();
  for(const input of videos.slice(0,200)){
   const source=allowedFile(input,extensions);
@@ -110,24 +114,30 @@ async function auditSubtitles({videos,extensions,approved,decode,embeddedProbe})
   if(!dirs.has(dir)){
    let entries=[],complete=true,handle;
    try{
-    handle=await fs.opendir(dir);
-    for await(const e of handle){
-     if(entries.length>=10000){complete=false;break;}
-     entries.push(e);
+    if(dirBudget<=0||Date.now()-started>=35000){complete=false;}
+    else{
+      handle=await fs.opendir(dir);
+      for await(const e of handle){
+       if(dirBudget<=0||entries.length>=10000||Date.now()-started>=35000){complete=false;break;}
+       dirBudget--;
+       if(e.isFile()&&TEXT_EXTS.has(path.extname(e.name).slice(1).toLowerCase()))entries.push(e);
+      }
     }
    }catch{complete=false;}
    dirs.set(dir,{entries,complete});
   }
-  const {entries,complete}=dirs.get(dir);let greek=false,unknown=false,other=false,greekContent=false,conflict=false;
+  const {entries,complete}=dirs.get(dir);let scanComplete=complete,greek=false,unknown=false,other=false,greekContent=false,conflict=false;
   for(const entry of entries){
+   if(compareBudget--<=0||Date.now()-started>=35000||!approved(source)){scanComplete=false;break;}
    if(!entry.isFile())continue;
    const kind=classifyName(source,entry.name);if(!kind)continue;
+   if(statBudget--<=0){scanComplete=false;break;}
    const safe=localPath(path.join(dir,entry.name));if(!safe)continue;
    try{const st=await fs.stat(safe);if(!st.size||st.size>MAX)continue;}catch{continue;}
    let evidence='unknown';
    if(decode&&textBudget>0&&Date.now()-started<35000&&approved(source)&&['.srt','.vtt','.ass','.ssa'].includes(path.extname(safe).toLowerCase())){textBudget--;evidence=await inspectText(safe,decode);}
    if(evidence==='invalid'){unknown=true;continue;}
-   if(evidence==='greek'){greekContent=true;continue;}
+   if(evidence==='greek'){greekContent=true;break;}
    if(kind==='greek'&&evidence==='non-greek'){conflict=true;unknown=true;continue;}
    if(kind==='greek')greek=true;else if(kind==='unknown'&&evidence!=='non-greek')unknown=true;else other=true;
   }
@@ -139,7 +149,7 @@ async function auditSubtitles({videos,extensions,approved,decode,embeddedProbe})
     if(Array.isArray(tracks))embedded=tracks.some(x=>x.language==='el')?'greek-tag':tracks.some(x=>!x.language||x.language==='und')?'unknown':tracks.length?'other':'none';
    }
   }
-  const status=greekContent||greek?'greek':embedded==='greek-tag'?'embedded-greek':!complete||embedded==='unchecked'?'incomplete':unknown||embedded==='unknown'?'unknown':other||embedded==='other'?'other-language':'missing';
+  const status=greekContent||greek?'greek':embedded==='greek-tag'?'embedded-greek':!scanComplete||embedded==='unchecked'?'incomplete':unknown||embedded==='unknown'?'unknown':other||embedded==='other'?'other-language':'missing';
   rows.push({path:input,status,evidence:greekContent?'text-script':greek?'filename-tag':embedded==='greek-tag'?'embedded-tag':conflict?'tag-text-conflict':null,embedded});
  }
  return {rows,truncated:videos.length>200};
