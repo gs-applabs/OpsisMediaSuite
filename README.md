@@ -1,3 +1,32 @@
+<p align="center"><img src="https://raw.githubusercontent.com/gs-applabs/gs-applabs/main/assets/projects/media.svg" width="100%" alt="OPSIS Media Suite — Listen. Watch. Create."/></p>
+
+<p align="center"><strong>A media workspace with real-time audio enhancement, playback and conversion.</strong><br/>Ήχος και βίντεο σε ένα ενιαίο περιβάλλον.</p>
+
+<p align="center"><a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe"><img alt="Download v2.4.2" src="https://img.shields.io/badge/DOWNLOAD-v2.4.2-087EA4?style=for-the-badge"/></a> <a href="https://github.com/gs-applabs/OpsisMediaSuite/releases/latest"><img alt="Release notes" src="https://img.shields.io/badge/RELEASE-NOTES-334155?style=for-the-badge"/></a></p>
+
+<p align="center"><a href="#at-a-glance--με-μια-ματιά">Overview / Επισκόπηση</a> · <a href="#full-documentation--αναλυτική-τεκμηρίωση">Full documentation / Τεκμηρίωση</a> · <a href="https://github.com/gs-applabs/OpsisMediaSuite/issues">Support / Υποστήριξη</a> · <a href="https://github.com/gs-applabs">GS App Labs</a></p>
+
+## At a glance / Με μια ματιά
+
+| | What you can do / Τι μπορείς να κάνεις |
+|---|---|
+| **Listen / Ακρόαση** | Equalizer, loudness normalization and sound effects / Ισοσταθμιστής και εφέ |
+| **Watch / Προβολή** | Video playback and media playlists / Αναπαραγωγή και λίστες |
+| **Create / Δημιουργία** | Audio and video conversion, visualizers / Μετατροπές και οπτικοποιήσεις |
+
+### Get started / Ξεκίνημα
+
+- **Installer:** [OpsisMediaSuite-Setup-2.4.2.exe](https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe) · [SHA-256](https://github.com/gs-applabs/OpsisMediaSuite/releases/download/v2.4.2/OpsisMediaSuite-Setup-2.4.2.exe.sha256)
+- **Requirements / Απαιτήσεις:** Windows 10/11 · Electron / Web Audio.
+- **What's new / Νέα έκδοση:** Optional OPSIS plugin bridge 1.0.0, compatible with OPSIS 2.8. / Προαιρετική διασύνδεση με OPSIS 2.8.
+- **Known limits / Όρια:** Supported formats and streams depend on the player; the plugin is a launcher, not a now-playing bridge. / Η υποστήριξη μορφών εξαρτάται από τον player.
+
+See the [published release](https://github.com/gs-applabs/OpsisMediaSuite/releases/tag/v2.4.2) for verification details. Review installation prompts and compare the checksum before running the installer. / Δείτε τις σημειώσεις έκδοσης και επαληθεύστε το SHA-256 πριν από την εγκατάσταση.
+
+---
+
+## Full documentation / Αναλυτική τεκμηρίωση
+
 <p align="center"><img src="docs/img/icon.png" alt="Opsis Media Suite" width="96" /></p>
 
 # Opsis Media Suite
