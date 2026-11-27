@@ -42,4 +42,4 @@ function zipSubtitles(buf,decode){
  if(cursor!==end)throw Error('invalid-zip');
  return out;
 }
-module.exports={zipSubtitles,MAX_ARCHIVE};
+module.exports={zipSubtitles,MAX_ARCHIVE,crc32};

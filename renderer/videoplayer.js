@@ -548,7 +548,7 @@
       try{const res=await api.vpSubEmbeddedExtract(p,Number(sel.value),$('vpSubSaveBeside').checked);if(g!==generation||rev!==subRevision)return;
         if(!res?.ok){status.textContent=res?.code||'Extract failed';return;}
         attachSubtitle(res.subtitle);status.textContent='Extracted / Εξήχθη'+(res.saved?.ok?' · '+res.saved.name:res.saved?' · '+res.saved.code:'');
-      }catch{if(g===generation)status.textContent='Extract failed';}finally{if(g===generation)$('vpSubEmbeddedExtract').disabled=!sel.options.length;}
+      }catch{if(g===generation)status.textContent='Extract failed';}finally{if(g===generation)$('vpSubEmbeddedExtract').disabled=!sel.value||!!sel.selectedOptions[0]?.disabled;}
     });
     const onlineStatus=t=>{$('vpSubOnlineStatus').textContent=t;};
     $('vpSubAudit').addEventListener('click',async()=>{
@@ -603,7 +603,7 @@
         resultsProvider=req.provider;
         for(const row of r.items){const o=document.createElement('option');o.value=row.selection;o.textContent=(row.provider?row.provider+' · ':'')+row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':row.matchScore>0?' · release match '+row.matchScore:'');$('vpSubResults').append(o);}
         $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα'+(providerNotes?' · '+providerNotes:''));
-      }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
+      }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=batchBusy;}
     });
     $('vpSubDownload').addEventListener('click',async()=>{
       if(!current()||!resultsProvider||resultsProvider!==$('vpSubProvider').value||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=$('vpSubResults').value;

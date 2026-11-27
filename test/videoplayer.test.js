@@ -545,3 +545,19 @@ test('OpenSubtitles fallback title search cannot confer an exact hash match',asy
  const result=await provider.search({query:'Show.S01E01',language:'el',moviehash:'0123456789abcdef',apiKey:'fixture'});
  assert.equal(result.items[0].hashMatch,false);assert.equal(calls,2);
 });
+
+
+test('RAR listing accepts only bounded literal subtitle members and rejects encrypted, duplicate and oversized entries',()=>{
+ const {parseListing,signature}=require('../subtitle-rar');
+ const block=(name,size=80,extra='')=>'Path = '+name+'\nSize = '+size+'\nEncrypted = -\nCRC = 1234ABCD\nAttributes = A'+extra;
+ const good=parseListing(block('nested\\Show.S01E01.srt')+'\n\n'+block('ignored.exe'));
+ assert.equal(good.length,1);assert.equal(good[0].name,'Show.S01E01.srt');
+ assert.deepEqual(parseListing(block('../bad.srt')+'\n\n'+block('@list.srt')),[]);
+ assert.equal(parseListing(block('a.srt')+'\n\n'+block('A.srt')),null);
+ assert.equal(parseListing(block('a.srt',5*1024*1024+1)),null);
+ assert.equal(parseListing(block('a.srt').replace('Encrypted = -','Encrypted = +')),null);
+ assert.deepEqual(parseListing(block('a.srt',80,'\nSymbolic Link = target')),[]);
+ assert.equal(signature(Buffer.from('526172211a0700','hex')),true);
+ assert.equal(signature(Buffer.from('526172211a070100','hex')),true);
+ assert.equal(signature(Buffer.from('504b0304','hex')),false);
+});

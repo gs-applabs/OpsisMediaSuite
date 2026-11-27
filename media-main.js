@@ -14,6 +14,7 @@ const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
+const {resolve7Zip,withRar}=require('./subtitle-rar.js');
 const {resolveProbe,probeMkv,canExtract,extractMkv}=require('./subtitle-probe.js');
 const {createSubdl}=require('./subtitle-subdl.js');
 const {seasonPlan,runSeasonBatch,MAX_BATCH,seasonPage}=require('./subtitle-batch.js');
@@ -220,15 +221,27 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const p=allowedFile(video,new Set(VIDEO_EXTS));if(!p||!approved.has(p))return {ok:false,code:'video-not-approved'};
     subtitleImportBusy=true;
     try{
-      const pick=await dialog.showOpenDialog(getMainWin(),{defaultPath:app.getPath('downloads'),properties:['openFile'],filters:[{name:'Subtitles or ZIP (RAR: extract first)',extensions:['srt','vtt','ass','ssa','zip']}]});
+      const pick=await dialog.showOpenDialog(getMainWin(),{defaultPath:app.getPath('downloads'),properties:['openFile'],filters:[{name:'Subtitles / ZIP / RAR (7-Zip required)',extensions:['srt','vtt','ass','ssa','zip','rar']}]});
       if(pick.canceled||!trusted(e))return {ok:false,code:'cancelled'};
-      const f=allowedFile(pick.filePaths[0],new Set(['srt','vtt','ass','ssa','zip']));
+      const f=allowedFile(pick.filePaths[0],new Set(['srt','vtt','ass','ssa','zip','rar']));
       if(!f)return {ok:false,code:'invalid-subtitle'};
       let sub;
-      if(extOf(f)==='zip'){
+      if(['zip','rar'].includes(extOf(f))){
         const fd=await fs.promises.open(f,'r');
         let data;
         try{const st=await fd.stat();if(st.size>MAX_ARCHIVE)return {ok:false,code:'archive-size'};data=Buffer.alloc(st.size);let offset=0;while(offset<data.length){const rr=await fd.read(data,offset,data.length-offset,offset);if(!rr.bytesRead)return {ok:false,code:'archive-read-failed'};offset+=rr.bytesRead;}}finally{await fd.close();}
+        if(extOf(f)==='rar'){
+          const allow=()=>trusted(e)&&approved.has(p)&&allowedFile(p,new Set(VIDEO_EXTS))===p;
+          const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Use installed 7-Zip / Χρήση 7-Zip'],defaultId:0,cancelId:0,message:'Read this RAR using installed 7-Zip?',detail:'Requires 7-Zip 25.01 or newer. Only a selected text subtitle is read to memory. This uses a native archive parser, not a sandbox.'});
+          if(answer.response!==1||!allow())return {ok:false,code:'cancelled'};
+          const tool=await resolve7Zip();if(!tool)return {ok:false,code:'7zip-unavailable-or-outdated'};
+          const result=await withRar({archive:data,exe:tool.exe,decode:decodeText,approved:allow,choose:async candidates=>{
+            const sorted=candidates.map((x,i)=>({i,name:x.name,score:VP.releaseScore(p,x.name)})).sort((a,b)=>b.score-a.score);
+            const choice=await dialog.showMessageBox(getMainWin(),{type:'question',message:'Select RAR subtitle for '+path.basename(p),detail:'Verify episode and release before saving.',buttons:['Cancel / Ακύρωση',...sorted.map(x=>x.name.slice(0,100))],defaultId:0,cancelId:0,noLink:true});
+            return choice.response>0?sorted[choice.response-1]?.i:-1;
+          }});
+          if(!result.ok)return result;sub=result.subtitle;
+        }else{
         const candidates=zipSubtitles(data,decodeText).map(x=>({...x,score:VP.releaseScore(p,x.name)})).sort((a,b)=>b.score-a.score);
         if(!candidates.length)return {ok:false,code:'no-subtitles-in-zip'};
         if(candidates.length>8)return {ok:false,code:'too-many-subtitles-extract-manually'};
@@ -239,6 +252,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
           if(!choice.response||!trusted(e))return {ok:false,code:'cancelled'};
           sub=candidates[choice.response-1];
         }else sub=candidates[0];
+        }
       }else sub=readSubtitle(f);
       if(!sub)return {ok:false,code:'invalid-subtitle'};
       const saved=await saveDownloaded(e,p,sub,language);
