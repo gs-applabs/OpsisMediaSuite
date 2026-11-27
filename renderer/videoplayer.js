@@ -77,18 +77,20 @@
     const r=await api.vpNativeOpen(p,engine,resume,text||null).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
-    marker.session=r.session;playbackEngine=engine;resumePath=null;
+    marker.session=r.session;marker.engine=engine;playbackEngine=engine;resumePath=null;
     say(engine+' — native playback ready'+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine==='directshow'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
       if(handoff!==marker)return;
       const s=await api.vpNativeStatus().catch(()=>null);
       if(handoff!==marker)return;
       if(s?.session===marker.session&&s.durationMs>0){const map=get(K.resume,{}),act=VP.resumeAction(s.positionMs,s.durationMs);if(act==='save'){map[p]=Math.round(s.positionMs);put(K.resume,VP.limitResume(map));}else if(act==='clear'){delete map[p];put(K.resume,map);}}
+      if(s?.session===marker.session){marker.status=s;syncTime();syncTransport();if(!seeking&&Number.isFinite(s.volume))$('vpVolume').value=String(s.volume);}
       if(!s||s.phase==='closed'||s.phase==='error'||s.session!==marker.session){handoff=null;playbackEngine=null;$('vpNativeStop').hidden=true;say(engine+' — native window closed');return;}
       nativePoll=setTimeout(poll,1000);
     };
     poll();return true;
   }
+  function nativeCommand(name,value){if(!handoff?.session||handoff.engine!=='libvlc')return;api.vpNativeCommand(handoff.session,name,value).then(r=>{if(!r?.ok&&r?.code!=='busy')say('Native command unavailable');}).catch(()=>{});}
   function stopNative(){if(!handoff)return;handoff=null;clearTimeout(nativePoll);$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
@@ -340,15 +342,15 @@
   }
   // transport: icon buttons like the music player; labels / tooltips come from the language files
   function syncTransport() {
-    const playing = video && !video.paused && !video.ended, p = $('vpPlay');
+    const playing = handoff?!!handoff.status?.playing:video && !video.paused && !video.ended, p = $('vpPlay');
     p.textContent = playing ? '⏸' : '▶';
     const lbl = playing ? t('vp.pause') : t('vp.play'); p.title = lbl; p.setAttribute('aria-label', lbl);
-    const m = $('vpMute'), muted = video.muted || video.volume === 0;
+    const m = $('vpMute'), muted = handoff?!!handoff.status?.muted||handoff.status?.volume===0:video.muted || video.volume === 0;
     m.textContent = muted ? '🔇' : '🔊'; m.classList.toggle('active', muted);
     const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
   }
   function syncTime() {
-    const d = video.duration, c = video.currentTime || 0, finite = Number.isFinite(d) && d > 0;
+    const d = handoff?(handoff.status?.durationMs||0)/1000:video.duration, c = handoff?(handoff.status?.positionMs||0)/1000:video.currentTime || 0, finite = Number.isFinite(d) && d > 0;
     $('vpTime').textContent = VP.clock(c * 1000) + ' / ' + (d === Infinity ? 'LIVE' : VP.clock(d * 1000));
     $('vpSeek').disabled = !finite;
     if (!seeking) $('vpSeek').value = finite ? String(Math.round(c / d * 1000)) : '0';
@@ -416,18 +418,19 @@
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
-    $('vpPlay').addEventListener('click', () => { if(handoff){say('Use the native player controls / Χειριστήρια native player');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
+    $('vpPlay').addEventListener('click', () => { if(handoff){if(handoff.engine==='libvlc')nativeCommand('toggle');else say('Use the native player controls / Χειριστήρια native player');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
     $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
-    $('vpMute').addEventListener('click', () => { video.muted = !video.muted; syncTransport(); });
-    $('vpVolume').addEventListener('input', () => { video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
+    $('vpMute').addEventListener('click', () => { if(handoff){nativeCommand('mute');return;} video.muted = !video.muted; syncTransport(); });
+    $('vpVolume').addEventListener('input', () => { if(handoff)return; video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
 
-    $('vpSeek').addEventListener('input', () => { seeking = true; seekTo(Number($('vpSeek').value) / 1000 * video.duration); });
-    $('vpSeek').addEventListener('change', () => { seeking = false; });
+    $('vpVolume').addEventListener('change',()=>{if(handoff)nativeCommand('volume',Number($('vpVolume').value));});
+    $('vpSeek').addEventListener('input', () => { seeking = true;if(handoff)return; seekTo(Number($('vpSeek').value) / 1000 * video.duration); });
+    $('vpSeek').addEventListener('change', () => { if(handoff)nativeCommand('seek',Math.round(Number($('vpSeek').value)/1000*(handoff.status?.durationMs||0)));seeking = false; });
 
 
 
 
-    $('vpSpeed').addEventListener('change', () => { video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
+    $('vpSpeed').addEventListener('change', () => { if(handoff){nativeCommand('rate',Number($('vpSpeed').value)||1);return;} video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
     $('vpFx').addEventListener('click', toggleFx);
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { clearAnchors();++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
@@ -573,6 +576,7 @@
     document.addEventListener('keydown', (e) => {
       if (!$('tab-video').classList.contains('active') || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.ctrlKey || e.altKey || e.metaKey) return;
       const k = e.key; let used = true;
+      if(handoff){if(k===' '){nativeCommand('toggle');e.preventDefault();}else if(k==='m'||k==='M'){nativeCommand('mute');e.preventDefault();}return;}
       if (k === ' ') { if (video.paused) video.play().catch(() => {}); else video.pause(); }
       else if (k === 'ArrowRight') seekTo(video.currentTime + (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowLeft') seekTo(video.currentTime - (e.shiftKey ? 30 : 5));

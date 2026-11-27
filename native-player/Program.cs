@@ -31,14 +31,14 @@ internal static class Program
 #if CODEC_CI_TEST
         if(args[0]=="--lav-selftest") { try { return DirectShowHost.LavSelfTest(args[1]); } catch(Exception ex) { Console.Error.WriteLine(ex.ToString()); return 7; } }
 #endif
-        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
+        if(args[0]!="--open" && args[0]!="--selftest" && args[0]!="--selftest-sub" && args[0]!="--selftest-control" && args[0]!="--directshow" && args[0]!="--directshow-selftest" && args[0]!="--mf-selftest" && args[0]!="--mf-audio-selftest")return 2;
         try {
             if (args[0] == "--mf-selftest") return MediaFoundationProbe.Run(args[1],true);
             if (args[0] == "--mf-audio-selftest") return MediaFoundationProbe.Run(args[1],false);
             if (args[0] == "--directshow-selftest") return DirectShowHost.SelfTest(args[1]);
             if (args[0] == "--directshow") { ApplicationConfiguration.Initialize(); return DirectShowHost.Run(args[1],resume); }
             Core.Initialize();
-            bool selftest = args[0] == "--selftest" || args[0]=="--selftest-sub";
+            bool selftest = args[0] == "--selftest" || args[0]=="--selftest-sub" || args[0]=="--selftest-control";
             // No remote URL or caller-supplied VLC arguments. Separate process;
             // this is not an OS sandbox for hostile bitstreams.
             using var vlc = selftest
@@ -47,6 +47,7 @@ internal static class Program
             using var player = new MediaPlayer(vlc);
             using var media = new Media(vlc, args[1], FromType.FromPath);
             if (args[0]=="--selftest-sub") return SelfTestSubtitle(player,media,sidecar!);
+            if(args[0]=="--selftest-control")return SelfTestControl(player,media);
             if (selftest) return SelfTest(player, media);
             ApplicationConfiguration.Initialize();
             using var form = new PlayerWindow(player, media, Path.GetFileName(args[1]),resume,sidecar);
@@ -55,6 +56,20 @@ internal static class Program
         } catch (Exception ex) { Console.Error.WriteLine(ex.GetType().Name); HostEvent("error",0,0); return 1; }
     }
 
+    private static int SelfTestControl(MediaPlayer player,Media media){
+        if(!player.Play(media))return 3;
+        var clock=Stopwatch.StartNew();
+        while(clock.ElapsedMilliseconds<8000&&(!player.IsPlaying||!player.IsSeekable||player.Length<=0))Thread.Sleep(50);
+        if(!player.IsPlaying||!player.IsSeekable)return 4;
+        var pause=NativeCommands.Read(new StringReader("{\"id\":1,\"name\":\"pause\"}\n"));
+        var seek=NativeCommands.Read(new StringReader("{\"id\":2,\"name\":\"seek\",\"value\":1500}\n"));
+        var invalid=NativeCommands.Read(new StringReader("{\"id\":3,\"name\":\"seek\",\"value\":-1}\n"));
+        bool accepted=pause!=null&&seek!=null&&invalid!=null&&NativeCommands.Apply(pause,player,media)&&NativeCommands.Apply(seek,player,media)&&!NativeCommands.Apply(invalid,player,media);
+        clock.Restart();while(clock.ElapsedMilliseconds<2500&&Math.Abs(player.Time-1500)>300)Thread.Sleep(50);
+        bool position=Math.Abs(player.Time-1500)<=300;
+        Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",controlAccepted=accepted,seekVerified=position,positionMs=player.Time}));
+        player.Stop();return accepted&&position?0:5;
+    }
     private static int SelfTestSubtitle(MediaPlayer player,Media media,string subtitle){
         if(!player.Play(media))return 3;
         var clock=Stopwatch.StartNew();
@@ -95,7 +110,7 @@ internal static class Program
         player.Stop(); return 5;
     }
 
-    internal static void HostEvent(string kind,long position,long duration,bool? subtitleAccepted=null){Console.WriteLine(JsonSerializer.Serialize(new{ @event=kind,positionMs=Math.Max(0,position),durationMs=Math.Max(0,duration),subtitleAccepted}));Console.Out.Flush();}
+    internal static void HostEvent(string kind,long position,long duration,bool? subtitleAccepted=null,bool? playing=null,bool? muted=null,int? volume=null){Console.WriteLine(JsonSerializer.Serialize(new{ @event=kind,positionMs=Math.Max(0,position),durationMs=Math.Max(0,duration),subtitleAccepted,playing,muted,volume}));Console.Out.Flush();}
     private sealed record TrackItem(int Id, string Name) { public override string ToString() => Name; }
 
     private sealed class PlayerWindow : Form
@@ -140,8 +155,20 @@ internal static class Program
             seek.MouseDown+=(_,_)=>seeking=true;seek.MouseUp+=(_,_)=>{seeking=false;if(player.IsSeekable&&player.Length>0)player.Time=player.Length*seek.Value/1000;};
             seek.Scroll+=(_,_)=>{if(!seeking&&player.IsSeekable&&player.Length>0)player.Time=player.Length*seek.Value/1000;};
             timer.Tick+=(_,_)=>RefreshState();
-            Shown+=(_,_)=>{player.Hwnd=video.Handle;player.Volume=75;if(!player.Play(media))status.Text="Playback failed";timer.Start();};
+            Shown+=(_,_)=>{player.Hwnd=video.Handle;player.Volume=75;if(!player.Play(media))status.Text="Playback failed";timer.Start();if(Console.IsInputRedirected)Task.Run(ReadCommands);};
             FormClosing+=(_,_)=>{if(closing)return;closing=true;timer.Stop();HostEvent("closed",player.Time,player.Length);player.Stop();};
+        }
+        private void ReadCommands(){
+            try{
+                while(true){
+                    var cmd=NativeCommands.Read(Console.In);if(cmd==null)return;
+                    using var handled=new ManualResetEventSlim(false);
+                    if(IsDisposed||!IsHandleCreated)return;
+                    BeginInvoke(new Action(()=>{try{NativeCommands.Ack(cmd,!closing&&ready&&NativeCommands.Apply(cmd,player,media));}finally{handled.Set();}}));
+                    // One command may be queued at a time; don't let stdin flood the UI.
+                    handled.Wait();
+                }
+            }catch{}
         }
         private void SeekRelative(long delta){if(player.IsSeekable&&player.Length>0)player.Time=Math.Clamp(player.Time+delta,0,player.Length);}
         private static string Clock(long ms)=>TimeSpan.FromMilliseconds(Math.Max(0,ms)).ToString(@"hh\:mm\:ss");
@@ -150,8 +177,8 @@ internal static class Program
             if(closing)return;
             if(player.State==VLCState.Error){HostEvent("error",player.Time,player.Length);Close();return;}
             if(!resumed&&player.IsSeekable&&player.Length>0){resumed=true;if(resume>0)player.Time=Math.Min(resume,Math.Max(0,player.Length-500));}
-            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;bool? accepted=sidecar==null?null:player.AddSlave(MediaSlaveType.Subtitle,new Uri(sidecar).AbsoluteUri,true);HostEvent("ready",player.Time,player.Length,accepted);lastReport=Environment.TickCount64;}
-            else if(ready&&Environment.TickCount64-lastReport>=1000){lastReport=Environment.TickCount64;HostEvent("position",player.Time,player.Length);}
+            if(!ready&&player.IsPlaying&&player.Time>=0){ready=true;bool? accepted=sidecar==null?null:player.AddSlave(MediaSlaveType.Subtitle,new Uri(sidecar).AbsoluteUri,true);HostEvent("ready",player.Time,player.Length,accepted,player.IsPlaying,player.Mute,player.Volume);lastReport=Environment.TickCount64;}
+            else if(ready&&Environment.TickCount64-lastReport>=1000){lastReport=Environment.TickCount64;HostEvent("position",player.Time,player.Length,null,player.IsPlaying,player.Mute,player.Volume);}
             time.Text=Clock(player.Time)+" / "+Clock(player.Length);
             seek.Enabled=player.IsSeekable&&player.Length>0;
             if(!seeking&&seek.Enabled)seek.Value=(int)Math.Clamp(player.Time*1000d/player.Length,0,1000);

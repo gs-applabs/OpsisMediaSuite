@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpNativeStatus: () => ipcRenderer.invoke('vp:native-status'),
   vpNativeOpen: (p,engine,positionMs,subtitleText) => ipcRenderer.invoke('vp:native-open', p,engine,positionMs,subtitleText),
   vpNativeStop: ()=>ipcRenderer.invoke('vp:native-stop'),
+  vpNativeCommand:(session,name,value)=>ipcRenderer.invoke('vp:native-command',session,name,value),
   vpCodecInventory: () => ipcRenderer.invoke('vp:codec-inventory'),
   vpOpenSource: (p) => ipcRenderer.invoke('vp:open-source', p),
   vpReleaseSource: (p) => ipcRenderer.invoke('vp:release-source', p),

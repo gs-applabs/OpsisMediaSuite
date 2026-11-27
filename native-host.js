@@ -14,11 +14,19 @@ function parseHostEvent(line){
  if(typeof line!=='string'||line.length>1024)return null;
  try{const r=JSON.parse(line);if(!['ready','position','closed','error'].includes(r.event))return null;
  const n=Number(r.positionMs),duration=Number(r.durationMs);
- return {event:r.event, ...(typeof r.subtitleAccepted==='boolean'?{subtitleAccepted:r.subtitleAccepted}:{}),positionMs:Number.isFinite(n)&&n>=0?Math.min(n,360000000):0,durationMs:Number.isFinite(duration)&&duration>=0?Math.min(duration,360000000):0};
+ return {event:r.event,...(typeof r.playing==='boolean'?{playing:r.playing}:{}),...(typeof r.muted==='boolean'?{muted:r.muted}:{}),...(Number.isFinite(r.volume)?{volume:Math.max(0,Math.min(100,r.volume))}:{}), ...(typeof r.subtitleAccepted==='boolean'?{subtitleAccepted:r.subtitleAccepted}:{}),positionMs:Number.isFinite(n)&&n>=0?Math.min(n,360000000):0,durationMs:Number.isFinite(duration)&&duration>=0?Math.min(duration,360000000):0};
  }catch{return null;}
 }
+function normalizeCommand(name,value){
+ if(['toggle','pause','play','mute'].includes(name))return {name};
+ if(!['seek','volume','rate'].includes(name)||typeof value!=='number'||!Number.isFinite(value))return null;
+ const bounds={seek:[0,360000000],volume:[0,100],rate:[.5,4]}[name];
+ if(value<bounds[0]||value>bounds[1])return null;
+ return {name,value:name==='rate'?value:Math.round(value)};
+}
 function createNativeHost({app,extensions,authorize}){
- let child=null,opening=false,state={phase:'idle'},epoch=0;
+ let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0;
+ function finishCommand(r){if(!pending)return;const p=pending;pending=null;clearTimeout(p.timer);p.resolve(r);}
  const hostPath=()=>path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'native-player','publish'),...(app.isPackaged?['native-player']:[]),'Opsis.NativePlayer.exe');
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
  const status=()=>({available:available(),...state});
@@ -43,16 +51,19 @@ function createNativeHost({app,extensions,authorize}){
    return await new Promise(resolve=>{
     let proc,settled=false,buffer='',timer;
     const finish=r=>{if(settled)return;settled=true;clearTimeout(timer);resolve(r);};
-    try{proc=spawn(exe,[engine==='directshow'?'--directshow':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:['ignore','pipe','ignore']});child=proc;}
+    try{proc=spawn(exe,[engine==='directshow'?'--directshow':'--open',valid,String(pos),...(sidecar?[sidecar]:[])],{cwd:path.dirname(exe),shell:false,windowsHide:true,stdio:[engine==='libvlc'?'pipe':'ignore','pipe','ignore']});child=proc;}
     catch(_){cleanup();state={...state,phase:'error'};finish({ok:false,code:'launch-failed'});return;}
     timer=setTimeout(()=>{if(child===proc){state={...state,phase:'error'};try{proc.kill();}catch{}}finish({ok:false,code:'native-timeout'});},120000);
+    proc.stdin?.on('error',()=>finishCommand({ok:false,code:'pipe-error'}));
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data',chunk=>{
      if(child!==proc)return;
      buffer+=chunk;if(buffer.length>16384){buffer='';return;}
      let end;while((end=buffer.indexOf('\n'))>=0){
       const line=buffer.slice(0,end).trim();buffer=buffer.slice(end+1);
+      if(line.length<=1024&&pending){try{const a=JSON.parse(line);if(a.event==='ack'&&a.id===pending.id&&typeof a.ok==='boolean'){finishCommand({ok:a.ok,code:a.ok?'accepted':'rejected'});continue;}}catch{}}
       const event=parseHostEvent(line);if(!event)continue;
+      const fields={};for(const k of ['playing','muted','volume'])if(Object.hasOwn(event,k))fields[k]=event[k];state={...state,...fields};
       if(event.event==='ready'){state={...state,phase:'playing',positionMs:event.positionMs,durationMs:event.durationMs,subtitleAccepted:event.subtitleAccepted??null};finish({ok:true,engine,status:'ready',session:token,subtitleAccepted:state.subtitleAccepted});}
       else if(event.event==='position'&&state.phase==='playing')state={...state,positionMs:event.positionMs,durationMs:event.durationMs};
       else if(event.event==='closed')state={...state,phase:'closed',positionMs:event.positionMs,durationMs:event.durationMs};
@@ -60,12 +71,17 @@ function createNativeHost({app,extensions,authorize}){
      }
     });
     proc.once('error',()=>{cleanup();if(child===proc){child=null;state={...state,phase:'error'};}finish({ok:false,code:'launch-failed'});});
-    proc.once('close',code=>{cleanup();if(child===proc){child=null;state={...state,phase:state.phase==='error'||code!==0?'error':'closed'};}finish({ok:false,code:code===2?'native-cancelled':'native-exited'});});
+    proc.once('close',code=>{cleanup();if(child===proc)finishCommand({ok:false,code:'native-closed'});if(child===proc){child=null;state={...state,phase:state.phase==='error'||code!==0?'error':'closed'};}finish({ok:false,code:code===2?'native-cancelled':'native-exited'});});
    });
   }finally{opening=false;}
  }
- function stop(){epoch++;if(child)try{child.kill();}catch(_){}}
+ function command(session,name,value){
+  const cmd=normalizeCommand(name,value);if(!cmd||state.session!==session||state.engine!=='libvlc'||state.phase!=='playing'||!child?.stdin?.writable)return Promise.resolve({ok:false,code:'unavailable'});
+  if(pending)return Promise.resolve({ok:false,code:'busy'});
+  return new Promise(resolve=>{const id=++commandId;const timer=setTimeout(()=>finishCommand({ok:false,code:'timeout'}),3000);pending={id,timer,resolve};try{child.stdin.write(JSON.stringify({id,...cmd})+'\n');}catch{finishCommand({ok:false,code:'pipe-error'});}});
+ }
+ function stop(){epoch++;finishCommand({ok:false,code:'cancelled'});if(child)try{child.kill();}catch(_){}}
  if(typeof app.on==='function')app.on('before-quit',stop);
- return {available,status,open,stop};
+ return {available,status,open,stop,command};
 }
-module.exports={createNativeHost,parseHostEvent,prepareSubtitle};
+module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand};

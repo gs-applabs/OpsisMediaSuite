@@ -299,3 +299,10 @@ test('cue editing preserves original data and WebVTT settings, rejects invalid t
  assert.equal(V.editCue(original,0,{start:3,end:2,text:'x'}),null);
  assert.equal(V.editCue(original,0,{start:1,end:2,text:'--> injected'}),null);
 });
+
+test('native control accepts only bounded fixed commands',()=>{
+ const {normalizeCommand}=require('../native-host');
+ assert.deepEqual(normalizeCommand('toggle'),{name:'toggle'});
+ assert.deepEqual(normalizeCommand('seek',1500.4),{name:'seek',value:1500});
+ assert.equal(normalizeCommand('seek',-1),null);assert.equal(normalizeCommand('volume',101),null);assert.equal(normalizeCommand('rate',Infinity),null);assert.equal(normalizeCommand('open','C:\\x'),null);
+});

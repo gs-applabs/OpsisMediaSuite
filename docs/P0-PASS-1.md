@@ -114,3 +114,6 @@ Pass 34 general CI 187/187 and native external SRT accepted/selected, plugin 12/
 
 ## Pass 36 — non-destructive cue editor
 Edit selected original cue text and start/end times; create a separate in-memory WebVTT track, leave the original intact; one-step undo; preserve allowed VTT positioning settings, export existing corrected SRT/VTT, validate timing and bound size. First 2,000 cues accessible in selector (parser supports 20,000). Real renderer edit/undo fixture added. CI pending.
+
+## Pass 37 — LibVLC central transport bridge
+Bounded fixed JSON command protocol with session and request IDs, one outstanding command, acknowledgment/timeout, native UI dispatcher; main playback controls toggle, mute, seek, volume and rate now target LibVLC instead of paused Chromium. Periodic actual native position/volume/mute/play status. DirectShow still separate controls only. Added real native command parsing/seek selftest (dummy output); interactive pipe/UI test and installer packaging remain pending. CI pending.
