@@ -472,3 +472,24 @@ test('audit recognizes Greek text in unlabeled file and preserves embedded uncer
   assert.equal(result.rows[0].evidence,'text-script');assert.equal(result.rows[3].evidence,'tag-text-conflict');
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+
+test('SubDL individual subtitle links, episode and language checks, separate download credentials',async()=>{
+ const {createSubdl,subdlLink}=require('../subtitle-subdl');
+ assert.equal(subdlLink('//evil.example/subtitle/a/b'),null);assert.equal(subdlLink('/subtitle/a/../b'),null);
+ const seen=[],file={name:'Show.S01E02.srt',format:'srt',size:100,season:1,episode:2,language:'EL',url:'/subtitle/abc/file123'};
+ const client=createSubdl({fetchImpl:async(url,options)=>{seen.push({url,options});if(url.startsWith('https://api.subdl.com/'))return new Response(JSON.stringify({status:true,subtitles:[{unpack_files:[file,{...file,episode:3},{...file,language:'EN'},{...file,url:'https://evil.example/'}]}]}),{headers:{'content-type':'application/json'}});return new Response('1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα',{headers:{'content-type':'text/plain'}});}});
+ const result=await client.search({query:'Show.S01E02',language:'el',apiKey:'fixture'});
+ assert.equal(result.items.length,1);assert.equal(new URL(seen[0].url).searchParams.get('episode_number'),'2');
+ await new Promise(r=>setTimeout(r,760));
+ const out=await client.download(result.items[0].id);assert.equal(out.ok,true);assert.match(out.subtitle.text,/Καλημέρα/);
+ assert.equal(seen[1].url,'https://dl.subdl.com/subtitle/abc/file123');assert.equal(seen[1].options.redirect,'error');
+});
+
+test('MKV extraction permits only explicit text subtitle codecs',()=>{
+ const {canExtract}=require('../subtitle-probe');
+ assert.equal(canExtract({index:2,codec:'subrip'}),true);
+ assert.equal(canExtract({index:3,codec:'hdmv_pgs_subtitle'}),false);
+ assert.equal(canExtract({index:3,codec:'dvd_subtitle'}),false);
+ assert.equal(canExtract({index:-1,codec:'ass'}),false);
+});

@@ -14,7 +14,8 @@ const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
-const {resolveProbe,probeMkv}=require('./subtitle-probe.js');
+const {resolveProbe,probeMkv,canExtract,extractMkv}=require('./subtitle-probe.js');
+const {createSubdl}=require('./subtitle-subdl.js');
 const VP=require('./renderer/vplib');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
@@ -151,9 +152,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
     try { return readSubtitle(f); } catch (_) { return null; }
   });
   let subtitleProvider=createProvider({decode:decodeText});
+  const subdlProvider=createSubdl({decode:decodeText});
+  const providerFor=id=>id==='subdl'?subdlProvider:id==='opensubtitles'||id===undefined?subtitleProvider:null;
   let hashBusy=false;
   ipcMain.handle('vp:sub-search',async(e,req)=>{
     if(!trusted(e)||!req||typeof req!=='object')return {ok:false,code:'denied'};
+    const provider=providerFor(req.provider);if(!provider)return {ok:false,code:'bad-provider'};
+    if(req.provider==='subdl')return provider.search({query:req.query,language:req.language,apiKey:req.apiKey});
     // Do not accept renderer-supplied hash/path as a general read primitive.
     let hash=null;
     if(req.hashPath){
@@ -163,7 +168,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
       hashBusy=true;try{hash=await movieHash(p);}catch{}finally{hashBusy=false;}
       if(!trusted(e))return {ok:false,code:'denied'};
     }
-    return subtitleProvider.search({query:req.query,language:req.language,apiKey:req.apiKey,username:req.username,password:req.password,moviehash:hash});
+    return provider.search({query:req.query,language:req.language,apiKey:req.apiKey,username:req.username,password:req.password,moviehash:hash});
   });
   let sidecarBusy=false;
   async function saveDownloaded(e,video,subtitle,language,synced=false){
@@ -222,15 +227,42 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }catch{return {ok:false,code:'invalid-or-unsupported-archive-or-subtitle'};}
     finally{subtitleImportBusy=false;}
   });
-  ipcMain.handle('vp:sub-download',async(e,id,video,save)=>{
+  ipcMain.handle('vp:sub-download',async(e,id,video,save,providerId)=>{
     if(!trusted(e))return {ok:false,code:'denied'};
     const p=save===true?allowedFile(video,new Set(VIDEO_EXTS)):null;
-    const result=await subtitleProvider.download(id);
+    const provider=providerFor(providerId);if(!provider)return {ok:false,code:'bad-provider'};
+    const result=await provider.download(id);
     if(!result.ok||!trusted(e))return !trusted(e)?{ok:false,code:'denied'}:result;
     if(save===true)result.saved=await saveDownloaded(e,p,result.subtitle,result.language);
     return result;
   });
-  ipcMain.handle('vp:sub-disconnect',e=>trusted(e)?subtitleProvider.clear():false);
+  ipcMain.handle('vp:sub-disconnect',(e,id)=>trusted(e)?providerFor(id)?.clear()===true:false);
+  let embeddedBusy=false;
+  ipcMain.handle('vp:sub-embedded-list',async(e,video)=>{
+    const p=allowedFile(video,new Set(['mkv']));
+    if(!trusted(e)||embeddedBusy||!p||!approved.has(p))return {ok:false,code:'denied-or-busy'};
+    embeddedBusy=true;
+    try{const exe=await resolveProbe(await resolveFfmpegPath());
+      if(!exe||!trusted(e)||!approved.has(p))return {ok:false,code:'ffprobe-unavailable'};
+      const tracks=await probeMkv(exe,p);
+      return tracks?{ok:true,tracks:tracks.map(t=>({...t,extractable:canExtract(t)}))}:{ok:false,code:'probe-failed'};
+    }catch{return {ok:false,code:'probe-failed'};}finally{embeddedBusy=false;}
+  });
+  ipcMain.handle('vp:sub-embedded-extract',async(e,video,index,save)=>{
+    const p=allowedFile(video,new Set(['mkv']));
+    if(!trusted(e)||embeddedBusy||!p||!approved.has(p)||!Number.isSafeInteger(index)||index<0||index>65535)return {ok:false,code:'denied-or-busy'};
+    embeddedBusy=true;
+    try{
+      const ff=await resolveFfmpegPath(),exe=await resolveProbe(ff);
+      if(!exe||!trusted(e)||!approved.has(p))return {ok:false,code:'ffprobe-unavailable'};
+      const tracks=await probeMkv(exe,p),track=tracks?.find(t=>t.index===index);
+      if(!canExtract(track)||!trusted(e)||!approved.has(p)||allowedFile(p,new Set(['mkv']))!==p)return {ok:false,code:'unsupported-track'};
+      const subtitle=await extractMkv(ff,p,track);
+      if(!subtitle||!trusted(e))return {ok:false,code:'extract-failed'};
+      const saved=save===true?await saveDownloaded(e,p,subtitle,track.language):null;
+      return {ok:true,subtitle,saved};
+    }catch{return {ok:false,code:'extract-failed'};}finally{embeddedBusy=false;}
+  });
   let autoSyncBusy=false,autoSyncWorker=null,autoSyncCancelled=false;
   ipcMain.handle('vp:sub-autosync-cancel',e=>{if(!trusted(e)||!autoSyncBusy)return false;autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');return true;});
   ipcMain.handle('vp:sub-autosync',async(e,req)=>{

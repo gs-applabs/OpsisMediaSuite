@@ -206,7 +206,7 @@
   let syncAnchor=null,autoSuggestion=null;
   function clearSuggestion(){autoSuggestion=null;$('vpSubApplySync').disabled=true;$('vpSubAutoStatus').textContent='';}
   function clearAnchors(){clearSuggestion();syncAnchor=null;$('vpSubAnchorStatus').textContent='';}
-  function clearSubs() { if(!$('vpSubAutoCancel').disabled)api.vpSubAutoCancel().catch(()=>{});clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1;editUndo=null;$('vpSubEditStatus').textContent=''; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { $('vpSubEmbeddedTracks').textContent='';$('vpSubEmbeddedExtract').disabled=true;$('vpSubEmbeddedStatus').textContent=''; if(!$('vpSubAutoCancel').disabled)api.vpSubAutoCancel().catch(()=>{});clearAnchors(); $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1;editUndo=null;$('vpSubEditStatus').textContent=''; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -482,7 +482,36 @@
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { clearAnchors();++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
-    let searchGeneration=0;
+    let searchGeneration=0,resultsProvider=null;
+    $('vpSubProvider').addEventListener('change',()=>{
+      ++searchGeneration;resultsProvider=null;
+      for(const id of ['vpSubKey','vpSubUser','vpSubPassword'])$(id).value='';
+      $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;
+      const subdl=$('vpSubProvider').value==='subdl';
+      $('vpSubUser').disabled=subdl;$('vpSubPassword').disabled=subdl;$('vpSubHash').disabled=subdl;
+    });
+    let embeddedGeneration=0;
+    $('vpSubEmbeddedList').addEventListener('click',async()=>{
+      const p=current(),g=generation,n=++embeddedGeneration,sel=$('vpSubEmbeddedTracks'),status=$('vpSubEmbeddedStatus');
+      sel.textContent='';$('vpSubEmbeddedExtract').disabled=true;
+      if(!p||VP.isUrl(p)||VP.extOf(p)!=='mkv'){status.textContent='Select local MKV';return;}
+      $('vpSubEmbeddedList').disabled=true;
+      try{const res=await api.vpSubEmbeddedList(p);if(g!==generation||n!==embeddedGeneration)return;
+        if(!res?.ok){status.textContent=res?.code||'Probe failed';return;}
+        for(const track of res.tracks){const o=document.createElement('option');o.value=String(track.index);o.textContent=track.index+' · '+(track.language||'und')+' · '+track.codec+(track.extractable?'':' · image/unsupported');o.disabled=!track.extractable;sel.append(o);}
+        const first=Array.from(sel.options).find(o=>!o.disabled);if(first)sel.value=first.value;
+        $('vpSubEmbeddedExtract').disabled=!first;status.textContent=res.tracks.length+' subtitle tracks / ροές';
+      }catch{if(g===generation)status.textContent='Probe failed';}finally{$('vpSubEmbeddedList').disabled=false;}
+    });
+    $('vpSubEmbeddedExtract').addEventListener('click',async()=>{
+      const p=current(),g=generation,rev=++subRevision,sel=$('vpSubEmbeddedTracks'),status=$('vpSubEmbeddedStatus');
+      if(!p||!sel.value||sel.selectedOptions[0]?.disabled||(handoff&&handoff.engine!=='libvlc'))return;
+      $('vpSubEmbeddedExtract').disabled=true;
+      try{const res=await api.vpSubEmbeddedExtract(p,Number(sel.value),$('vpSubSaveBeside').checked);if(g!==generation||rev!==subRevision)return;
+        if(!res?.ok){status.textContent=res?.code||'Extract failed';return;}
+        attachSubtitle(res.subtitle);status.textContent='Extracted / Εξήχθη'+(res.saved?.ok?' · '+res.saved.name:res.saved?' · '+res.saved.code:'');
+      }catch{if(g===generation)status.textContent='Extract failed';}finally{if(g===generation)$('vpSubEmbeddedExtract').disabled=!sel.options.length;}
+    });
     const onlineStatus=t=>{$('vpSubOnlineStatus').textContent=t;};
     $('vpSubAudit').addEventListener('click',async()=>{
       const snapshot=list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),results=$('vpSubAuditResults'),status=$('vpSubAuditStatus');
@@ -526,24 +555,25 @@
     $('vpSubSearch').addEventListener('click',async()=>{
       const g=generation,n=++searchGeneration;
       $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubSearch').disabled=true;
-      const req={query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashPath:$('vpSubHash').checked&&current()&&!VP.isUrl(current())?current():null};
+      const req={provider:$('vpSubProvider').value,query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashPath:$('vpSubHash').checked&&current()&&!VP.isUrl(current())?current():null};
       $('vpSubKey').value='';$('vpSubPassword').value='';$('vpSubUser').value='';onlineStatus('Searching…');
       try{
         const r=await api.vpSubSearch(req);if(g!==generation||n!==searchGeneration)return;
         if(!r?.ok){onlineStatus(providerStatus(r));return;}
+        resultsProvider=req.provider;
         for(const row of r.items){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' — '+row.release+' · '+row.downloads+(row.hearingImpaired?' · SDH':'')+(row.hashMatch?' · exact hash match':row.matchScore>0?' · release match '+row.matchScore:'');$('vpSubResults').append(o);}
         $('vpSubDownload').disabled=!r.items.length;onlineStatus(r.items.length+' results / αποτελέσματα');
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
     });
     $('vpSubDownload').addEventListener('click',async()=>{
-      if(!current()||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
+      if(!current()||!resultsProvider||resultsProvider!==$('vpSubProvider').value||(handoff&&handoff.engine!=='libvlc'))return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
       $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
-      try{const r=await api.vpSubDownload(id,current(),$('vpSubSaveBeside').checked&&!VP.isUrl(current()));if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
+      try{const r=await api.vpSubDownload(id,current(),$('vpSubSaveBeside').checked&&!VP.isUrl(current()),resultsProvider);if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
         if(!r?.ok){onlineStatus(providerStatus(r));return;}
         attachSubtitle(r.subtitle);onlineStatus('Downloaded and selected / Λήψη και επιλογή'+(r.saved?.ok?(r.saved.reused?' · Already saved / Υπάρχει ήδη: ':' · Saved / Αποθηκεύτηκε: ')+r.saved.name:r.saved?' · Not saved / Δεν αποθηκεύτηκε: '+r.saved.code:'')+(r.remaining===null?'':' · remaining '+r.remaining));
       }catch{onlineStatus('Download failed');}finally{if(g===generation&&n===searchGeneration)$('vpSubDownload').disabled=!$('vpSubResults').options.length;}
     });
-    $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
+    $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect($('vpSubProvider').value)){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
     $('vpSubDelayExact').addEventListener('change',()=>setDelay(Number($('vpSubDelayExact').value)));
     function marker(){const pos=handoff?(handoff.engine==='libvlc'&&handoff.status?.playing===false?handoff.status.positionMs/1000:NaN):video.currentTime;return $('vpSubCue').options.length&&Number.isFinite(pos)?{subtitle:Number($('vpSubCue').value),video:pos}:null;}
     $('vpSubSyncHere').addEventListener('click',()=>{const a=marker();if(a)setDelay(a.video-a.subtitle*subScale);else if(handoff)say('Pause native playback before aligning a cue');});

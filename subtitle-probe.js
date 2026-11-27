@@ -33,4 +33,14 @@ async function probeMkv(exe,file){
  const output=await run(exe,['-v','error','-protocol_whitelist','file,pipe','-f','matroska','-probesize','1048576','-analyzeduration','1000000','-select_streams','s','-show_entries','stream=index,codec_name:stream_tags=language','-of','json','-i',file]);
  return output===null?null:parseTracks(output);
 }
-module.exports={resolveProbe,parseTracks,probeMkv};
+const TEXT_CODECS=new Set(['subrip','ass','ssa','webvtt','text','mov_text']);
+function canExtract(track){return !!track&&TEXT_CODECS.has(track.codec)&&Number.isSafeInteger(track.index)&&track.index>=0&&track.index<=65535;}
+async function extractMkv(ffmpeg,file,track){
+ if(!ffmpeg||!canExtract(track)||path.extname(file).toLowerCase()!=='.mkv'||localPath(file)!==file)return null;
+ // One explicitly chosen text stream, output only to stdout, bounded by size/time.
+ const text=await new Promise(resolve=>execFile(ffmpeg,['-hide_banner','-nostdin','-v','error','-protocol_whitelist','file,pipe','-f','matroska','-i',file,'-map','0:'+track.index,'-vn','-an','-dn','-c:s','srt','-f','srt','pipe:1'],{cwd:path.dirname(ffmpeg),windowsHide:true,timeout:30000,maxBuffer:5*1024*1024},(err,stdout)=>resolve(err?null:stdout)));
+ if(!text)return null;
+ const body=require('./subtitle-sidecar').canonicalSrt({ext:'srt',text});
+ return body?{name:path.basename(file,path.extname(file))+'.embedded-'+track.index+'.srt',ext:'srt',text:body}:null;
+}
+module.exports={resolveProbe,parseTracks,probeMkv,canExtract,extractMkv};
