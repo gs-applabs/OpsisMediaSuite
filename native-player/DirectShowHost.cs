@@ -94,8 +94,11 @@ internal static class DirectShowHost
             if(!string.Equals(System.IO.Path.GetFileName(Path),name,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Unexpected LAV module");
             // Restrict initial implementation to Program Files, machine x64,
             // no writable per-user folders, no UNC or junctions.
-            string root=Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)+System.IO.Path.DirectorySeparatorChar;
-            if(!Path.StartsWith(root,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("LAV outside Program Files");
+            // K-Lite installs both PE architectures under Program Files (x86).
+            // Verify PE machine independently of the containing directory.
+            var roots=new[]{Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)}
+                .Where(x=>!string.IsNullOrWhiteSpace(x)).Select(x=>x+System.IO.Path.DirectorySeparatorChar);
+            if(!roots.Any(root=>Path.StartsWith(root,StringComparison.OrdinalIgnoreCase)))throw new InvalidOperationException("LAV outside Program Files");
             hold=new FileStream(Path,FileMode.Open,FileAccess.Read,FileShare.Read);
             try {
                 using var reader=new BinaryReader(hold,System.Text.Encoding.UTF8,true);

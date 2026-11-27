@@ -54,3 +54,6 @@ Independent 2.8 kHz peaking presence control (0–6 dB), stereo balance, live an
 
 ## Pass 16 — actual installed K-Lite test matrix (first Mega row)
 Added dedicated Windows disposable-runner workflow for pinned Chocolatey K-Lite Mega 20.1.0, registry scan and actual H.264/AAC MKV explicit graph with installed LAV x64 filters, dummy sinks and clock check. CI-only code path is conditional at compile time, not part of normal host. No package is installed on user PC. Evidence pending; package availability, default registered filters and compatibility remain to be verified. Manual external DSP mode now accessible without detected FxSound.
+
+## Pass 17 — installed K-Lite inventory and path correction
+Pass 16 general CI 175/175 and native CI passed. K-Lite Mega 20.1.0 installation succeeded; logs show all four LAV CLSIDs for x64 and x86, but pack display label absent, so test stopped before graph. K-Lite installs under Program Files (x86), including x64 PE files. Expand known display labels/product registry detection; retain architecture/path and explicit consent; allow both Program Files roots, not arbitrary paths. CI now requires actual x64 machine LAV source/audio/video registrations rather than product label, records Chocolatey and registry product metadata separately. Real LAV decode still pending.

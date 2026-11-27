@@ -25,8 +25,12 @@ jobs:
       - name: Record actual registry inventory
         shell: pwsh
         run: |
-          node -e "require('./codec-inventory').inventory().then(r=>{console.log(JSON.stringify(r,null,2));if(r.status!=='ok'||!r.packs.some(p=>/K-Lite/i.test(p.name)))process.exitCode=1;})" | Tee-Object codec-inventory.json
-          if ($LASTEXITCODE) { throw 'K-Lite registry inventory failed' }
+          # Independent evidence: Chocolatey install succeeded, and the actual
+          # machine x64 LAV registrations must exist. Product label is advisory.
+          choco list --exact k-litecodecpackmega | Tee-Object installed-pack.txt
+          node -e "require('./codec-inventory').inventory().then(r=>{console.log(JSON.stringify(r,null,2));const roles=new Set(r.lav.filter(x=>x.hive==='LocalMachine'&&x.machine==='x64'&&x.status==='identity-review-required').map(x=>x.role));if(r.status!=='ok'||!['source','video','audio'].every(x=>roles.has(x)))process.exitCode=1;})" | Tee-Object codec-inventory.json
+          if ($LASTEXITCODE) { throw 'LAV registry inventory failed' }
+          Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'K-Lite' -or $_.PSChildName -match 'K-Lite|KLCodec' } | Select-Object DisplayName,DisplayVersion,PSChildName | ConvertTo-Json | Set-Content pack-registry.json
       - name: Build CI-only native codec test host
         run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -p:CodecTest=true -o native-player/publish-ci
       - name: Generate H.264/AAC fixture and run explicit LAV graph
@@ -44,5 +48,7 @@ jobs:
           name: klite-codec-evidence
           path: |
             codec-inventory.json
+            installed-pack.txt
+            pack-registry.json
             lav-result.json
             lav-error.log

@@ -193,3 +193,9 @@ test('LAV registration classification distinguishes name, architecture and user 
  assert.equal(classifyLav([{...base,server:'C:\\bad.dll'}],'x64',inspect)[0].status,'missing-or-invalid-file');
  assert.equal(classifyLav([{...base,clsid:'unknown'}],'x64',inspect).length,0);
 });
+
+test('codec inventory recognizes alternate K-Lite product labels and keeps registry provenance',()=>{
+ const {normalize}=require('../codec-inventory');
+ const r=normalize({packs:[{name:'K-Lite Mega Codec Pack',version:'20.1.0',view:'32'},{name:'K-Lite Codec Pack',version:'20.1.0',view:'64',source:'product-registry'}]});
+ assert.equal(r.packs.length,2);assert.ok(r.packs.some(x=>x.source==='product-registry'));
+});
