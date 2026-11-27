@@ -1,8 +1,8 @@
 # OPSIS Media Suite 3.0.0 — Ενιαίο Master Roadmap
 
-Αναθεώρηση R2 • 27 Νοεμβρίου 2026 • Draft PR #3 • βάση κώδικα `0c9e15bef830beb144844eea3b2875d66455cb89`
+Αναθεώρηση R3 • 27 Νοεμβρίου 2026 • Draft PR #3 • βάση κώδικα `0c9e15bef830beb144844eea3b2875d66455cb89`
 Στόχος: ασφαλές, αποδοτικό και ολοκληρωμένο 3.0.0 για Windows 10/11 x64, με Inno Setup και συμβατότητα plugin 1.0.0.0. Το master παραμένει 2.4.2 μέχρι την εγκεκριμένη έκδοση.
-Αυτό το τμήμα είναι το μοναδικό ενεργό σχέδιο προτεραιοτήτων. Το παλαιό σχέδιο και το ιστορικό παραμένουν στο τέλος ως αρχείο αναφοράς, όχι ως δεύτερη ουρά υλοποίησης.
+R3 ανακατανέμει τις προτεραιότητες R2 χωρίς να επανεκκινεί υλοποιημένες εργασίες. Αυτό το τμήμα είναι το μοναδικό ενεργό σχέδιο προτεραιοτήτων. Το παλαιό σχέδιο και το ιστορικό παραμένουν στο τέλος ως αρχείο αναφοράς, όχι ως δεύτερη ουρά υλοποίησης.
 
 ## 1. Τεκμηριωμένο σημείο εκκίνησης
 
@@ -19,82 +19,120 @@
 
 Καταστάσεις: BACKLOG / IN PROGRESS / IMPLEMENTED / VERIFIED / BLOCKED / DEFERRED. VERIFIED απαιτεί αποτέλεσμα για συγκεκριμένο commit, πραγματική δοκιμή και σαφές scope. Δεν χρησιμοποιούμε ποσοστά ολοκλήρωσης χωρίς καταμετρημένα κριτήρια. Ακυρωμένο CI δεν είναι PASS ούτε αποτυχία λειτουργίας.
 
-## 2. Νέα σειρά υλοποίησης
+Τελευταίο ελεγχθέν head πριν την R3: `8ab7b9b475baf0c5d7cbf2ca45902b6f622a0e12` (R2 documentation). Κατά την επιθεώρηση, plugin CI 46007431247 success, οκτώ λοιπά workflows σε εξέλιξη/ουρά. Δεν τεκμηριώνεται νέο συνολικό PASS. Η βάση κώδικα και τα στοιχεία 20B.12 παραπάνω παραμένουν ιστορικά, όχι μετρήσεις του νέου head.
 
-### P0 — Σταθεροποίηση υπάρχοντος κώδικα (UMP 21A–21C, release blocker)
+## 2. Ενεργή σειρά υλοποίησης R3 — P0–P9
 
-- P0.1: Ολοκλήρωση 20B.13–14 CI, ανάγνωση logs, διόρθωση κάθε πραγματικής αποτυχίας, επαλήθευση του package/worklet/installer. Μην προσθέτεις νέο εφέ πριν κλείσει η παλινδρόμηση.
-- P0.2: Ενιαίο lifecycle/ownership για μουσική, βίντεο, mic, test tone, offline converter, φωτογραφία. Generation/epoch guards, stop ACK native host, ακύρωση stale opens, bounded shutdown. Διατήρηση playlist, θέσης, υποτίτλων, dirty edits. Explicit user jobs συνεχίζουν ανεξάρτητα.
-- P0.3: Audit DSP live/OfflineAudioContext/worklet/native/Video FX: neutral/active/mute/bypass, επιλεκτικά branches, crossfade/re-enable race, ίδιο gain/phase/mono/stereo, limiter. Μετρημένα waveform tests, όχι μόνο DOM. Κάθε EQ band ξεχωριστά μόνον εφόσον υπάρχει μετρήσιμο κέρδος χωρίς clicks ή αλλαγή απόκρισης.
-- P0.4: Security: IPC/frame/path/consent, bounded metadata and decoded PCM, oversized images, malicious archives/media, dependencies/secrets/packaging, no arbitrary COM/DLL, no global OS modifications. Audit shutdown before/after. Διόρθωση και επανέλεγχος παλαιότερου security failure.
-- P0.5: CI discipline: batch independent changes, no repeated hour-long workflows per push, preserve last verified SHA. Fast syntax/unit/real renderer gate, selected specialist suites on touched paths, all specialist suites on frozen release candidate. Keep already-running hour soaks; do not treat cancelled runs as green. No merge until mandatory checks green.
+P0 και P1 είναι αλληλένδετα: η διόρθωση αποτυχημένου CI προηγείται οποιασδήποτε αλλαγής, ακόμη κι αν το P0 έχει την υψηλότερη αρχιτεκτονική προτεραιότητα. P2–P7 κλείνουν υφιστάμενες δυνατότητες πριν προστεθεί προαιρετικό scope. P8 είναι η υποχρεωτική πύλη έκδοσης. P9 δεν μπλοκάρει τον βασικό κορμό. Όλα τα παρακάτω είναι σχέδιο/κριτήρια, όχι νέες ολοκληρωμένες υλοποιήσεις.
 
-Gate P0: all baseline + new regressions green on same candidate; no critical/high unmitigated issue; real park/resume/native lifecycle tests; no data loss.
+### P0 — Έξυπνος πυρήνας και Anti-Pile-Up (UMP 21A–22D, release blocker)
 
-### P1 — Ελαφρύς πυρήνας και Anti-Pile-Up (UMP 22A–22D, release blocker)
+- P0.1: Απογραφή και επαναχρησιμοποίηση demand-driven core 20B.11–14: υπάρχουσα επιλεκτική εκκίνηση AudioContext, park/resume video, lazy probes, επιλεκτικά DSP branches. Καμία δεύτερη preference store ή παράλληλος scheduler. Καταγραφή capability/owner/activation/dependency/cleanup για κάθε υπηρεσία.
+- P0.2: Ενιαίος κύκλος cold → initializing → active → parked → disposing → failed με idempotent acquire/release, leases/reference counts για κοινές υπηρεσίες, generation/epoch guards, bounded cancellation και stop ACK native host. UI navigation δεν ξεκινά επεξεργασία χωρίς ανάγκη. Ανεξάρτητες εργασίες που ζήτησε ο χρήστης συνεχίζουν (π.χ. μουσική + φωτογραφία + μετατροπή), ενώ αμοιβαία ασύμβατα live sources αλλάζουν ελεγχόμενα. Preserve playlist, positions, subtitle edits, dirty photo state, settings. No forced working-set trim or GC tricks.
+- P0.3: Lazy modules for native hosts, subtitle provider/cache, FFmpeg/probes, archive, metadata and photo workers; selected visualizer/background only; visibility/idle-aware timers, suspend unused contexts. Explicit job queue, priority to interactive playback; bounded concurrency/backpressure without silent cancellation. Optional resource budgets configurable, never arbitrarily block user-initiated work.
+- P0.4: Bounded cover/thumb caches, PCM, photo buffers, queues and logs; cleanup owned temp files, child process tree, timers, event listeners, object URLs, handles and worker lifetimes. Deduplicate settings/resume writes, no unchanged-value writes, flush on genuine lifecycle events. No user-data deletion. Restore settings after restart and safe cancellation.
+- P0.5: Same-fixture baseline 20B.12 and 2.4.2 where feasible; measure cold startup-to-interactive, private bytes and working set separately, CPU, GPU scope, disk I/O deltas (not physical SSD wear), child/handle count, memory slope after warm-up. 20/120/1200-cycle and 1h candidate soak, separate 8h on authorized Windows host; 1000 music switches, 100 video switches, 100 photo opens, 100 real small conversions and mixed-mode cancellation/exit. No test counts until actually executed.
+- P0.6: Provisional engineering targets: idle CPU mean ≤1% over 5 min static; aim 20% lower startup and private bytes vs reproducible baseline, revisit renderer floor; after warm-up within 10% or 64 MiB above plateau (whichever larger) and no sustained rising trend; no orphan app-owned children after graceful exit. Targets not results. Actual GPU/audio/SSD hardware separate.
 
-- P1.1: Feature registry/lifecycle (cold, initializing, active, parked, disposing, failed), existing settings as source of truth; no duplicate preference store. Dependency graph, idempotent activation/deactivation, cancellation; no hidden tasks from unused features. User-started conversions/export/explicit sync continue and expose status/cancel.
-- P1.2: Extend lazy loading: subtitle providers/cache, native host and DSP bridge, archive/codec detection, separate audio/video converter UI work, metadata scans when relevant. Only load selected background/visualizer, suspend inactive live contexts, no polling when idle. Retain unsaved photo content; release disposable preview buffers when safe; no forced working-set trim or GC tricks.
-- P1.3: Bound retained cover/thumb bytes, decoded audio/PCM, photos and queues; check large library/import, repeated reopen, stale metadata retry, scratch cleanup with safe owned paths, disk write dedup, handles/threads/child-process lifetime, no deletion of user files. Measure process-tree private bytes and working set separately, I/O deltas (not SSD wear), CPU/GPU with stated scope, actual startup-to-interactive wall time.
-- P1.4: Reproducible performance gate: compare same runner/configuration and fixtures against frozen 20B.12 and 2.4.2 where feasible; 20/120/1200-cycle test, separate 8h on appropriate authorized Windows host; 1000 music switches, 100 video switches, 100 photo opens, 100 real small conversions, explicit cancellation/exit and mixed-mode scenarios. No workload counts claimed until executed. Quantify slope after warm-up, no persistent handle/child/temp growth. Report failures per cycle and bounded metrics, no infinite retries.
-- P1.5: Provisional engineering targets (not achieved results): idle CPU mean <=1% over 5 min with static background; compare cold startup wall-time and private bytes (aim 20% lower than reproducible baseline, revisit if renderer floor limits it); after warm-up same fixture idle checkpoints within 10% or 64 MiB above plateau, whichever larger, with no sustained rising trend; no leftover app-owned processes after graceful exit; no unnecessary writes from unchanged settings. GPU/audio real-hardware and physical SSD measurements separate. Any threshold miss requires diagnosis/explicit release decision, not metric gaming.
+Gate P0: same-SHA lifecycle and mixed-mode assertions; 1h completed, no data loss, no sustained resource growth. Eight-hour claim requires actual 8h result; unavailable mandatory hardware is BLOCKED or explicit user-approved limitation.
 
-Gate P1: one-hour run completed on candidate plus meaningful mixed-mode tests; 8h validation required for claim of eight-hour stability. If 8h hardware unavailable, release status BLOCKED or explicit user-approved documented limitation, not false certification.
+### P1 — Σταθερότητα, ασφάλεια και αποφυγή συγκρούσεων (UMP 21A–21C, continuous release blocker)
 
-### P2 — Πλήρης λειτουργικότητα και ενοποίηση (UMP 23A–23E)
+- P1.1: Reconcile 20B.13–14 and latest CI; inspect logs, repair actual failures before new changes. Keep long-running soaks; cancelled/pending never PASS. Batch independent changes, fast syntax/unit/real renderer first, specialist suites by scope, all suites on frozen RC.
+- P1.2: Inventory existing controls, settings, IPC and plugin/native/codec responsibilities; classify reuse / extend / replace / defer. One owner per feature, one source of truth per setting, no duplicate DSP, controls or jobs. Regression against previous 2.4.2.
+- P1.3: Scoped IPC/path/consent, main-frame and origin checks, bounded metadata/decoded PCM/images/archives, safe redirects, validated binaries and fixed arguments, no arbitrary COM/DLL, no global OS modifications. Security scan, SBOM, dependency/license/secret gates; fix earlier scan failure. Native child is not a security sandbox.
+- P1.4: Atomic settings/migrations and output publishing, recovery/crash loop protection, corrupt config rollback, interruption cleanup; test shutdown, cancel, stale callbacks, provider rate limits, offline operation, redacted bounded logs. No irreversible actions without consent.
 
-- P2.1: Playback capability matrix with actual decoded frames, seek, audible route where device available, MKV HEVC/multi-track, H.264/AAC, WebM, audio delay, chapters, native LibVLC/DirectShow/Media Foundation/Chromium fallback. Read-only K-Lite/other packs detection; verify actual connected decoder, no registry/driver alterations; manual choice/controlled fallback.
-- P2.2: Subtitle completeness: Greek encodings, external/embedded text/bitmap where backend supports it, sync/offset/stretch, real rendered cues, seek and replay, editor unsaved state, provider consent/official APIs, archive safety and ambiguity, sync cancellation. Record unsupported ASS/PGS/VobSub cases rather than pretend parity.
-- P2.3: Metadata completion: current MP3/FLAC explicit batch + backup, MusicBrainz review, optional AcoustID key; add safe local cover art, supported M4A/Ogg/Opus then WAV/WMA only if preservation can be proved. Automatic write only opt-in with clear authorization for selected files, preview/undo/backup; never silent background alteration or overwrite existing fields. Preserve exact audio payload, verify original/backup, ambiguous match review, no scraping.
-- P2.4: Converter and photo: cancellation, queue recovery, atomic publication, no overwriting originals, large-file pixel/PCM budget, preview/export parity, actual available encoder, avoid simultaneous heavy work without user request; consolidate duplicate functions rather than invent second implementation.
-- P2.5: FxSound/Equalizer APO coexistence, native/external/smart routing, device-change handling, avoid double DSP, preserve existing supported plugin contract and no automatic driver install/kill; real physical endpoint validation separate.
+Gate P1: baseline + new regressions green on candidate, no unmitigated critical/high issue, no conflicts or data loss.
 
-Gate P2: feature-by-feature matrix (supported / partial / unavailable), actual fixture tests and explicit prerequisites. No broad parity claims.
+### P2 — Μουσική, metadata και βιβλιοθήκη (UMP 23A)
 
-### P3 — Χρηστικότητα, εμφάνιση, ενιαίες ρυθμίσεις (UMP 24A–24C)
+- Preserve current MP3/FLAC explicit batch, original backup, filename suggestions, MusicBrainz review, optional AcoustID/Chromaprint key and consent. Complete live-provider tests with user-owned credentials; no silent or ambiguous auto-write, no scraping or key logging.
+- Add preview/undo, local cover embedding, supported M4A/Ogg/Opus then WAV/WMA only after exact audio payload and unrelated metadata preservation proved. Opt-in import-write authorization with per-file scope, cancellation and backup; no background alteration or overwrite of existing fields by default.
+- Incremental user-selected library indexing, bounded artwork cache and metadata queue, smart playlists, search/filter, duplicate suggestions (never auto-delete), history and portable import/export. Reuse existing playlist and metadata engine. Gapless/crossfade verification, not duplicate players.
 
-- P3.1: Runtime control audit and grouping by owner tab; shared feature finder (92 routes baseline), visible controls, context-aware tooltips, disabled reason/prerequisite, no duplicate switches/keys, search routes to control but does not execute.
-- P3.2: Resource management panel with readable Greek/English labels and existing theme tokens: active/suspended/on-demand, currently running explicit jobs, optional read-only live diagnostics only while panel open, stop/release per feature with confirmation for dirty edits. Do not introduce permanent monitor. No misleading resource counts.
-- P3.3: Complete EL/EN and 20-language localized controls/help/welcome/history; keyboard, focus, 100/150/200% DPI, narrow windows, glass/readability, high contrast/reduced motion. Help explains actual operations and limitations, not marketing. OpsisUI6 conformance only after access and contract validation (previous lookup 404); preserve common plugin identity and existing layout.
-- P3.4: Optional lightweight startup mode preference (last selected or default tab) only if it does not autostart playback or activate unused services. Existing settings migration/rollback and no destructive default changes.
+Gate P2: actual files, tag/backup/audio payload integrity, ambiguity and offline/credential/cancellation tests; feature matrix.
 
-Gate P3: every supported user-facing feature has owner, visible control, help, accessible entry, real test and actual status; no duplicate configuration.
+### P3 — Αναπαραγωγή και codecs (UMP 23B)
 
-### P4 — Προχωρημένες δυνατότητες με όρους (UMP 25A–25D, not automatic release blockers)
+- Engine-neutral session with Chromium/LibVLC/DirectShow/Media Foundation, one active backend per media session, bounded fallback with position/track preservation and manual override. Real decoded frame/A-V clock, seek, audio track, chapters, rate, frame stepping, audio delay, aspect and native fullscreen.
+- Read-only trusted installed K-Lite/LAV and other pack detection; actual connected filter, signed/trust/architecture checks and explicit user consent, no global registry/driver alterations. Real clean/installed VM tests; codec packs do not extend every engine.
+- Cross-process LibVLC viewport visibility, DPI, monitor/resize, seek/subtitle and fallback. MFPlay experimental; modern presentation only after real tests. GPU/software policy and actual decoder evidence, HDR only if display verified. Preserve unsupported/partial labels.
 
-Prioritize user value and reuse existing functionality. Perform overlap/license/resource review before implementing.
-- P4.1: Photo masks/healing/curves/HSL and batch processing if not already present; bounded/tiled decode, ICC/EXIF, alpha, originals preserved.
-- P4.2: Advanced audio EQ/parametric presets, dialogue/noise features, device profiles, optional native DSP, only after P0/P1 verified; no second parallel DSP chain.
-- P4.3: Media library tags/search, playlist enhancements, remux, advanced video controls, authorized network streams; opt-in network discovery/casting separate.
-- P4.4: RAW/HEIC, HDR, advanced native codecs, system-wide APO, VST3, offline ML and casting are conditional extensions; require dependency, license, privacy, security, compatibility, actual device tests. Defer unsupported/untested items to 3.1+ or optional plugins rather than inflate 3.0.0.
+Gate P3: MKV HEVC/multi-track, H.264/AAC, WebM, decoded/visible and audible where hardware available; no claims of complete backend parity.
 
-Gate P4: explicit scope decision before RC; optional unfinished items stay disabled or deferred, not shipped as complete.
+### P4 — Υπότιτλοι και συγχρονισμός (UMP 23C)
 
-### P5 — Release Candidate και τελική 3.0.0 (UMP 26A–26C, release blocker)
+- Reuse existing OpenSubtitles/SubDL, ZIP/RAR and season batch, language detection, adjacent SRT and cue editor. Validate authenticated live providers, Greek UTF-8/1253/UTF-16, safe archives incl. compressed RAR/RAR5, episode/hash ranking and manual ambiguity review, cooldown/cancel.
+- Real displayed external/embedded text and bitmap where backend supports it; ASS styles, PGS/VobSub explicit partial/unsupported status; signed delay, FPS/stretch, seek/replay, editor dirty state, sync preview and duplicate-safe export.
+- No second provider pipeline or parallel subtitle rendering; no automated challenge bypass. Offline core remains functional.
 
-- P5.1: Freeze candidate SHA, all mandatory suites on same SHA (general, installer lifecycle, DSP/native/worklet, public subtitle/RAR, K-Lite, plugin, packaged). Windows 10 and 11 x64 where available; separate second free/authorized Windows VM or explicitly blocked; actual physical GPU/audio checks cannot be inferred. No unverified direct merge.
-- P5.2: Inno Setup only, existing AppId and legacy NSIS migration only. Real clean 2.4.2 upgrade, repair/uninstall/reinstall, preserve user profile/settings, cleanup owned files, rollback, package/source consistency, version labels/help/history/splash/plugin 1.0.0.0, checksum/SBOM/licenses/security. Signing only if authorized feasible; do not pretend signed.
-- P5.3: One canonical source archive, tested installer and optional portable, reproducible build instructions, release notes, artifact hashes and verified downloads. Publish after gates, no source/user-data deletion; no new final release until candidate accepted.
+Gate P4: real cue rendering/timing, malformed inputs, cancellation, provider and archive fixtures; distinguish live credentials and visual tests from CI acceptance.
 
-Gate P5: same-SHA evidence, known limitations, user-visible decision for any blocked mandatory check, no false green. Final version 3.0.0 only after gate.
+### P5 — Native DSP και ποιότητα ήχου (UMP 23D)
+
+- Preserve current Web Audio and existing original C++ DSP / experimental AudioWorklet. Measure neutral/active/bypass/mute, crossfade, interrupted re-enable, channel isolation, headroom/limiter, sample-rate changes, no clicks/double DSP; offline and video parity or explicit limitations. Individual EQ bands only if proven useful and stable.
+- Single routing authority native/web/external bypass; existing FxSound/Equalizer APO compatibility remains read-only, no automatic driver install, kill or endpoint changes. Test Bluetooth/HDMI/device changes and real physical audio where available.
+- Real-time code no allocations/locks/disk/IPC, bounded buffers, smoothing, finite PCM; actual CPU/latency/dropout measurements. Optional advanced EQ/device profiles after P0/P1. System-wide APO excluded from core release (P9), no unsigned deployment or security weakening.
+
+Gate P5: actual signal/reference tests and route exclusivity; production native route only when validated; developer-only assets remain excluded otherwise.
+
+### P6 — Μετατροπές αρχείων και φωτογραφίες (UMP 23E)
+
+- Reuse existing audio/video queue and photo editor. Explicit jobs continue regardless of navigation; bounded PCM/pixel/queue, cancellation, progress, actual encoder selection, source preservation, safe atomic publication and no overwrites, collision/filesystem compatibility. Metadata/selected tracks, remux vs re-encode, recovery/cleanup.
+- Non-destructive recipe and undo/redo, large-file/worker/tiled feasibility, EXIF orientation, ICC/alpha and metadata privacy, before/after, preview/export parity. Reuse existing masks/curves/HSL if present; remaining advanced tools are conditional P9.
+
+Gate P6: actual exports and format/quality/alpha fixtures, cancellation and mixed-mode tests; originals untouched.
+
+### P7 — OpsisUI, Windows, plugins και χρηστικότητα (UMP 24A–24C)
+
+- Runtime control audit and owner tab, existing 92-route feature finder, visible controls, context help, prerequisites/disabled reasons; search navigates, never executes. No duplicate switches or configuration.
+- Resource panel on demand: active/parked/on-demand/failed, explicit jobs and cancel, read-only process metrics only while open, no permanent monitor. Confirm dirty edits before release. Optional startup tab preference without autoplay.
+- Complete EL/EN and 20-language UI/help/welcome/history, keyboard/focus, high contrast/reduced motion, 100/150/200% DPI, narrow windows, glass/readability. OpsisUI 6 only after actual access/contract validation (prior 404), no unverified shared repo edits.
+- Plugin .NET contract 1.0.0.0; installed Opsis host, discovery/handshake/uninstall, no duplicate instance/routing; Crawler M3U and Windows media controls. Audit separate PR #1 for overlaps before cherry-pick/integration; no automatic merge.
+
+Gate P7: actual runtime control coverage, installed host compatibility, UI and accessibility matrix, documented limitations.
+
+### P8 — Release Candidate, Inno Setup και τελική 3.0.0 (UMP 26A–26C, release blocker)
+
+- Freeze candidate SHA, all mandatory suites same SHA: general, installer, DSP/native/worklet, public subtitle/RAR, K-Lite, plugin, packaged. Windows 10/11 x64, second free/authorized Windows VM if accessible; physical GPU/audio cannot be inferred. No unverified direct merge.
+- Inno Setup only, existing AppId and legacy NSIS migration only. Actual .iss install, authentic 2.4.2 upgrade, repair/uninstall/reinstall, profile retention, rollback, owned cleanup. Version/help/history/splash/plugin, SHA256/SBOM/licenses/security. Signing only if authorized and feasible; no false signed claim. Earlier synthetic NSIS fixture is not production evidence.
+- One canonical source archive, tested installer and optional portable, reproducible build instructions, release notes, artifact hashes and verified downloads. Preserve user data and rollback version. Publish only after mandatory gates; no scope inflation.
+
+Gate P8: same-SHA results, explicit blocked/unsupported hardware and known limitations, user-visible decision for any blocked mandatory check. Final 3.0.0 only after acceptance.
+
+### P9 — Προαιρετικές προηγμένες δυνατότητες (3.1+ ή ξεχωριστά add-ons)
+
+- Review overlap, user value, licensing/security/resource cost before implementation: photo masks/healing/advanced batch/RAW/HEIC, HDR, advanced codec paths, library interoperability, casting/DLNA, waveform/spectrogram/ABX, optional offline STT/OCR, VST3 and ARM64. No blanket parity or dependency installation.
+- System-wide DSP/APO only with validated supported zero-cost signed deployment, explicit opt-in/rollback and physical devices; no Secure Boot/HVCI/signature enforcement changes, registry hacks, capture/replay loop or copied AGPL code. If unavailable, BLOCKED; core media-local DSP remains independent. No core release blocker.
+- Optional lightweight plugin SDK, network permissions and isolated processing; no arbitrary script execution. No new feature activates by default if it consumes resources.
+
+Gate P9: separate scope decision, feasibility/license/security, actual hardware and resource evidence; unfinished items disabled or deferred.
 
 ## 3. Επόμενο πρακτικό pass
-1. UMP 21A: reconcile 20B.13/14 full CI, fix actual failures, collect completed soak evidence with SHA; audit DSP interrupted transitions and native ownership.
-2. UMP 21B: test/repair active feature lifecycle and resource release (including shutdown).
-3. UMP 21C: verify security and compatibility, freeze P0 baseline.
-4. Proceed P1 then P2/P3 in dependent order; only batch unrelated work if it cannot mask failures. P4 after scope review; P5 on frozen candidate.
+
+| Pass | Εργασία | Προϋπόθεση εξόδου |
+|---|---|---|
+| UMP 21A | P1 baseline CI + P0 lifecycle inventory, inspect long soaks and repair failures | Exact SHA, actual results; no pending/cancelled as pass |
+| UMP 21B | P0 service ownership, leases, simultaneous user jobs, DSP/native stop | Real park/resume and mixed-mode tests |
+| UMP 21C | P1 security, shutdown, data retention and conflict audit | Green targeted tests, freeze baseline |
+| UMP 22A–22D | P0 remaining lazy modules, bounded caches and measured resource/soak gates | Candidate 1h and documented hardware limitations |
+| UMP 23A–23E | P2 music/metadata; P3 playback; P4 subtitles; P5 DSP; P6 conversion/photo | Existing feature closure, real fixture and matrix |
+| UMP 24A–24C | P7 UI/20 locales, plugin/installed host, resource panel | Runtime inventory and integration |
+| UMP 26A–26C | P8 frozen RC and actual Inno Setup release checks | All mandatory same-SHA evidence |
+| Post-core | P9 optional features | Separate scope and gates |
 
 ## 4. Κανόνες για κάθε Ultra Mega Pass
 - Report actual paths/commit, defects discovered vs fixed vs verified, test count and scope, unresolved issues and blocked hardware. No arbitrary percentages or estimated test results.
-- Preserve user-selected functionality, data, settings and existing installer. Avoid duplicated controls, code paths, conflicting plugin or OS modifications.
-- Activation only on user use or explicitly selected policy; suspend idle services; safe preservation of work in progress. No forced memory trim.
+- Preserve user-selected functionality, data, settings and existing installer. Avoid duplicated controls, code paths, conflicting plugin or OS modifications. Reuse/extend/replace/defer decision per capability.
+- Activation only on user use or explicitly selected policy; suspend idle services; safe preservation of work in progress. Explicit simultaneous jobs are not silently blocked/cancelled; coordinate only genuinely exclusive resources. No forced memory trim.
 - Separate UI-only checks, real codec/media fixtures, CI metrics and hardware tests. Measure impact rather than infer. Don't count cancelled or pending CI as success.
-- Keep one active roadmap and CHANGELOG; historical entries retained below for audit, no redundant progress files. New passes update authoritative status rather than append obsolete priority plans.
+- Keep one active roadmap and CHANGELOG; historical entries retained below for audit, no redundant progress files. R2 priority order remains in Git history, not a second active plan. No merge or release solely based on planning.
 
 ---
 
 ## Παράρτημα Α — Αρχειακό αρχικό scope P0–P8 (όχι ενεργή σειρά προτεραιοτήτων)
-Οι αρχικές λειτουργικές απαιτήσεις διατηρούνται για να μη χαθεί καμία. Οι αναφορές σε προτεραιότητες εδώ είναι ιστορικές. Τυχόν σύγκρουση επιλύεται βάσει του ενεργού σχεδίου R2 και των ρητών οδηγιών χρήστη.
+Οι αρχικές λειτουργικές απαιτήσεις διατηρούνται για να μη χαθεί καμία. Οι αναφορές σε προτεραιότητες εδώ είναι ιστορικές. Τυχόν σύγκρουση επιλύεται βάσει του ενεργού σχεδίου R3 και των ρητών οδηγιών χρήστη.
 
 ## P0 — Security, baseline, regressions (release blocker)
 - Inventory UI actions, IPC channels, dependencies, media capabilities, installer/update paths and migration ledger; establish feature/test traceability.
