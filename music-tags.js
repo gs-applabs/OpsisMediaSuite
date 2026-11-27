@@ -97,26 +97,50 @@ async function readFlac(h,stat,values,common,cover){
  }
  return {skip,patch:patchFlac(blocks,values,common,cover)};
 }
+// Conservative RIFF/WAVE extension: append ID3, preserving existing chunks.
+async function readWave(h,stat,values,common,cover){
+ const header=Buffer.alloc(12);
+ if((await h.read(header,0,12,0)).bytesRead!==12||header.toString('ascii',0,4)!=='RIFF'||header.toString('ascii',8,12)!=='WAVE'||header.readUInt32LE(4)!==stat.size-8)throw Error('unsupported WAV container');
+ let at=12,fmt=0,data=0,count=0;
+ while(at<stat.size){
+  if(++count>4096||at+8>stat.size)throw Error('invalid WAV chunk layout');
+  const chunk=Buffer.alloc(8);if((await h.read(chunk,0,8,at)).bytesRead!==8)throw Error('truncated WAV chunk');
+  const id=chunk.toString('ascii',0,4),n=chunk.readUInt32LE(4),end=at+8+n+(n&1);
+  if(end>stat.size)throw Error('truncated WAV chunk');
+  if(id.toLowerCase()==='id3 ')throw Error('WAV with existing ID3 is not supported for writing');
+  if(id==='fmt '){if(n<16)throw Error('invalid WAV format');fmt++;}
+  if(id==='data'){if(!n)throw Error('empty WAV data');data++;}
+  at=end;
+ }
+ if(at!==stat.size||fmt!==1||data!==1)throw Error('unsupported WAV chunk layout');
+ const tag=patchTag(Buffer.alloc(10),Buffer.alloc(0),values,common,cover);
+ if(!tag)return {skip:12,patch:null};
+ const chunk=Buffer.alloc(8);chunk.write('id3 ');chunk.writeUInt32LE(tag.bytes.length,4);
+ const suffix=Buffer.concat([chunk,tag.bytes,Buffer.alloc(tag.bytes.length&1)]);
+ header.writeUInt32LE(stat.size-8+suffix.length,4);
+ return {skip:12,patch:{...tag,bytes:header,suffix}};
+}
 async function complete(file,values,{cover:inputCover=null,cancelled=()=>false}={}){
  const cover=inputCover?validateCover(inputCover):null;if(inputCover&&!cover)throw Error('invalid cover');
  const checkCancelled=()=>{if(cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});};checkCancelled();
- const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('local MP3 or FLAC only');
+ const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac','.wav'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('local MP3, FLAC or RIFF WAV only');
  if(!require('./local-media-policy').localPath(file))throw Error('unsafe local path');
  const stat=await fs.lstat(file);if(!stat.isFile()||stat.nlink!==1||stat.size>maxFile||stat.size<10)throw Error('unsupported file');
  const real=await fs.realpath(file);if(path.resolve(file).toLowerCase()!==real.toLowerCase())throw Error('redirected path');
  const mm=await import('music-metadata');const meta=await mm.parseFile(file,{duration:false,skipCovers:!cover});
  if(ext==='.mp3'&&!/layer 3/i.test(meta.format.codec||''))throw Error('not verified MP3');if(ext==='.flac'&&!/FLAC/i.test(meta.format.codec||'')&&meta.format.container!=='FLAC')throw Error('not verified FLAC');
  const h=await fs.open(file,'r');let header,body,skip,patch;
- try{if(ext==='.flac'){({skip,patch}=await readFlac(h,stat,values,meta.common,cover));}else{header=Buffer.alloc(10);await h.read(header,0,10,0);const has=header.subarray(0,3).toString()==='ID3';const size=has?syncRead(header.subarray(6)):0;if(size>maxTag||size+10>stat.size)throw Error('tag too large');body=Buffer.alloc(size);if(size&&(await h.read(body,0,size,10)).bytesRead!==size)throw Error('truncated tag');skip=has?10+size:0;patch=patchTag(header,body,values,meta.common,cover);}}finally{await h.close();}
+ try{if(ext==='.flac'){({skip,patch}=await readFlac(h,stat,values,meta.common,cover));}else if(ext==='.wav'){({skip,patch}=await readWave(h,stat,values,meta.common,cover));}else{header=Buffer.alloc(10);await h.read(header,0,10,0);const has=header.subarray(0,3).toString()==='ID3';const size=has?syncRead(header.subarray(6)):0;if(size>maxTag||size+10>stat.size)throw Error('tag too large');body=Buffer.alloc(size);if(size&&(await h.read(body,0,size,10)).bytesRead!==size)throw Error('truncated tag');skip=has?10+size:0;patch=patchTag(header,body,values,meta.common,cover);}}finally{await h.close();}
  if(!patch)return {status:'skipped'};
  const tmp=path.join(path.dirname(file),'.opsis-'+randomUUID()+ext);
  const backup=file+'.opsis-'+randomUUID()+'.bak';
  try{
   const originalHash=createHash('sha256');
-  async function* bytes(){checkCancelled();yield patch.bytes;for await(const chunk of F.createReadStream(file,{start:skip})){checkCancelled();originalHash.update(chunk);yield chunk;}}
+  async function* bytes(){checkCancelled();yield patch.bytes;for await(const chunk of F.createReadStream(file,{start:skip})){checkCancelled();originalHash.update(chunk);yield chunk;}if(patch.suffix)yield patch.suffix;}
   await pipeline(Readable.from(bytes()),F.createWriteStream(tmp,{flags:'wx',mode:stat.mode}));
-  const copiedHash=createHash('sha256');for await(const chunk of F.createReadStream(tmp,{start:patch.bytes.length}))copiedHash.update(chunk);
+  const copiedHash=createHash('sha256');for await(const chunk of F.createReadStream(tmp,{start:patch.bytes.length,end:patch.bytes.length+stat.size-skip-1}))copiedHash.update(chunk);
   if(originalHash.digest('hex')!==copiedHash.digest('hex'))throw Error('audio byte verification failed');
+  if(patch.suffix){const out=await fs.stat(tmp);if(out.size!==stat.size+patch.suffix.length)throw Error('WAV output size mismatch');}
   const check=await mm.parseFile(tmp,{duration:false,skipCovers:!patch.coverApplied});
   if(patch.coverApplied&&!check.common.picture?.some(p=>Buffer.from(p.data).equals(cover.data)))throw Error('cover verification failed');
   for(const [k,v] of Object.entries(patch.applied))if(Array.isArray(check.common[k])?!check.common[k].includes(v):String(check.common[k])!==v)throw Error('tag verification failed: '+k);

@@ -211,6 +211,12 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 2B — conservative WAV metadata, playlist filtering, CI repair (2026-11-27)
+
+- Prior 2A CI 46069429270: 288 passed, one failed because distinct release labels shared the same fixture ID. Correct fixture uses distinct release IDs; production deduplication remains. Real MP3/FLAC cover test passed. Seven specialist workflows PASS, installer pending. ULTRA 1 general CI PASS.
+- Existing tag transaction extended to RIFF WAV with exactly one fmt/data and no existing ID3: append text/cover, preserve original chunks byte-for-byte, update RIFF size, verify hash and parsed fields, retain backup. Reject malformed RIFF/RF64/existing ID3. Fingerprint remains MP3/FLAC. Real WAV fixture added, CI pending. M4A/Ogg/Opus/WMA remain read-only.
+- Playlist search accent-insensitive over title/artist/album/filename, original order unchanged; no duplicate library or background index. Guide now 94 entries. Default Greek/English sibling subtitle priority before eight-file cap. No full codec parity or actual online provider certification. No release/merge.
+
 ## ULTRA 2A — local cover metadata, cancellation and provider robustness (2026-11-27)
 
 - Prior 21C/22A and ULTRA 1 CI still running at inspection; no new green aggregate claim.

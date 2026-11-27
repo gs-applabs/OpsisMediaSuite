@@ -67,6 +67,9 @@ function siblingSubtitles(video) {
   const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase(), shortBase=sidecarStem(video).toLowerCase();
   let names = [];
   try { names = fs.readdirSync(dir).sort((a,b) => a.localeCompare(b)); } catch (_) { return []; }
+  // Prefer default subtitle languages before the existing eight-file cap.
+  const languageRank=n=>{const tokens=path.basename(n,path.extname(n)).toLowerCase().split(/[. _-]/);return tokens.some(x=>['el','ell','gre','gr','greek'].includes(x))?0:tokens.some(x=>['en','eng','english'].includes(x))?1:2;};
+  names.sort((a,b)=>languageRank(a)-languageRank(b));
   const out = [];
   for (const n of names) {
     const e = extOf(n);

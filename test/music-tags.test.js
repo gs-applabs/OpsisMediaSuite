@@ -69,3 +69,18 @@ test('real local MP3 and FLAC cover preserves audio and existing artwork',async(
   await assert.rejects(complete(file,{title:'new'},{cancelled:()=>true}),/cancelled/);
  }
 });
+
+
+test('real RIFF WAV append preserves every original chunk and adds verified ID3',async(t)=>{
+ const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip('ffmpeg unavailable');return;}
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-wave-tags-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'sample.wav');execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=1','-c:a','pcm_s16le','-metadata','album=Keep me',file]);
+ const before=await fs.readFile(file);const {complete}=require('../music-tags');
+ const data=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1sAAAAASUVORK5CYII=','base64');
+ const r=await complete(file,{title:'Ελληνικός τίτλος',album:'Do not overwrite'},{cover:{data}});assert.equal(r.status,'updated');
+ const after=await fs.readFile(file);assert.deepEqual(await fs.readFile(r.backup),before);assert.deepEqual(after.subarray(8,before.length),before.subarray(8));assert.equal(after.readUInt32LE(4),after.length-8);assert.equal(after.toString('ascii',before.length,before.length+4),'id3 ');
+ const m=await (await import('music-metadata')).parseFile(file);assert.equal(m.common.title,'Ελληνικός τίτλος');assert.equal(m.common.album,'Keep me');assert.deepEqual(Buffer.from(m.common.picture[0].data),data);
+ await assert.rejects(complete(file,{artist:'new'}),/existing ID3/);
+ assert.deepEqual(await fs.readFile(file),after);
+});

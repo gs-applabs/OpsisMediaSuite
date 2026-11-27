@@ -1878,10 +1878,16 @@ els.btnTestTone.addEventListener('click', () => {
   engine.runAfterVideoPark(()=>{engine.playTestTone();els.trackName.textContent=t('player.toneLabel');});
 });
 
+const playlistSearch=document.getElementById('playlistSearch');
+playlistSearch.addEventListener('input',()=>renderPlaylist(false));
+document.getElementById('playlistSearchClear').addEventListener('click',()=>{playlistSearch.value='';renderPlaylist(false);playlistSearch.focus();});
 function renderPlaylist(persist=true) {
   els.playlist.innerHTML = '';
+  const query=playlistSearch.value;let visible=0;
   els.playlistEmptyHint.style.display = playlist.length ? 'none' : 'block';
   playlist.forEach((item, idx) => {
+    if(!OpsisFeatureGuide.trackMatches(item,query))return;
+    visible++;
     const li = document.createElement('li');
     li.className = idx === currentTrackIndex ? 'active' : '';
     // built with the DOM, not innerHTML: file names, tags and restored/imported playlists must never be interpreted as markup
@@ -1918,6 +1924,7 @@ function renderPlaylist(persist=true) {
     li.appendChild(rm);
     els.playlist.appendChild(li);
   });
+  document.getElementById('playlistSearchCount').textContent=query.trim()?visible+' / '+playlist.length:'';
   if(persist)savePlaylist();
 }
 

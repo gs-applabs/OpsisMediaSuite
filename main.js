@@ -486,7 +486,8 @@ function createWindow() {
     metadataBusy=true;metadataCancelled=false;
     try{
       const tags=require('./music-tags');
-      const picked=await dialog.showOpenDialog(win,{title:'Select MP3 / FLAC files',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3 / FLAC',extensions:['mp3','flac']}]});
+      const formats=mode==='fingerprint'?['mp3','flac']:['mp3','flac','wav'];
+      const picked=await dialog.showOpenDialog(win,{title:'Select '+formats.join(' / ').toUpperCase()+' files',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:formats.join(' / ').toUpperCase(),extensions:formats}]});
       if(picked.canceled||metadataCancelled||win.isDestroyed())return {cancelled:true};
       if(picked.filePaths.length>50)return {error:'Maximum 50 files per batch'};
       if(mode==='cover'){
@@ -550,7 +551,7 @@ function createWindow() {
       const usable=planned.filter(row=>Object.keys(row.values).length);
       if(!usable.length)return {error:'No usable tag values / Δεν βρέθηκαν στοιχεία'};
       const preview=usable.slice(0,12).map(row=>path.basename(row.file)+': '+Object.entries(row.values).map(([k,v])=>k+'='+v).join(', ')).join('\n');
-      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 / FLAC tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Existing tags are not replaced. Close players using these files.\n'+preview+(usable.length>12?'\n… '+(usable.length-12)+' more':'')});
+      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 / FLAC / supported WAV tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Existing tags are not replaced. Close players using these files.\n'+preview+(usable.length>12?'\n… '+(usable.length-12)+' more':'')});
       if(confirm.response!==1)return {cancelled:true};
       const rows=[];
       for(const row of planned){
