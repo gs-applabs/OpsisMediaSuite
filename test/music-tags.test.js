@@ -84,3 +84,33 @@ test('real RIFF WAV append preserves every original chunk and adds verified ID3'
  await assert.rejects(complete(file,{artist:'new'}),/existing ID3/);
  assert.deepEqual(await fs.readFile(file),after);
 });
+
+
+test('real Ogg Vorbis, Opus and M4A metadata preserves audio bytes and original backup',async(t)=>{
+ const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip('ffmpeg unavailable');return;}
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-container-tags-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const {complete}=require('../music-tags'),mm=await import('music-metadata');
+ const cover=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1sAAAAASUVORK5CYII=','base64');
+ const pcm=file=>execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',file,'-map','0:a:0','-f','s16le','pipe:1']);
+ const oggTail=b=>{let at=0;for(let p=0;p<2;p++){const n=b[at+26];let payload=0;for(let i=0;i<n;i++)payload+=b[at+27+i];at+=27+n+payload;}return b.subarray(at);};
+ const mp4Prefix=b=>{let at=0;while(at<b.length){if(b.toString('ascii',at+4,at+8)==='moov')return b.subarray(0,at);at+=b.readUInt32BE(at);}throw Error('moov missing');};
+ for(const [ext,codec] of [['ogg','libvorbis'],['opus','libopus'],['m4a','aac']]){
+  const file=path.join(dir,'sample.'+ext);
+  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=2','-c:a',codec,'-metadata','album=Keep me',file]);
+  const before=await fs.readFile(file),decoded=pcm(file);
+  const r=await complete(file,{title:'Ελληνικός τίτλος',album:'Do not overwrite'},{cover:{data:cover}});
+  assert.equal(r.status,'updated',ext);assert.deepEqual(await fs.readFile(r.backup),before);
+  const after=await fs.readFile(file),payload=ext==='m4a'?mp4Prefix:oggTail;
+  assert.deepEqual(payload(after),payload(before),ext);assert.deepEqual(pcm(file),decoded,ext);
+  const m=await mm.parseFile(file);assert.equal(m.common.title,'Ελληνικός τίτλος');assert.equal(m.common.album,'Keep me');assert.deepEqual(Buffer.from(m.common.picture[0].data),cover);
+  assert.equal((await complete(file,{title:'Other'},{cover:{data:cover}})).status,'skipped');
+ }
+});
+test('M4A faststart layout is rejected without modifying source',async(t)=>{
+ const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip();return;}
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-faststart-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'fast.m4a');execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=duration=1','-c:a','aac','-movflags','+faststart',file]);
+ const before=await fs.readFile(file);await assert.rejects(require('../music-tags').complete(file,{title:'new'}),/moov-last/);assert.deepEqual(await fs.readFile(file),before);
+});

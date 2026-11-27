@@ -120,27 +120,109 @@ async function readWave(h,stat,values,common,cover){
  header.writeUInt32LE(stat.size-8+suffix.length,4);
  return {skip:12,patch:{...tag,bytes:header,suffix}};
 }
+// Ogg: rewrite only the existing comment page, with the original page
+// sequence/granule and remaining packet laces intact. No audio repagination.
+function oggCRC(buf){
+ let crc=0;for(let i=0;i<buf.length;i++){crc^=(i>=22&&i<26?0:buf[i])<<24;for(let j=0;j<8;j++)crc=(crc<<1)^((crc>>>31)?0x04c11db7:0);}return crc>>>0;
+}
+async function oggPage(h,at,limit){
+ const b=Buffer.alloc(27);if(at+27>limit||(await h.read(b,0,27,at)).bytesRead!==27||b.toString('ascii',0,4)!=='OggS'||b[4]!==0)throw Error('invalid Ogg page');
+ const laces=Buffer.alloc(b[26]);if(!laces.length||(await h.read(laces,0,laces.length,at+27)).bytesRead!==laces.length)throw Error('invalid Ogg lacing');
+ const size=laces.reduce((a,x)=>a+x,0),payload=Buffer.alloc(size),end=at+27+laces.length+size;
+ if(end>limit||(await h.read(payload,0,size,at+27+laces.length)).bytesRead!==size)throw Error('truncated Ogg page');
+ const bytes=Buffer.concat([b,laces,payload]);if(oggCRC(bytes)!==b.readUInt32LE(22))throw Error('Ogg CRC mismatch');
+ return {b,laces,payload,bytes,end};
+}
+function pictureBlock(cover){
+ const u32=n=>{const b=Buffer.alloc(4);b.writeUInt32BE(n);return b;},mime=Buffer.from(cover.mime,'ascii');
+ return Buffer.concat([u32(3),u32(mime.length),mime,u32(0),u32(cover.width),u32(cover.height),u32(0),u32(0),u32(cover.data.length),cover.data]);
+}
+async function readOgg(h,stat,ext,values,common,cover){
+ const first=await oggPage(h,0,stat.size),page=await oggPage(h,first.end,stat.size);
+ const opus=ext==='.opus',ident=opus?Buffer.from('OpusHead'):Buffer.concat([Buffer.from([1]),Buffer.from('vorbis')]),magic=opus?Buffer.from('OpusTags'):Buffer.concat([Buffer.from([3]),Buffer.from('vorbis')]);
+ if(first.b[5]!==2||first.b.readUInt32LE(18)!==0||first.laces.filter(n=>n<255).length!==1||first.laces.at(-1)===255||!first.payload.subarray(0,ident.length).equals(ident)||page.b[5]&3||page.b.readUInt32LE(14)!==first.b.readUInt32LE(14)||page.b.readUInt32LE(18)!==1||!page.payload.subarray(0,magic.length).equals(magic))throw Error('unsupported Ogg comment layout');
+ const last=page.laces.findIndex(n=>n<255);if(last<0)throw Error('Ogg comment spans pages');
+ const length=page.laces.subarray(0,last+1).reduce((a,x)=>a+x,0),packet=page.payload.subarray(0,length);
+ if(!opus&&packet.at(-1)!==1)throw Error('invalid Vorbis framing');
+ const {vendor,comments}=parseComments(packet.subarray(magic.length,opus?packet.length:packet.length-1));
+ const keys=new Set(comments.map(c=>c.toString('utf8').split('=',1)[0].toUpperCase())),applied={};
+ for(const [k,v] of Object.entries(clean(values))){const key=flacFields[k];if(common[k]||keys.has(key)||(k==='year'&&keys.has('YEAR')))continue;comments.push(Buffer.from(key+'='+v));applied[k]=v;}
+ const coverApplied=!!(cover&&!common.picture?.length&&!keys.has('METADATA_BLOCK_PICTURE')&&!keys.has('COVERART'));
+ if(coverApplied)comments.push(Buffer.from('METADATA_BLOCK_PICTURE='+pictureBlock(cover).toString('base64')));
+ if(!Object.keys(applied).length&&!coverApplied)return {skip:page.end,patch:null};
+ const next=Buffer.concat([magic,commentBlock(vendor,comments),opus?Buffer.alloc(0):Buffer.from([1])]);
+ const laces=[];for(let n=next.length;n>=255;n-=255)laces.push(255);laces.push(next.length%255);
+ const tail=page.laces.subarray(last+1);if(laces.length+tail.length>255)throw Error('Ogg metadata exceeds single-page limit');
+ const header=Buffer.from(page.b);header[26]=laces.length+tail.length;
+ const replacement=Buffer.concat([header,Buffer.from(laces),tail,next,page.payload.subarray(length)]);
+ replacement.writeUInt32LE(oggCRC(replacement),22);
+ if(page.end>=stat.size)throw Error('Ogg audio pages missing');
+ return {skip:page.end,patch:{bytes:Buffer.concat([first.bytes,replacement]),applied,coverApplied}};
+}
+// M4A: only conventional nonfragmented, moov-last iTunes metadata layout.
+// All original bytes preceding moov (including mdat) remain at the same offsets.
+function atoms(b,start=0){
+ const out=[];for(let at=start;at<b.length;){if(at+8>b.length||out.length>=4096)throw Error('invalid MP4 atoms');const n=b.readUInt32BE(at);if(n<8||at+n>b.length)throw Error('unsupported MP4 atom size');out.push({type:b.toString('latin1',at+4,at+8),raw:b.subarray(at,at+n),body:b.subarray(at+8,at+n)});at+=n;}return out;
+}
+function atom(type,body){const h=Buffer.alloc(8);h.writeUInt32BE(body.length+8);h.write(type,4,4,'latin1');return Buffer.concat([h,body]);}
+function single(rows,type){const found=rows.filter(r=>r.type===type);if(found.length!==1)throw Error('unsupported MP4 '+type+' layout');return found[0];}
+function replaceAtom(rows,old,next){return Buffer.concat(rows.map(r=>r===old?next:r.raw));}
+function patchMp4(moov,values,common,cover){
+ const rows=atoms(moov,8);if(rows.some(r=>r.type==='mvex'))throw Error('fragmented MP4');
+ const udta=single(rows,'udta'),u=atoms(udta.body),meta=single(u,'meta');
+ if(meta.body.length<4||meta.body.readUInt32BE(0)!==0)throw Error('unsupported MP4 meta');
+ const m=atoms(meta.body,4),handler=single(m,'hdlr'),ilst=single(m,'ilst');
+ if(handler.body.toString('ascii',8,12)!=='mdir')throw Error('unsupported MP4 metadata handler');
+ const entries=atoms(ilst.body),keys=new Set(entries.map(r=>r.type)),applied={},added=[];
+ const fields={title:'©nam',artist:'©ART',album:'©alb',genre:'©gen',year:'©day',composer:'©wrt',albumartist:'aART'};
+ const data=(kind,body)=>{const h=Buffer.alloc(8);h.writeUInt32BE(kind);return atom('data',Buffer.concat([h,body]));};
+ for(const [k,v] of Object.entries(clean(values))){const key=fields[k];if(!key||common[k]||keys.has(key)||(k==='genre'&&keys.has('gnre')))continue;added.push(atom(key,data(1,Buffer.from(v))));applied[k]=v;}
+ const coverApplied=!!(cover&&!common.picture?.length&&!keys.has('covr'));if(coverApplied)added.push(atom('covr',data(cover.mime==='image/jpeg'?13:14,cover.data)));
+ if(!added.length)return null;
+ const nextList=atom('ilst',Buffer.concat([ilst.body,...added])),nextMeta=atom('meta',Buffer.concat([meta.body.subarray(0,4),replaceAtom(m,ilst,nextList)])),nextUdta=atom('udta',replaceAtom(u,meta,nextMeta));
+ const suffix=atom('moov',replaceAtom(rows,udta,nextUdta));if(suffix.length>maxTag)throw Error('MP4 metadata too large');
+ return {bytes:Buffer.alloc(0),suffix,applied,coverApplied};
+}
+async function readMp4(h,stat,values,common,cover){
+ let at=0,mdat=0,count=0;
+ while(at<stat.size){
+  if(++count>4096||at+8>stat.size)throw Error('invalid MP4 layout');
+  const b=Buffer.alloc(8);if((await h.read(b,0,8,at)).bytesRead!==8)throw Error('truncated MP4 atom');
+  const n=b.readUInt32BE(0),type=b.toString('ascii',4,8);if(n<8||at+n>stat.size)throw Error('unsupported MP4 atom');
+  if(at===0&&type!=='ftyp')throw Error('invalid MP4 signature');
+  if(type==='mdat')mdat++;
+  if(type==='moov'){
+   if(mdat!==1||at+n!==stat.size||n>maxTag)throw Error('only nonfragmented moov-last M4A supported');
+   const b=Buffer.alloc(n);if((await h.read(b,0,n,at)).bytesRead!==n)throw Error('truncated MP4 moov');
+   const patch=patchMp4(b,values,common,cover);if(patch){patch.copyEnd=at-1;patch.expectedSize=at+patch.suffix.length;}
+   return {skip:0,patch};
+  }
+  if(!['ftyp','mdat','free','skip','wide'].includes(type))throw Error('unsupported MP4 top-level atom');
+  at+=n;
+ }
+ throw Error('missing MP4 moov');
+}
 async function complete(file,values,{cover:inputCover=null,cancelled=()=>false}={}){
  const cover=inputCover?validateCover(inputCover):null;if(inputCover&&!cover)throw Error('invalid cover');
  const checkCancelled=()=>{if(cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});};checkCancelled();
- const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac','.wav'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('local MP3, FLAC or RIFF WAV only');
+ const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac','.wav','.m4a','.ogg','.opus'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('unsupported local audio format');
  if(!require('./local-media-policy').localPath(file))throw Error('unsafe local path');
  const stat=await fs.lstat(file);if(!stat.isFile()||stat.nlink!==1||stat.size>maxFile||stat.size<10)throw Error('unsupported file');
  const real=await fs.realpath(file);if(path.resolve(file).toLowerCase()!==real.toLowerCase())throw Error('redirected path');
  const mm=await import('music-metadata');const meta=await mm.parseFile(file,{duration:false,skipCovers:!cover});
  if(ext==='.mp3'&&!/layer 3/i.test(meta.format.codec||''))throw Error('not verified MP3');if(ext==='.flac'&&!/FLAC/i.test(meta.format.codec||'')&&meta.format.container!=='FLAC')throw Error('not verified FLAC');
  const h=await fs.open(file,'r');let header,body,skip,patch;
- try{if(ext==='.flac'){({skip,patch}=await readFlac(h,stat,values,meta.common,cover));}else if(ext==='.wav'){({skip,patch}=await readWave(h,stat,values,meta.common,cover));}else{header=Buffer.alloc(10);await h.read(header,0,10,0);const has=header.subarray(0,3).toString()==='ID3';const size=has?syncRead(header.subarray(6)):0;if(size>maxTag||size+10>stat.size)throw Error('tag too large');body=Buffer.alloc(size);if(size&&(await h.read(body,0,size,10)).bytesRead!==size)throw Error('truncated tag');skip=has?10+size:0;patch=patchTag(header,body,values,meta.common,cover);}}finally{await h.close();}
+ try{if(ext==='.flac'){({skip,patch}=await readFlac(h,stat,values,meta.common,cover));}else if(ext==='.wav'){({skip,patch}=await readWave(h,stat,values,meta.common,cover));}else if(ext==='.ogg'||ext==='.opus'){({skip,patch}=await readOgg(h,stat,ext,values,meta.common,cover));}else if(ext==='.m4a'){({skip,patch}=await readMp4(h,stat,values,meta.common,cover));}else{header=Buffer.alloc(10);await h.read(header,0,10,0);const has=header.subarray(0,3).toString()==='ID3';const size=has?syncRead(header.subarray(6)):0;if(size>maxTag||size+10>stat.size)throw Error('tag too large');body=Buffer.alloc(size);if(size&&(await h.read(body,0,size,10)).bytesRead!==size)throw Error('truncated tag');skip=has?10+size:0;patch=patchTag(header,body,values,meta.common,cover);}}finally{await h.close();}
  if(!patch)return {status:'skipped'};
  const tmp=path.join(path.dirname(file),'.opsis-'+randomUUID()+ext);
  const backup=file+'.opsis-'+randomUUID()+'.bak';
  try{
-  const originalHash=createHash('sha256');
-  async function* bytes(){checkCancelled();yield patch.bytes;for await(const chunk of F.createReadStream(file,{start:skip})){checkCancelled();originalHash.update(chunk);yield chunk;}if(patch.suffix)yield patch.suffix;}
+  const originalHash=createHash('sha256'),copyEnd=patch.copyEnd??stat.size-1;
+  async function* bytes(){checkCancelled();yield patch.bytes;for await(const chunk of F.createReadStream(file,{start:skip,end:copyEnd})){checkCancelled();originalHash.update(chunk);yield chunk;}if(patch.suffix)yield patch.suffix;}
   await pipeline(Readable.from(bytes()),F.createWriteStream(tmp,{flags:'wx',mode:stat.mode}));
-  const copiedHash=createHash('sha256');for await(const chunk of F.createReadStream(tmp,{start:patch.bytes.length,end:patch.bytes.length+stat.size-skip-1}))copiedHash.update(chunk);
+  const copiedHash=createHash('sha256');for await(const chunk of F.createReadStream(tmp,{start:patch.bytes.length,end:patch.bytes.length+copyEnd-skip}))copiedHash.update(chunk);
   if(originalHash.digest('hex')!==copiedHash.digest('hex'))throw Error('audio byte verification failed');
-  if(patch.suffix){const out=await fs.stat(tmp);if(out.size!==stat.size+patch.suffix.length)throw Error('WAV output size mismatch');}
+  if(patch.suffix){const out=await fs.stat(tmp);if(out.size!==(patch.expectedSize??stat.size+patch.suffix.length))throw Error('metadata output size mismatch');}
   const check=await mm.parseFile(tmp,{duration:false,skipCovers:!patch.coverApplied});
   if(patch.coverApplied&&!check.common.picture?.some(p=>Buffer.from(p.data).equals(cover.data)))throw Error('cover verification failed');
   for(const [k,v] of Object.entries(patch.applied))if(Array.isArray(check.common[k])?!check.common[k].includes(v):String(check.common[k])!==v)throw Error('tag verification failed: '+k);
@@ -150,4 +232,4 @@ async function complete(file,values,{cover:inputCover=null,cancelled=()=>false}=
   return {status:'updated',backup,applied:patch.applied,coverApplied:patch.coverApplied};
  }finally{await fs.unlink(tmp).catch(()=>{});}
 }
-module.exports={infer,clean,patchTag,complete,syncWrite,patchFlac,validateCover};
+module.exports={infer,clean,patchTag,complete,syncWrite,patchFlac,validateCover,oggCRC,patchMp4};

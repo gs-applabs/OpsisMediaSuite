@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 2C — conservative M4A, Ogg Vorbis and Opus metadata (2026-11-27)
+
+- Prior 2B CI still running; no new green aggregate claim. RAR and DSP specialist runs passed at inspection.
+- Extend existing transactional tag writer to single-page Ogg Vorbis/Opus comment layouts: validate first two Ogg pages and CRC, preserve remaining laces/setup/audio bytes, recalculate only modified page CRC. Refuse spanning comments, oversized page, malformed headers; optional local cover only if it fits. No remux/re-encode.
+- M4A supports conventional moov-last, nonfragmented iTunes metadata with existing udta/meta/ilst and mdir handler; preserve all bytes before moov including mdat and offsets; preserve other atoms, append only missing supported fields and cover. No lyricist mapping for M4A; faststart/fragmented/unsupported layouts refused. No WMA write support yet.
+- UI uses same metadata IPC/dialog and guide; fingerprint remains MP3/FLAC. New real FFmpeg tests compare original backup, unchanged encoded payload region, exact decoded PCM, parsed tags and cover, and reject faststart. CI pending; no claim of general format compatibility, online provider credentials or full codec parity. No merge/release.
+
 ## ULTRA 2B — conservative WAV metadata, playlist filtering, CI repair (2026-11-27)
 
 - Prior 2A CI 46069429270: 288 passed, one failed because distinct release labels shared the same fixture ID. Correct fixture uses distinct release IDs; production deduplication remains. Real MP3/FLAC cover test passed. Seven specialist workflows PASS, installer pending. ULTRA 1 general CI PASS.
