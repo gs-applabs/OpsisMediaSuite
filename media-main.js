@@ -159,7 +159,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   });
   ipcMain.handle('vp:native-command',(e,session,name,value)=>trusted(e)?nativeHost.command(session,name,value):{ok:false,code:'denied'});
   ipcMain.handle('vp:native-subtitle',(e,session,text)=>trusted(e)?nativeHost.replaceSubtitle(session,text):{ok:false,code:'denied'});
-  ipcMain.handle('vp:native-stop',e=>{if(trusted(e)){nativeHost.stop();return true;}return false;});
+  ipcMain.handle('vp:native-stop',e=>trusted(e)?nativeHost.stop():false);
   const bk = { dir: '' };
   const backupRoot = () => path.join(app.getPath('userData'), 'backups');
 
@@ -580,6 +580,9 @@ function init({ getMainWin, resolveFfmpegPath }) {
           check('audio ownership parks video without losing selection',parked.parked&&!parked.session&&!parked.ticket&&!parked.fx&&!parked.saveTimer&&!parked.src&&parked.selected>=0,JSON.stringify(parked));
           await js("document.getElementById('vpPlay').click();1");
           check('parked video resumes from retained position',await until("(()=>{const v=document.getElementById('vpVideo');return !WaveframeVideoPlayer.diagnostics().parked&&v.readyState>=2&&v.currentTime>=.9&&!v.paused;})()",10000));
+          await js("WaveframeVideoPlayer.parkForAudio();document.body.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));1");
+          check('parked video resumes via keyboard transport',await until("(()=>{const v=document.getElementById('vpVideo');return !WaveframeVideoPlayer.diagnostics().parked&&v.readyState>=2&&!v.paused;})()",10000));
+          check('native stop IPC acknowledges idle native host',await js("waveframe.vpNativeStop()")===true);
           const unapproved = path.join(dir,'unapproved.mp4'); fs.copyFileSync(file, unapproved);
           const unauthorized = await js(`fetch('wfmedia://f/' + encodeURIComponent(${JSON.stringify(unapproved)})).then(r => r.status).catch(() => 'blocked')`);
           check('wfmedia rejects an unapproved media path', unauthorized === 404 || unauthorized === 'blocked', String(unauthorized));

@@ -666,3 +666,20 @@ test('RAR technical listing preserves blank trailing field values and CRLF',()=>
 });
 
 test('resource aggregates distinguish missing values and summarize measured samples',()=>{const {aggregateSamples}=require('../resource-diagnostics');assert.deepEqual(aggregateSamples([{rows:[{cpuPercent:2},{cpuPercent:3}],workingSetKiB:100},{rows:[{cpuPercent:7}],workingSetKiB:200}]),{samples:2,workingSetKiBMean:150,workingSetKiBMax:200,cpuPercentMean:6,cpuPercentMax:7});assert.equal(aggregateSamples([{rows:[{cpuPercent:null}],workingSetKiB:null}]).cpuPercentMean,null);});
+
+
+test('native stop awaits actual child close instead of kill request',async()=>{
+ const {stopChildAndWait}=require('../native-host');
+ const {spawn}=require('node:child_process');
+ const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});
+ let closed=false;
+ child.once('close',()=>{closed=true;});
+ try{const stop=stopChildAndWait(child,5000);assert.equal(closed,false);assert.equal(await stop,true);assert.equal(closed,true);}
+ finally{if(!closed)child.kill();}
+});
+test('native stop timeout is not a successful acknowledgement and removes listener',async()=>{
+ const {stopChildAndWait}=require('../native-host');
+ const {EventEmitter}=require('node:events');
+ const child=new EventEmitter();let kills=0;child.kill=()=>{kills++;return true;};
+ assert.equal(await stopChildAndWait(child,15),false);assert.equal(kills,1);assert.equal(child.listenerCount('close'),0);
+});

@@ -65,15 +65,16 @@
   function stop() { parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
   function parkForAudio(){
-    if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return;
+    if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return nativeStopping||Promise.resolve(true);
     parked={path:current(),seconds:handoff?Number(handoff.status?.positionMs||0)/1000:video.currentTime||0,fx:$('vpFx').getAttribute('aria-pressed')==='true'};
     // Keep the selected subtitle and unsaved edits; release only the playback machinery.
-    saveResume();++generation;stopNative();releaseTicket();disposeSession();playbackEngine=null;resumePath=null;
+    saveResume();++generation;const stopped=stopNative();releaseTicket();disposeSession();playbackEngine=null;resumePath=null;
     replaceVideo();
-    say(document.documentElement.lang==='el'?'Το βίντεο τέθηκε σε αναστολή. Πάτησε αναπαραγωγή για συνέχεια.':'Video resources released. Press play to resume.');
+    say(document.documentElement.lang==='el'?'Το βίντεο τέθηκε σε αναστολή. Πάτησε αναπαραγωγή για συνέχεια.':'Video parked. Press play to resume.');
+    return stopped;
   }
 
-  let handoff=null,nativePoll=null,viewportTimer=null;
+  let handoff=null,nativePoll=null,viewportTimer=null,nativeStopping=null;
   function clearViewport(){clearInterval(viewportTimer);viewportTimer=null;}
   function viewportRect(){
     const frame=$('vpFrame');
@@ -105,6 +106,12 @@
     marker.subtitle={track:sub,text:sub?.text,scale:subScale,fps:subFps,delay:subDelay,transferred:!!text,requested:0};
     marker.subtitleDesired=marker.subtitle;
     const decode=engine==='libvlc'?$('vpNativeDecode').value:'auto';
+    // Do not race a previous native child that has only been asked to exit.
+    if(nativeStopping){
+      const stopped=await nativeStopping;
+      if(handoff!==marker||g!==generation)return false;
+      if(!stopped){handoff=null;$('vpNativeStop').hidden=true;say('Native stop not confirmed');if(wasPlaying)video.play().catch(()=>{});return false;}
+    }
     const r=await api.vpNativeOpen(p,engine,resume,text||null,embedded,decode).catch(()=>null);
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
@@ -171,7 +178,23 @@
     if(m.engine!=='libvlc'){say(m.engine+' subtitle handoff unavailable');return;}
     if(nativeCommand('subtitle-sync',next))m.subtitleDesired=next;
   }
-  function stopNative(){clearViewport();if(!handoff)return;const old=handoff;if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);handoff=null;clearTimeout(nativePoll);playbackEngine=null;$('vpNativeStop').hidden=true;api.vpNativeStop().catch(()=>{});}
+  function stopNative(){
+    clearViewport();
+    if(!handoff)return nativeStopping||Promise.resolve(true);
+    const old=handoff;
+    if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);
+    handoff=null;clearTimeout(nativePoll);nativePoll=null;playbackEngine=null;$('vpNativeStop').hidden=true;
+    if(nativeStopping)return nativeStopping;
+    const pending=api.vpNativeStop().then(ok=>ok===true,()=>false);
+    nativeStopping=pending;
+    pending.then(ok=>{
+      if(nativeStopping!==pending)return;
+      nativeStopping=null;
+      // Do not overwrite a newer media status with a stale stop result.
+      if(!ok&&!handoff&&generation===old.g)say('Native stop not confirmed');
+    });
+    return pending;
+  }
   async function playAt(i) {
     if (i < 0 || i >= list.length) return;
     stopNative();saveResume(); releaseTicket();
@@ -513,7 +536,7 @@
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
     $('vpPlay').addEventListener('click', () => { if(handoff){nativeCommand('toggle');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
-    $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
+    $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} if(parked){parked.seconds=0;syncTime();syncTransport();return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { if(handoff){nativeCommand('mute');return;} video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { if(handoff)return; video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
 
@@ -825,7 +848,7 @@
       if(!window.OpsisFeatureGuide.shortcutAllowed({defaultPrevented:e.defaultPrevented,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey,interactive,modal:!!document.querySelector('.tutorial-overlay.open')},document.querySelector('.tab-btn.active')?.dataset.tab,'video'))return;
       const k = e.key; let used = true;
       if(handoff){if(k===' '){nativeCommand('toggle');e.preventDefault();}else if(k==='m'||k==='M'){nativeCommand('mute');e.preventDefault();}return;}
-      if (k === ' ') { if (video.paused) video.play().catch(() => {}); else video.pause(); }
+      if (k === ' ') { if(parked){playAt(idx);}else if (video.paused) video.play().catch(() => {}); else video.pause(); }
       else if (k === 'ArrowRight') seekTo(video.currentTime + (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowLeft') seekTo(video.currentTime - (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowUp') video.volume = Math.min(1, video.volume + 0.05);
@@ -855,7 +878,7 @@
       if(video&&!video.paused)video.pause();
     },
     parkForAudio,
-    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,saveTimer:!!saveTimer,selected:idx};},
+    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,selected:idx};},
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();

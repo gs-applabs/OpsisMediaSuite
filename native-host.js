@@ -63,8 +63,20 @@ function parseAudioEndpoints(text){
   return {rows,partial:r.partial===true,rolesKnown:r.rolesKnown};
  }catch{return null;}
 }
+// A kill request is not proof of process exit. Wait for close (including
+// stdio disposal), with a finite deadline; never signal a false successful stop.
+function stopChildAndWait(proc,timeoutMs=4000){
+ return new Promise(resolve=>{
+  let settled=false,timer;
+  const finish=ok=>{if(settled)return;settled=true;clearTimeout(timer);proc.removeListener('close',closed);resolve(ok);};
+  const closed=()=>finish(true);
+  proc.once('close',closed);
+  timer=setTimeout(()=>finish(false),timeoutMs);
+  try{proc.kill();}catch{} // still allow a concurrent close event to acknowledge
+ });
+}
 function createNativeHost({app,extensions,authorize}){
- let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0,subtitleSession=null;
+ let child=null,opening=false,state={phase:'idle'},epoch=0,pending=null,commandId=0,subtitleSession=null,stopping=null;
  function finishCommand(r){if(!pending)return;const p=pending;pending=null;clearTimeout(p.timer);p.resolve(r);}
  const hostPath=()=>path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'native-player','publish'),...(app.isPackaged?['native-player']:[]),'Opsis.NativePlayer.exe');
  const available=()=>process.platform==='win32' && !!localPath(hostPath());
@@ -151,8 +163,19 @@ function createNativeHost({app,extensions,authorize}){
   // Retain every staged revision until exit: LibVLC may still read it.
   return sendCommand({name:'subtitle-replace',value:revision});
  }
- function stop(){epoch++;finishCommand({ok:false,code:'cancelled'});if(child){state={...state,phase:'stopping'};try{child.kill();}catch(_){}}}
+ function stop(){
+  epoch++;finishCommand({ok:false,code:'cancelled'});
+  const proc=child;
+  // No child can be spawned by an old pending authorization: epoch invalidates it.
+  if(!proc)return Promise.resolve(true);
+  if(stopping?.proc===proc)return stopping.promise;
+  state={...state,phase:'stopping'};
+  const operation={proc,promise:null};
+  operation.promise=stopChildAndWait(proc).finally(()=>{if(stopping===operation)stopping=null;});
+  stopping=operation;
+  return operation.promise;
+ }
  if(typeof app.on==='function')app.on('before-quit',stop);
  return {available,status,open,stop,command,replaceSubtitle,updateViewport,audioEndpoints};
 }
-module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer,normalizeViewport,parseAudioEndpoints};
+module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer,normalizeViewport,parseAudioEndpoints,stopChildAndWait};

@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## 21B.1 — native process ownership and parked controls (2026-11-27)
+
+- Prior head `238c870e709f26c5c43b6116a0b7d4aa1029b544`: at inspection RAR, DSP, worklet, native, plugin, K-Lite and packaged candidate workflows passed. General 46066296150 and Inno lifecycle 46066296253 still running; do not mark as passed.
+- Native host stop now returns a bounded acknowledgement on actual child close (four-second timeout returns false). Repeated stop shares in-flight operation; epoch still invalidates outstanding authorization and stale events; IPC no longer reports success immediately after requesting kill. No OS-wide process kill. Before-quit still requests termination; no claim of forced-crash recovery.
+- Renderer retains the in-flight stop acknowledgement and waits before opening another native host; stale generation/handoff checks prevent superseded opens; exposes nativeStopping through existing diagnostics. Park preserves selection/subtitles/FX, keyboard Space resumes parked video and Stop resets parked position. Existing explicit conversion/photo tasks unaffected (no changes to their scheduling).
+- Tests: real Node child close, timeout/listener cleanup, real renderer parked keyboard resume and idle native stop IPC. Real active LibVLC/LAV close through the full IPC path and simultaneous music + video stop timing are not yet certified. Music can still start while the old native child is closing; next slice must safely coordinate live source handoff without blocking unrelated user jobs. No new resource manager or release. New CI pending.
+
 ## 21A — Baseline reconciliation and lifecycle audit (2026-11-27)
 
 - Frozen R3 baseline `b4c526d0e1703959d102cbbe32f6b1ee89532cb6`: all nine PR workflows completed successfully (general 46007823118, DSP 46007823140, AudioWorklet 46007823108, native 46007823064, plugin 46007823195, RAR 46007823116, K-Lite 46007823315, packaged 46007823237, installer 46007823121). General logs: 282/282, real Electron SELF-TEST PASSED, 20-cycle soak; startup idle 0.09% CPU/529877.6 KiB mean summed Electron working set, post-soak 0.49%/555908 KiB (five samples each, not physical hardware or private bytes).
