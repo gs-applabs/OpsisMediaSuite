@@ -49,8 +49,10 @@ internal sealed class EmbeddedViewport
     }
     internal bool Update(double packed)
     {
-        if(!Decode(packed,out x,out y,out w,out h)||!ParentValid()||GetParent(child)!=parent){Hide();return false;}
-        deadline=Environment.TickCount64+1800;
+        if(!Decode(packed,out int nx,out int ny,out int nw,out int nh)||!ParentValid()||GetParent(child)!=parent){
+            x=y=w=h=0;deadline=0;Hide();return false;
+        }
+        x=nx;y=ny;w=nw;h=nh;deadline=Environment.TickCount64+1800;
         return Tick();
     }
     internal void Hide(){if(child!=IntPtr.Zero&&IsWindow(child))ShowWindow(child,SW_HIDE);}
@@ -75,8 +77,9 @@ internal sealed class EmbeddedViewport
         bool rejected=!Decode(-1,out _,out _,out _,out _)&&!Decode(1099511627776d,out _,out _,out _,out _)
             &&!Decode(((900L*1024+100)*1024+500)*1024+500,out _,out _,out _,out _);
         bool updated=attached&&viewport.Update(value)&&viewport.Update(0);
+        bool invalidRevoked=attached&&viewport.Update(value)&&!viewport.Update(((900L*1024+100)*1024+500)*1024+500)&&viewport.w==0&&viewport.h==0&&viewport.deadline==0&&viewport.Tick();
         bool wrongOwner=!new EmbeddedViewport(parent.Handle,uint.MaxValue).ParentValid();
-        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new{attached,valid,rejected,updated,wrongOwner}));
-        return attached&&valid&&rejected&&updated&&wrongOwner?0:8;
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new{attached,valid,rejected,updated,wrongOwner,invalidRevoked}));
+        return attached&&valid&&rejected&&updated&&wrongOwner&&invalidRevoked?0:8;
     }
 }

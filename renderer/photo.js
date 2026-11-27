@@ -90,25 +90,28 @@
   async function openBlob(blob, nm, generation = ++openGeneration) {
     if (busy) return;
     if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
+    let candidate=null;
     try {
       const header=P.headerSize(new Uint8Array(await blob.slice(0,1024*1024).arrayBuffer()));
       if(generation!==openGeneration||busy)return;
       if(header&&!P.validImageSize(header.width,header.height)){info(t('ph.tooLarge'));return;}
-      const b = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-      if (generation !== openGeneration || busy) { b.close(); return; }
-      if (!P.validImageSize(b.width,b.height)) { b.close(); info(t('ph.tooLarge')); return; }
-      if (bmp) bmp.close();
-      bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders();
+      const b = candidate=await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      if (generation !== openGeneration || busy) return;
+      if (!P.validImageSize(b.width,b.height)) { info(t('ph.tooLarge')); return; }
+      // Build preview before replacing the current document.
       const sz = P.previewSize(b.width, b.height);
       const c = document.createElement('canvas'); c.width = sz.width; c.height = sz.height;
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0, sz.width, sz.height);
       const d = g.getImageData(0, 0, sz.width, sz.height);
+      c.width=0;c.height=0;
+      const previous=bmp;bmp=b;candidate=null;previous?.close();
+      name=nm||'photo';params=P.defaults();cropKey='none';$('phCrop').value='none';syncCrop();syncSliders();
       orig = { data: d.data, width: d.width, height: d.height };
       preview = orig; history=P.createHistory({params,cropKey});comparing=false;updateHistory();
       $('phDrop').classList.add('has-media');
       info(fmt(t('ph.opened'), { name, w: b.width, h: b.height, mp: (b.width * b.height / 1e6).toFixed(1) }));
       schedule();
-    } catch (_) { if (generation === openGeneration && !busy) info(t('ph.cantOpen')); }
+    } catch (_) { if (generation === openGeneration && !busy) info(t('ph.cantOpen')); }finally{candidate?.close();}
   }
 
   // Centered crop of the wanted aspect ratio, in the orientation of the ORIGINAL (rotation happens after the crop).
@@ -123,7 +126,7 @@
     if (!orig) return;
     const out = comparing ? P.geometry(orig, { ...P.defaults(), rotate: params.rotate, flipH: params.flipH, flipV: params.flipV, crop: cropParams() }) : P.process(orig, full());
     const c = $('phCanvas'); c.width = out.width; c.height = out.height;
-    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    c.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
     drawHist(out.data);
     exportSize();
     const dimensions=P.outputSize(bmp.width,bmp.height,full());
@@ -144,11 +147,11 @@
   function processExport(img,snapshot,maxEdge) {
     return new Promise((resolve,reject)=>{
       const worker=new Worker('photo-worker.js');
-      let timer;
-      const finish=(err,value)=>{clearTimeout(timer);worker.terminate();err?reject(err):resolve(value);};
+      let timer,finished=false;
+      const finish=(err,value)=>{if(finished)return;finished=true;clearTimeout(timer);worker.terminate();err?reject(err):resolve(value);};
       timer=setTimeout(()=>finish(Error('photo-timeout')),120000);
       worker.onerror=()=>finish(Error('photo-worker'));
-      worker.onmessage=({data:r})=>{if(!r?.ok){finish(Error(r?.error||'photo-worker'));return;}finish(null,{width:r.width,height:r.height,data:new Uint8ClampedArray(r.buffer)});};
+      worker.onmessage=({data:r})=>{if(!r?.ok||!P.validImageSize(r.width,r.height)||!(r.buffer instanceof ArrayBuffer)||r.buffer.byteLength!==r.width*r.height*4){finish(Error(r?.error||'photo-worker'));return;}finish(null,{width:r.width,height:r.height,data:new Uint8ClampedArray(r.buffer)});};
       try{worker.postMessage({width:img.width,height:img.height,buffer:img.data.buffer,params:snapshot,maxEdge},[img.data.buffer]);}catch(e){finish(e);}
     });
   }

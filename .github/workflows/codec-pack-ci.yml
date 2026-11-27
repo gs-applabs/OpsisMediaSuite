@@ -3,6 +3,8 @@ on:
   push:
     branches: ['feat/photo-tools-fxsound-coexistence']
     paths: ['.github/workflows/codec-pack-ci.yml','codec-inventory.js','native-player/DirectShowHost.cs','native-player/NativeCommands.cs']
+  pull_request:
+    paths: ['.github/workflows/codec-pack-ci.yml','codec-inventory.js','native-player/**','renderer/videoplayer.js']
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -46,6 +48,11 @@ jobs:
           if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'LAV timeout' }
           Get-Content lav-result.json,lav-error.log
           if ($p.ExitCode -ne 0) { throw "LAV test failed: $($p.ExitCode)" }
+      - name: Validate LAV graph evidence before publishing
+        shell: pwsh
+        run: |
+          if (!(Test-Path lav-result.json) -or !(Get-Item lav-result.json).Length) { throw 'missing LAV evidence' }
+          Get-FileHash fixture.mkv -Algorithm SHA256 | Format-List
       - uses: actions/upload-artifact@v4
         if: always()
         with:

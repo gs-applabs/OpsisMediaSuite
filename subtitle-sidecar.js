@@ -2,7 +2,7 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const {allowedFile,localDirectory,localPath}=require('./local-media-policy');
 const VP=require('./renderer/vplib');
-const {createHash}=require('node:crypto');
+const {createHash,randomBytes}=require('node:crypto');
 const MAX=5*1024*1024;
 const LANGS=new Set(['el','en','fr','de','it','es','pt','ru','tr','pl','nl','sv','da','no','fi','cs','sk','hu','ro','uk','und']);
 const SITES=Object.freeze({subs4series:'https://www.subs4series.com/',subs4free:'https://www.subs4free.info/'});
@@ -55,13 +55,23 @@ async function saveBesideVideo({video,subtitle,language,extensions,approved,sync
   const name=base+'.'+suffix+(i===1?'':'.'+i)+'.srt';
   const target=path.join(parent,name);
   if(localDirectory(path.dirname(source))!==parent||allowedFile(source,extensions)!==source||!approved(source))return {ok:false,code:'video-no-longer-approved'};
-  let file;
+  // Stage a complete file in the same directory; publish by exclusive
+  // hard link. No partial final .srt, no rename-over-existing fallback.
+  const stage=path.join(parent,'.opsis-sub-'+randomBytes(16).toString('hex')+'.tmp');
+  let file,created=false;
   try{
-   // Exclusive creation refuses an existing file or symlink; never overwrite.
-   file=await fs.open(target,'wx',0o600);
-  }catch(e){if(e.code==='EEXIST')continue;return {ok:false,code:'folder-not-writable'};}
-  try{await file.writeFile(body,{encoding:'utf8'});await file.close();return {ok:true,name};}
-  catch{try{await file.close();}catch{}return {ok:false,code:'write-failed'};}
+   file=await fs.open(stage,'wx',0o600);created=true;
+   await file.writeFile(body,{encoding:'utf8'});await file.sync();await file.close();file=null;
+   if(localDirectory(path.dirname(source))!==parent||allowedFile(source,extensions)!==source||!approved(source))return {ok:false,code:'video-no-longer-approved'};
+   await fs.link(stage,target);
+   return {ok:true,name};
+  }catch(e){
+   if(e.code==='EEXIST'&&created){
+    if(await sameSubtitle(target,body))return {ok:true,name,reused:true};
+    continue;
+   }
+   return {ok:false,code:!created?'folder-not-writable':'write-failed'};
+  }finally{try{await file?.close();}catch{}if(created)try{await fs.unlink(stage);}catch{}}
  }
  return {ok:false,code:'filename-limit'};
 }

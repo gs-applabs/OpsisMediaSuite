@@ -229,6 +229,7 @@
 
   // Store parameter snapshots only, never full-resolution image copies.
   function createHistory(initial,limit=60) {
+    limit=Number.isInteger(limit)?Math.max(1,Math.min(60,limit)):60;
     const clone=v=>JSON.parse(JSON.stringify(v));
     let items=[clone(initial)],index=0;
     return {
@@ -262,7 +263,7 @@
   // Conservative estimate includes decoded bitmap, readback, processing and
   // output surfaces. Not an OS memory guarantee; reject oversized jobs early.
   function exportBudget(w,h,params,maxEdge=0) {
-    if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1||w*h>LIMITS.maxPixels)return false;
+    if(!validImageSize(w,h))return false;
     const size=outputSize(w,h,params),out=resizeOutput(size.width,size.height,maxEdge);
     return w*h*12+size.width*size.height*8+out.width*out.height*8<=LIMITS.exportWorkBytes && out.width<=LIMITS.maxExportEdge&&out.height<=LIMITS.maxExportEdge;
   }

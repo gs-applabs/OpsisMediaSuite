@@ -615,3 +615,27 @@ test('audio endpoint report is read-only, bounded and excludes raw device IDs',(
  assert.equal(parseAudioEndpoints(JSON.stringify({ok:true,rows:Array(65).fill(row),rolesKnown:[true,true,true]})),null);
  assert.equal(parseAudioEndpoints('invalid'),null);
 });
+
+
+test('underscore-separated releases are scored by resolution and source',()=>{
+ const r=V.releaseInfo('Show_S02E03_1080p_WEB_DL-GROUP.mkv');
+ assert.equal(r.source,'WEB-DL');assert.equal(r.resolution,'1080p');
+ assert.equal(r.season,2);assert.equal(r.episode,3);
+});
+test('resume map preserves a literal prototype-named key without altering prototype',()=>{
+ const r=V.resumeUpdate({},'__proto__',20000,100000,true);
+ assert.equal(Object.getPrototypeOf(r),Object.prototype);
+ assert.equal(Object.hasOwn(r,'__proto__'),true);assert.equal(r.__proto__,20000);
+});
+test('concurrent sidecar saves never overwrite or leave staging files',async()=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const {saveBesideVideo}=require('../subtitle-sidecar');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-sidecar-race-'));
+ try{
+  const video=path.join(dir,'Episode.mkv');await fs.writeFile(video,'fixture');
+  const req={video,subtitle:{ext:'srt',text:'1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα'},language:'el',extensions:new Set(['mkv']),approved:()=>true};
+  const results=await Promise.all([saveBesideVideo(req),saveBesideVideo(req)]);
+  assert.ok(results.every(x=>x.ok),JSON.stringify(results));assert.equal(results[0].name,results[1].name);
+  assert.deepEqual((await fs.readdir(dir)).sort(),['Episode.el.srt','Episode.mkv']);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});

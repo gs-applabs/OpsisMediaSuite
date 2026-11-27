@@ -78,8 +78,8 @@
     return right>x&&bottom>y?{x,y,w:right-x,h:bottom-y}:null;
   }
   function startViewport(marker){
-    clearViewport();let busy=false;
-    const tick=async()=>{if(busy||handoff!==marker||!marker.session)return;busy=true;try{await api.vpNativeViewport(marker.session,viewportRect());}catch{}finally{busy=false;}};
+    clearViewport();
+    const tick=async()=>{if(marker.viewportInFlight||marker.dispatching||marker.commands.length||handoff!==marker||!marker.session)return;marker.viewportInFlight=true;try{await api.vpNativeViewport(marker.session,viewportRect());}catch{}finally{marker.viewportInFlight=false;if(handoff===marker)drainNativeCommands(marker);}};
     tick();viewportTimer=setInterval(tick,500);
   }
   async function nativeHandoff(engine,p,g,embedded=false){
@@ -117,7 +117,7 @@
   }
   // Serialize transport commands per handoff instead of silently dropping fast clicks.
   async function drainNativeCommands(marker){
-    if(marker.dispatching)return;marker.dispatching=true;
+    if(marker.dispatching||marker.viewportInFlight)return;marker.dispatching=true;
     try{
       while(handoff===marker&&marker.commands.length){
         const {name,value}=marker.commands.shift();

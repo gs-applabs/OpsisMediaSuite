@@ -54,4 +54,5 @@ jobs:
           path: |
             plugin-audit.txt
             test-results/*.trx
+            opsis-plugin/dist/MediaSuite-Plugin.zip
             opsis-plugin/dist/*.sha256

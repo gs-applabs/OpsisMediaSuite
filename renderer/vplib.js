@@ -177,8 +177,9 @@
     const ep=/(?:^|[ ._-])(?:s(\d{1,2})e(\d{1,3})|(\d{1,2})x(\d{1,3}))(?=$|[ ._-]|e\d)/i.exec(raw);
     const rest=ep?raw.slice(ep.index+ep[0].length):'';
     const multiple=!!ep&&/^(?:e\d|[ ._-]+(?:e\d|s\d{1,2}e\d|\d{1,2}x\d)|-\d)/i.test(rest);
-    const source=/\bweb[ ._-]?dl\b/i.test(raw)?'WEB-DL':/\bweb[ ._-]?rip\b/i.test(raw)?'WEBRip':/\bblu[ ._-]?ray\b|\bbdrip\b|\bbrrip\b/i.test(raw)?'BluRay':/\bhdtv\b/i.test(raw)?'HDTV':'';
-    const resolution=/\b(2160p|1080p|720p|480p|4k)\b/i.exec(raw)?.[1]?.toLowerCase()||'';
+    const words=raw.replace(/_/g,' ');
+    const source=/\bweb[ .-]?dl\b/i.test(words)?'WEB-DL':/\bweb[ .-]?rip\b/i.test(words)?'WEBRip':/\bblu[ .-]?ray\b|\bbdrip\b|\bbrrip\b/i.test(words)?'BluRay':/\bhdtv\b/i.test(words)?'HDTV':'';
+    const resolution=/\b(2160p|1080p|720p|480p|4k)\b/i.exec(words)?.[1]?.toLowerCase()||'';
     const group=/-([a-z0-9]{2,20})$/i.exec(raw)?.[1]?.toLowerCase()||'';
     const cut=ep?ep.index:raw.search(/(?:[ ._-]+)(?:2160p|1080p|720p|480p|4k|web[ ._-]?dl|web[ ._-]?rip|blu[ ._-]?ray|hdtv)(?=$|[ ._-])/i);
     const title=(cut>=0?raw.slice(0,cut):raw).replace(/[._]+/g,' ').replace(/\s+/g,' ').trim();
@@ -217,7 +218,7 @@
     if(act==='clear'){if(old===null)return null;const next={...map};delete next[file];return next;}
     const value=Math.round(pos);
     if(old===value||(!force&&Number.isFinite(old)&&Math.abs(value-old)<15000))return null;
-    const next={...map};delete next[file];next[file]=value;return limitResume(next);
+    const next={...map};delete next[file];Object.defineProperty(next,file,{value,enumerable:true,writable:true,configurable:true});return limitResume(next);
   }
   function pushRecent(list, p, max) {
     const l = (Array.isArray(list) ? list : []).filter((x) => x !== p);

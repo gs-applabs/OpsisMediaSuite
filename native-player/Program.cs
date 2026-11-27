@@ -60,8 +60,8 @@ internal static class Program
             // No remote URL or caller-supplied VLC arguments. Separate process;
             // this is not an OS sandbox for hostile bitstreams.
             using var vlc = selftest
-                ? new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--vout=dummy","--aout=dummy","--avcodec-hw="+decoder)
-                : new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--avcodec-hw="+decoder);
+                ? new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--vout=dummy","--aout=dummy","--avcodec-hw="+(decoder=="auto"?"any":decoder))
+                : new LibVLC("--no-video-title-show","--no-sub-autodetect-file","--avcodec-hw="+(decoder=="auto"?"any":decoder));
             using var player = new MediaPlayer(vlc);
             using var media = new Media(vlc, args[1], FromType.FromPath);
             if (args[0]=="--selftest-sub") return SelfTestSubtitle(player,media,sidecar!);

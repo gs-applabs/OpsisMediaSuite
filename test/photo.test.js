@@ -154,3 +154,9 @@ test('RGB histogram ignores transparent pixels and crop anchors stay inside orig
 test('crop output size always agrees with actual pixels on odd dimensions and near edges',()=>{for(const width of [3,5,9,13])for(const height of [3,7,11])for(const rotate of [0,90,180,270]){const data=new Uint8ClampedArray(width*height*4),params={...P.defaults(),rotate,crop:{x:.5,y:.5,w:.5,h:.5}};const out=P.geometry({width,height,data},params),size=P.outputSize(width,height,params);assert.equal(out.width,size.width);assert.equal(out.height,size.height);assert.equal(out.data.length,size.width*size.height*4);}});
 
 test('image header preflight catches oversized PNG and reads GIF/JPEG dimensions',()=>{const png=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(png);png.write('IHDR',12);png.writeUInt32BE(20000,16);png.writeUInt32BE(20000,20);assert.deepEqual(P.headerSize(png),{width:20000,height:20000});assert.equal(P.validImageSize(20000,20000),false);const gif=Buffer.from('47494638396140003000','hex');assert.deepEqual(P.headerSize(gif),{width:64,height:48});const jpg=Buffer.from('ffd8ffc0000b080030004001011100','hex');assert.deepEqual(P.headerSize(jpg),{width:64,height:48});assert.equal(P.headerSize(Buffer.alloc(4)),null);});
+
+
+test('history limits are clamped and export rejects extreme single-axis images',()=>{
+ const h=P.createHistory({x:0},0);h.push({x:1});assert.equal(h.canUndo(),false);assert.deepEqual(h.current(),{x:1});
+ assert.equal(P.exportBudget(40000,10,P.defaults(),1024),false);
+});
