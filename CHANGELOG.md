@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19B.1
+- Localized seven core finder labels in all 20 existing languages; grouped Help results, keyboard-accessible file chooser and wrapped metadata toolbar. Added two unit tests and three real-renderer finder checks. Full feature descriptions still Greek/English; CI pending.
+
 ## Unreleased — Ultra Mega Pass 19B
 - Expanded feature catalog to 68 groups, including lazy converter controls, with shared Help search, existing translated tab labels, contextual opening of subtitle panels, stale-navigation guard and scrollable welcome pages. Full descriptions still Greek/English; visual tests pending.
 

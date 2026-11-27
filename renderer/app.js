@@ -931,7 +931,7 @@ function initFeatureGuide(){
  const group=document.getElementById('featureGuideGroup'),quick=document.getElementById('featureGuideQuick');
  const dictionary=()=>I18N[lang()]||I18N.en||{};
  let navGeneration=0;
- function renderGroups(){const chosen=group.value;group.replaceChildren();for(const [key,label] of [['',gr()?'Όλες οι καρτέλες':'All tabs'],...Object.entries(OpsisFeatureGuide.tabs).map(([k,v])=>[k,dictionary()['tab.'+k]||v[gr()?0:1]])]){const opt=document.createElement('option');opt.value=key;opt.textContent=label;group.append(opt);}group.value=chosen;}
+ function renderGroups(){const chosen=group.value;group.replaceChildren();for(const [key,label] of [['',OpsisFeatureGuide.ui(lang()).all],...Object.entries(OpsisFeatureGuide.tabs).map(([k,v])=>[k,dictionary()['tab.'+k]||v[gr()?0:1]])]){const opt=document.createElement('option');opt.value=key;opt.textContent=label;group.append(opt);}group.value=chosen;}
  async function navigate(row){
   const generation=++navGeneration;
   showTab(row.tab);
@@ -949,21 +949,22 @@ function initFeatureGuide(){
   else if(row.target)await showAlertDialog(gr()?'Διαθεσιμότητα λειτουργίας':'Feature availability',row.description);
  }
  function render(){
-  document.getElementById('featureGuideTitle').textContent=gr()?'Εύρεση λειτουργιών και ρυθμίσεων':'Find features and settings';
+  const labels=OpsisFeatureGuide.ui(lang());document.getElementById('featureGuideTitle').textContent=labels.title;
   document.getElementById('featureGuideHint').textContent=gr()?'Αναζήτησε μια δυνατότητα. Η επιλογή ανοίγει το υπάρχον εργαλείο χωρίς να εκτελεί ενέργειες.':'Search for a feature. Selecting a result opens the existing tool without running an action.';
   input.placeholder=gr()?'π.χ. υπότιτλοι, metadata, GPU':'e.g. subtitles, metadata, GPU';
-  document.getElementById('featureGuideQuickLabel').textContent=gr()?'Εύρεση':'Find';
-  document.getElementById('featureGuideGroupLabel').textContent=gr()?'Καρτέλα':'Tab';
-  quick.title=gr()?'Εύρεση λειτουργιών της τρέχουσας καρτέλας':'Find features in the current tab';quick.setAttribute('aria-label',quick.title);
+  document.getElementById('featureGuideQuickLabel').textContent=labels.find;
+  document.getElementById('featureGuideGroupLabel').textContent=labels.tab;
+  quick.title=labels.title;quick.setAttribute('aria-label',quick.title);
   const rows=OpsisFeatureGuide.list(lang(),input.value,dictionary()).filter(r=>!group.value||r.tab===group.value);results.replaceChildren();
   for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
-  status.textContent=rows.length?(gr()?rows.length+' αποτελέσματα':rows.length+' results'):(gr()?'Δεν βρέθηκε λειτουργία. Δοκίμασε άλλη λέξη ή καρτέλα.':'No features found. Try another word or tab.');
+  status.textContent=rows.length?(gr()?rows.length+' αποτελέσματα':rows.length+' results'):labels.empty;
  }
  input.addEventListener('input',render);group.addEventListener('change',render);document.addEventListener('waveframe:language-changed',()=>{renderGroups();render();});renderGroups();render();
  // The same clearly labelled entry point works from every tab, without intercepting right-click.
  quick.addEventListener('click',()=>{const active=document.querySelector('.tab-btn.active')?.dataset.tab;showTab('settings');group.value=active==='settings'?'':active||'';input.value='';render();input.focus();});
 }
 initFeatureGuide();
+document.getElementById('fileInputLabel').addEventListener('keydown',e=>{if(e.target.id==='fileInputLabel'&&(e.key==='Enter'||e.key===' ')){e.preventDefault();document.getElementById('fileInput').click();}});
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it
 window.waveframe.onOpenVideo((filePath) => { showTab('video'); loadVideoPlayer().then(() => window.WaveframeVideoPlayer.open(filePath)); });
 // only one thing plays at a time
@@ -2845,6 +2846,16 @@ window.__selfTest = async function () {
     check('adjustable reverb/exciter mix controls update DSP state',engine.state.reverbAmount===35&&engine.state.exciterAmount===60&&document.getElementById('fx_reverbValue').textContent==='35%');
     engine.setEffectAmount('reverb',100);engine.setEffectAmount('exciter',100);
     engine.setPresence(0);engine.setBalance(0);syncProfessionalFx();
+    // Real renderer: navigate through the finder without triggering file dialogs or changes.
+    showTab('player');document.getElementById('featureGuideQuick').click();
+    const finder=document.getElementById('featureGuideQuery'),group=document.getElementById('featureGuideGroup');
+    check('finder opens with active tab filter',group.value==='player'&&document.getElementById('tab-settings').classList.contains('active'));
+    finder.value='MusicBrainz';finder.dispatchEvent(new Event('input'));
+    const matches=document.querySelectorAll('#featureGuideResults button');
+    check('finder locates metadata control',matches.length===1);
+    if(matches.length===1)matches[0].click();
+    check('finder opens playlist without executing metadata action',document.getElementById('tab-player').classList.contains('active')&&document.getElementById('playlistDrawer').classList.contains('open'));
+    document.getElementById('playlistDrawer').classList.remove('open');
     check('sleep button present', !!document.getElementById('btnSleep'));
     check('export button present', !!document.getElementById('btnExportApo'));
     check('loudness panel present', !!document.getElementById('loudnessInfo'));

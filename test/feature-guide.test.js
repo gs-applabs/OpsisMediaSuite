@@ -7,3 +7,6 @@ test('experimental capability includes prerequisites',()=>{const r=guide.list('e
 
 test('unique destinations and lazy converter routes',()=>{const rows=guide.list('en');assert.equal(rows.length,68);const ids=rows.filter(x=>x.target).map(x=>x.target);assert.equal(ids.length,new Set(ids).size);assert.ok(rows.some(x=>x.target==='vidCodec'));assert.ok(rows.some(x=>x.target==='convFormat'));});
 test('reuse translated tab names for search',()=>{assert.ok(guide.list('de','Untertiteltest',{'tab.video':'Untertiteltest'}).every(x=>x.tab==='video'));assert.ok(guide.list('de','Untertiteltest',{'tab.video':'Untertiteltest'}).length>0);});
+
+test('all 20 languages have explicit finder UI labels',()=>{for(const lang of ["el","en","fr","de","es","it","pt","ru","tr","pl","nl","sv","da","no","fi","cs","sk","hu","ro","uk"]){const u=guide.ui(lang);assert.ok(Object.values(u).every(x=>typeof x==='string'&&x.length>0));if(lang!=='en')assert.notEqual(u.title,guide.ui('en').title);}});
+test('guide is grouped in tab order',()=>{const rows=guide.list('en'),order=Object.keys(guide.tabs);assert.ok(rows.every((r,i)=>i===0||order.indexOf(rows[i-1].tab)<=order.indexOf(r.tab)));});
