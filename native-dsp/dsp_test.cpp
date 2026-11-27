@@ -40,6 +40,23 @@ int main(){
         cfg.eq_db[0]=0;cfg.enabled=0;check(opsis_dsp_configure(p,&cfg),"bypass transition");opsis_dsp_reset(p);
         float again[]{.5f,-.7f};check(opsis_dsp_process(p,again,1)&&again[0]==.5f&&again[1]==-.7f,"restored bypass");
         check(!opsis_dsp_process(p,again,65537),"bounded frames");
+        opsis_dsp_config_v2 extended{};extended.version=2;extended.base.version=1;extended.base.enabled=1;
+        extended.compressor_mode=3;
+        check(opsis_dsp_configure_v2(p,&extended),"v2 compressor");opsis_dsp_reset(p);
+        check(tone(p,rate,1000)<.05/std::sqrt(2.)*.8,"night compressor attenuates");
+        extended.compressor_mode=0;extended.limiter=1;extended.base.preamp_db=12;
+        check(opsis_dsp_configure_v2(p,&extended),"v2 limiter");opsis_dsp_reset(p);
+        float peak[]{.8f,.2f};check(opsis_dsp_process(p,peak,1)&&std::abs(peak[0]-.89125094f)<1e-5&&std::abs(peak[1]/peak[0]-.25f)<1e-5,"linked limiter");
+        extended.base.preamp_db=0;extended.limiter=0;extended.ambience_percent=100;
+        check(opsis_dsp_configure_v2(p,&extended),"v2 ambience");opsis_dsp_reset(p);
+        std::vector<float> impulse(size_t(rate/10)*2);impulse[0]=.5f;
+        check(opsis_dsp_process(p,impulse.data(),rate/10),"impulse");
+        check(std::abs(impulse[size_t(rate*.037)*2]-.14f)<1e-5,"ambience tail");
+        for(size_t i=1;i<impulse.size();i+=2)check(impulse[i]==0,"no channel leak");
+        extended.ambience_percent=0;extended.exciter_percent=100;
+        check(opsis_dsp_configure_v2(p,&extended),"v2 exciter");opsis_dsp_reset(p);
+        float high[]{.5f,0,-.5f,0};check(opsis_dsp_process(p,high,2)&&high[0]>.5f&&high[1]==0&&high[2]<-.5f,"exciter harmonics");
+        extended.exciter_percent=101;check(!opsis_dsp_configure_v2(p,&extended),"v2 rejects invalid");
         opsis_dsp_destroy(p);std::cout<<"DSP "<<rate<<" Hz: response, bypass, bounds and finite PCM passed\n";
     }
     auto* mono=opsis_dsp_create(48000,1);float signal[]{.2f,.3f};check(mono&&opsis_dsp_process(mono,signal,2)&&signal[1]==.3f,"mono");

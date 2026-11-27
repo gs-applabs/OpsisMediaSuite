@@ -142,3 +142,13 @@ test('native DSP snapshot reuses existing settings and respects external bypass'
  assert.equal(lib.nativeDspConfig({...state,masterEnabled:false}).enabled,0);
  assert.deepEqual(state,before);
 });
+
+
+test('v2 native effects map existing toggles and preset amounts without new routing',()=>{
+ const state={masterEnabled:true,compressor:true,compressorMode:'night',reverb:true,reverbAmount:45,exciter:false,exciterAmount:80};
+ const cfg=lib.nativeDspConfigV2(state);
+ assert.equal(cfg.base.version,1);assert.equal(cfg.version,2);assert.equal(cfg.compressor_mode,3);
+ assert.equal(cfg.ambience_percent,45);assert.equal(cfg.exciter_percent,0);
+ assert.equal(lib.nativeDspConfigV2(state,'external').base.enabled,0);
+ assert.equal(lib.nativeDspConfigV2({...state,compressor:false}).compressor_mode,0);
+});

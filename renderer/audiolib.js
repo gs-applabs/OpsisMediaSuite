@@ -157,6 +157,15 @@
       presence_percent:clamp(state?.presence,0,100),balance_percent:clamp(state?.balance,-100,100),
       surround_percent:clamp(state?.surround,0,100),preamp_db:clamp(state?.volumeBoost,-24,12)};
   }
+  function nativeDspConfigV2(state,mode='native',defaultIsFxSound=false){
+    const percent=(v)=>Math.max(0,Math.min(100,Number.isFinite(v)?v:100));
+    const modes={gentle:1,standard:2,night:3};
+    return {version:2,base:nativeDspConfig(state,mode,defaultIsFxSound),
+      compressor_mode:state?.compressor===true?(Object.hasOwn(modes,state.compressorMode)?modes[state.compressorMode]:2):0,
+      ambience_percent:state?.reverb===true?percent(state.reverbAmount):0,
+      exciter_percent:state?.exciter===true?percent(state.exciterAmount):0,
+      limiter:1};
+  }
   function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
-  return { nativeDspConfig,impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { nativeDspConfig,nativeDspConfigV2,impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });
