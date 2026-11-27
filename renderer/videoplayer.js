@@ -414,6 +414,15 @@
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { ++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
+    async function saveSubtitle(format){
+      const s=subSrc[subSel];if(!s){say(t('vp.subEmpty'));return;}
+      const r=VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps),text=VP.exportSubtitles(r.entries,format);
+      if(!text){say(t('vp.subEmpty'));return;}
+      const result=await api.vpSaveSub({format,text,name:s.name}).catch(()=>null);
+      if(!result?.canceled)say(result?.ok?'Synced subtitles saved / Αποθηκεύτηκαν οι υπότιτλοι':'Subtitle save failed (choose a new filename) / Αποτυχία αποθήκευσης');
+    }
+    $('vpSubSaveSrt').addEventListener('click',()=>saveSubtitle('srt'));
+    $('vpSubSaveVtt').addEventListener('click',()=>saveSubtitle('vtt'));
     $('vpSubReset').addEventListener('click',()=>setDelay(0));
     $('vpSubFps').addEventListener('change',()=>{subScale=Number($('vpSubFps').value)||1;rebuildTrack();});
     $('vpMicroFps').addEventListener('change',()=>{subFps=Number($('vpMicroFps').value)||0;rebuildTrack();});

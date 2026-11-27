@@ -1,0 +1,52 @@
+name: Opsis plugin build and contract CI
+on:
+  push:
+    paths: ['opsis-plugin/**', '.github/workflows/plugin-ci.yml']
+  pull_request:
+    paths: ['opsis-plugin/**', '.github/workflows/plugin-ci.yml']
+permissions:
+  contents: read
+jobs:
+  plugin:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+          dotnet-quality: 'preview'
+      - name: Restore, audit and test contract
+        shell: pwsh
+        run: |
+          $p='opsis-plugin/tests/MediaSuite.OpsisPlugin.Tests/MediaSuite.OpsisPlugin.Tests.csproj'
+          dotnet restore $p
+          if ($LASTEXITCODE) { throw 'restore failed' }
+          dotnet list $p package --vulnerable --include-transitive 2>&1 | Tee-Object plugin-audit.txt
+          if ($LASTEXITCODE -or (Select-String plugin-audit.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet)) { throw 'audit failed' }
+          dotnet test $p -c Release --no-restore --logger trx --results-directory test-results
+          if ($LASTEXITCODE) { throw 'plugin tests failed' }
+      - name: Package and verify contract identity
+        shell: pwsh
+        run: |
+          ./opsis-plugin/build.ps1
+          $zip='opsis-plugin/dist/MediaSuite-Plugin.zip'
+          $want=((Get-Content "$zip.sha256" -Raw).Trim() -split '\s+')[0]
+          if((Get-FileHash $zip -Algorithm SHA256).Hash -ne $want){throw 'package checksum mismatch'}
+          Expand-Archive $zip plugin-check -Force
+          $dll=Get-Item plugin-check/MediaSuite.OpsisPlugin.dll
+          if([Reflection.AssemblyName]::GetAssemblyName($dll.FullName).Version.ToString() -ne '1.0.0.0'){throw 'plugin identity mismatch'}
+          if(Test-Path plugin-check/OpsisNewsCrawler.Plugin.Abstractions.dll){throw 'duplicate host contract DLL'}
+          $b=[IO.File]::ReadAllBytes($dll.FullName)
+          foreach($encoding in @([Text.Encoding]::Latin1,[Text.Encoding]::Unicode)){
+            $s=$encoding.GetString($b)
+            foreach($pattern in @('C:\Users\','C:\w\','D:\a\','/Users/')){if($s.IndexOf($pattern,[StringComparison]::OrdinalIgnoreCase) -ge 0){throw "build path trace: $pattern"}}
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-ci-evidence
+          path: |
+            plugin-audit.txt
+            test-results/*.trx
+            opsis-plugin/dist/*.sha256

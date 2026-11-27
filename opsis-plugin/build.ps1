@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Remove-Item "$here\dist\plugin" -Recurse -Force -ErrorAction SilentlyContinue
- dotnet build "$here\src\MediaSuite.OpsisPlugin" -c Release -o "$here\dist\plugin"
+dotnet build "$here\src\MediaSuite.OpsisPlugin" -c Release -o "$here\dist\plugin"
 if ($LASTEXITCODE) { throw 'build failed' }
 Remove-Item "$here\dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll" -ErrorAction SilentlyContinue   # the host shares its own copy
 $zip = "$here\dist\MediaSuite-Plugin.zip"

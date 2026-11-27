@@ -142,6 +142,22 @@ function init({ getMainWin, resolveFfmpegPath }) {
     const f = r.filePaths[0];
     try { return readSubtitle(f); } catch (_) { return null; }
   });
+  let subtitleSaveBusy=false;
+  ipcMain.handle('vp:save-sub',async(e,req)=>{
+    if(!trusted(e)||subtitleSaveBusy||!req||!['srt','vtt'].includes(req.format)||typeof req.text!=='string'||!req.text.trim()||Buffer.byteLength(req.text,'utf8')>MAX_SUB_BYTES)return {ok:false};
+    const name=typeof req.name==='string'?req.name.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').replace(/\.[^.]+$/,'').slice(0,100):'subtitle';
+    subtitleSaveBusy=true;
+    try{
+      const r=await dialog.showSaveDialog(getMainWin(),{defaultPath:(name||'subtitle')+'-synced.'+req.format,filters:[{name:req.format.toUpperCase(),extensions:[req.format]}]});
+      if(r.canceled||!r.filePath)return {ok:false,canceled:true};
+      const parent=require('./local-media-policy').localDirectory(path.dirname(r.filePath));
+      if(!parent||path.extname(r.filePath).toLowerCase()!=='.'+req.format)return {ok:false};
+      const target=path.join(parent,path.basename(r.filePath));
+      // Never overwrite an original subtitle, even after the OS save prompt.
+      await fs.promises.writeFile(target,req.text,{encoding:'utf8',flag:'wx'});
+      return {ok:true};
+    }catch(_){return {ok:false};}finally{subtitleSaveBusy=false;}
+  });
   ipcMain.handle('vp:exists', (e, list) => (trusted(e) && Array.isArray(list) ? list.slice(0, 500).map((p) => isFile(p)) : []));
 
   /* ---------------- photo editor ---------------- */

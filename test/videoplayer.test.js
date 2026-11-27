@@ -215,3 +215,12 @@ test('native host protocol accepts bounded known events only',()=>{
  assert.equal(parseHostEvent('x'.repeat(1025)),null);
  assert.equal(parseHostEvent('{"event":"position","positionMs":-5}').positionMs,0);
 });
+
+test('synchronized subtitle export round trips timing without replacing original',()=>{
+ const parsed=V.subtitleToVtt('1\n00:00:10,000 --> 00:00:20,000\nΚαλημέρα','srt',500,.96);
+ for(const format of ['srt','vtt']){
+  const text=V.exportSubtitles(parsed.entries,format),r=V.subtitleToVtt(text,format,0);
+  assert.equal(r.cues,1);assert.equal(r.entries[0].start,10.1);assert.equal(r.entries[0].end,19.7);assert.equal(r.entries[0].text,'Καλημέρα');
+ }
+ assert.equal(V.exportSubtitles([{start:4,end:2,text:'x'}],'srt'),'');
+});

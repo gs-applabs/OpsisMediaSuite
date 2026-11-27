@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpPick: (kind) => ipcRenderer.invoke('vp:pick', kind),
   vpSubsFor: (p) => ipcRenderer.invoke('vp:subs-for', p),
   vpPickSub: () => ipcRenderer.invoke('vp:pick-sub'),
+  vpSaveSub: req=>ipcRenderer.invoke('vp:save-sub',req),
   vpExists: (list) => ipcRenderer.invoke('vp:exists', list),
   photoPick: () => ipcRenderer.invoke('photo:pick'),
   photoRead: (p) => ipcRenderer.invoke('photo:read', p),

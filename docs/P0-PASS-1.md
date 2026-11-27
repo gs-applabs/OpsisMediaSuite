@@ -78,3 +78,6 @@ Installed K-Lite CI 45941014419 succeeded with x64 LAV splitter/video/audio grap
 
 ## Full pass 24 — native lifecycle and Photo Studio RGB/clarity
 Prevent stale Chromium resume writes and duplicate transport while native handoff active; stop native on stop/new source/unload. Add independent red/green/blue channel multipliers and signed local-luma contrast (clarity) shared by preview and worker export, preserve alpha and neutral result. All 20 locale entries added for new photo controls. Tests added; not yet CI certified.
+
+## Full pass 25 — synchronized subtitle export and plugin CI
+SRT/VTT export from processed cues with current delay/FPS, native save dialog, UTF-8 bounded payload, exclusive creation (no original overwrite). Added round-trip tests. Added .NET 11 plugin build/test/contract/checksum/build-path CI. Published release checksum and Defender scans now fail if no assets or scan cannot verify; all gates independent. Current release assets unchanged, no security certification from this edit alone. Prior general CI 178/178 with renderer selftest passed at 54825a2. Latest CI pending.

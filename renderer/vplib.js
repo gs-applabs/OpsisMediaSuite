@@ -103,6 +103,19 @@
     return srtToVtt(e === 'ass' || e === 'ssa' ? assToSrt(text) : text, shiftMs, scale);
   }
 
+  function exportSubtitles(entries,format='srt'){
+    if(!['srt','vtt'].includes(format)||!Array.isArray(entries))return '';
+    const out=format==='vtt'?['WEBVTT','']:[];
+    let count=0;
+    for(const cue of entries.slice(0,LIMITS.cues)){
+      if(!Number.isFinite(cue.start)||!Number.isFinite(cue.end)||cue.start<0||cue.end<=cue.start||cue.end>3600000||typeof cue.text!=='string')continue;
+      const body=cue.text.replace(/\0/g,'').replace(/\r\n?/g,'\n').replace(/\n[\t ]*\n+/g,'\n').trim();if(!body)continue;
+      const ts=n=>format==='srt'?vttTime(n*1000).replace('.',','):vttTime(n*1000);
+      if(format==='srt')out.push(String(++count));else count++;
+      out.push(ts(cue.start)+' --> '+ts(cue.end),body,'');
+    }
+    return count?out.join('\n')+'\n':'';
+  }
   function preferredSubtitle(sources,languages=['el','en']) {
     const aliases={el:['el','ell','gre','gr','greek'],en:['en','eng','english'],fr:['fr','fra','fre','french'],de:['de','deu','ger','german'],it:['it','ita','italian'],es:['es','spa','spanish']};
     const rows=Array.isArray(sources)?sources:[];
@@ -165,5 +178,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { exportSubtitles, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });
