@@ -5,7 +5,7 @@
 // the renderer (real Web Audio, real DOM, real i18n) and exits with 0 on success. Prints one PASS/FAIL line per check.
 // Run with `npm run selftest` — complements `npm test` (pure unit tests) and `npm run smoke-test` (launch only).
 
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFileSync, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -22,18 +22,34 @@ const child = spawn(ELECTRON_BIN, packaged?[]:['.'], {
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
+// Test-only Windows process tree samples, independent from Electron metrics.
+let sampler=null,profileTimer=null,profileStopped=false;
+if(process.platform==='win32'&&process.env.OPSIS_RESOURCE_PROFILE==='1'&&child.pid){
+  const sample=()=>{
+    if(profileStopped||sampler)return;
+    const ps=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+    sampler=execFile(ps,['-NoProfile','-NonInteractive','-File',path.join(__dirname,'test','windows-process-profile.ps1'),'-RootPid',String(child.pid)],{windowsHide:true,timeout:12000,maxBuffer:256*1024},(err,stdout)=>{
+      sampler=null;if(profileStopped)return;
+      if(err){console.log('PROCESS_PROFILE_UNAVAILABLE '+String(err.code||'sample-failed'));return;}
+      try{const row=JSON.parse(stdout.trim());console.log('PROCESS_PROFILE '+JSON.stringify(row));}catch{console.log('PROCESS_PROFILE_UNAVAILABLE invalid-output');}
+    });
+  };
+  profileTimer=setInterval(sample,4000);sample();
+}
+function stopProfile(){profileStopped=true;clearInterval(profileTimer);if(sampler)try{sampler.kill();}catch{}}
 let out = '';
 child.stdout.on('data', (d) => { const s = d.toString(); out += s; process.stdout.write(s); });
 child.stderr.on('data', () => { /* Chromium noise */ });
 
 const timeout = setTimeout(() => {
+  stopProfile();
   console.error('FAIL: self-test timed out after 240 s');
   try { if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); else child.kill('SIGKILL'); } catch (_) { /* already gone */ }
   process.exit(1);
 }, 240000);
 
-child.on('exit', (code) => {
-  clearTimeout(timeout);
+child.on('close', (code) => {
+  stopProfile();clearTimeout(timeout);
   try { fs.rmSync(USER_DATA, { recursive: true, force: true }); } catch (_) { /* still locked */ }
   const failed = /^FAIL/m.test(out) || code !== 0;
   console.log(failed ? 'SELF-TEST FAILED' : 'SELF-TEST PASSED');

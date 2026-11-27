@@ -21,7 +21,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   const cancelledEarly = new Set();
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
   let closing=false;
-  app.once('before-quit',()=>{closing=true;for(const id of pending)cancelledEarly.add(id);for(const job of jobs.values())try{job.cancel();}catch{}E.cancelActiveRuns();});
+  app.once('before-quit',()=>{closing=true;for(const id of pending)cancelledEarly.add(id);for(const job of jobs.values())try{job.cancel();}catch{}E.cancelActiveRuns();EV.cancelAuxiliary();});
   const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
   const okFile = p => !!localPath(p);
   const sourceGrants=new Set(),subtitleGrants=new Set(),directoryGrants=new Set(),outputGrants=new Set();

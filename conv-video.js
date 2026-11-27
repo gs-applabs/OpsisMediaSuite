@@ -12,15 +12,19 @@ const L = require('./renderer/convlib.js');
 const V = require('./renderer/vidlib.js');
 const { runFfmpeg,publishOutput } = require('./conv-engine.js');
 
-const encoderCache = new Map();
+const encoderCache = new Map(),encoderPending=new Map(),auxChildren=new Set();
+function trackAux(child){auxChildren.add(child);child.once('close',()=>auxChildren.delete(child));child.once('error',()=>auxChildren.delete(child));}
+function cancelAuxiliary(){for(const child of auxChildren)try{child.kill();}catch{}}
+
 
 // Runs ffmpeg and returns ALL of stdout + stderr (capped at 1 MB): the encoder list is longer than runFfmpeg's progress tail.
 function capture(ffmpegPath, args, timeoutMs = 15000) {
   return new Promise((resolve) => {
     let out = ''; let child;
     try { child = spawn(ffmpegPath, args, { windowsHide: true }); } catch (_) { return resolve(''); }
+    trackAux(child);
     const timer = setTimeout(() => { try { child.kill(); } catch (_) { /* gone */ } }, timeoutMs);
-    const take = (c) => { if (out.length < 1024 * 1024) out += c.toString(); };
+    const take = (c) => { if (out.length < 1024 * 1024) out += c.toString().slice(0,1024*1024-out.length); };
     child.stdout.on('data', take);
     child.stderr.on('data', take);
     child.on('error', () => { clearTimeout(timer); resolve(out); });
@@ -31,12 +35,12 @@ function capture(ffmpegPath, args, timeoutMs = 15000) {
 // Asks ffmpeg what it can encode and which hardware accelerators it knows. Cached per binary.
 async function detectEncoders(ffmpegPath) {
   if (encoderCache.has(ffmpegPath)) return encoderCache.get(ffmpegPath);
-  const res = {
-    encoders: V.parseEncoders(await capture(ffmpegPath, ['-hide_banner', '-encoders'])),
-    hwaccels: V.parseHwaccels(await capture(ffmpegPath, ['-hide_banner', '-hwaccels'])),
-  };
-  encoderCache.set(ffmpegPath, res);
-  return res;
+  if(encoderPending.has(ffmpegPath))return encoderPending.get(ffmpegPath);
+  const task=(async()=>{const res={
+    encoders:V.parseEncoders(await capture(ffmpegPath,['-hide_banner','-encoders'])),
+    hwaccels:V.parseHwaccels(await capture(ffmpegPath,['-hide_banner','-hwaccels']))
+  };if(res.encoders.size){if(encoderCache.size>=8)encoderCache.delete(encoderCache.keys().next().value);encoderCache.set(ffmpegPath,res);}return res;})();
+  encoderPending.set(ffmpegPath,task);try{return await task;}finally{encoderPending.delete(ffmpegPath);}
 }
 
 async function probeVideo(ffmpegPath, file) {
@@ -50,6 +54,7 @@ function thumbnail(ffmpegPath, file, atSec = 1) {
     const at = Number.isFinite(atSec) && atSec >= 0 ? atSec : 1;
     const chunks = []; let n = 0; let child;
     try { child = spawn(ffmpegPath, ['-hide_banner', '-nostdin', '-v', 'error', '-ss', String(at), '-protocol_whitelist','file,pipe','-i', file, '-frames:v', '1', '-vf', 'scale=320:-2', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'], { windowsHide: true }); } catch (_) { return resolve(null); }
+    trackAux(child);
     const timer = setTimeout(() => { try { child.kill(); } catch (_) {} },15000); timer.unref();
     child.stdout.on('data', (c) => { n += c.length; if (n > 2 * 1024 * 1024) child.kill(); else chunks.push(c); });
     child.stderr.on('data', () => {});
@@ -128,4 +133,4 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   return { promise, cancel() { cancelled = true; if (current) current.cancel(); } };
 }
 
-module.exports = { capture, detectEncoders, probeVideo, thumbnail, encodeVideo };
+module.exports = { capture, detectEncoders, probeVideo, thumbnail, encodeVideo, cancelAuxiliary };

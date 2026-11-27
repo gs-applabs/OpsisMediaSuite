@@ -14,6 +14,7 @@ const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts
 
 const activeRuns=new Set();
 function cancelActiveRuns(){for(const run of activeRuns)run.cancel();}
+function activeRunCount(){return activeRuns.size;}
 function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 * 60 * 60 * 1000 } = {}) {
   let child = null, cancelled = false, timedOut = false;
   const promise = new Promise((resolve, reject) => {
@@ -151,4 +152,4 @@ async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
   } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
 }
 
-module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelActiveRuns, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };
+module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelActiveRuns, activeRunCount, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };

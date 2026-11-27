@@ -167,3 +167,5 @@ test('outDir: results go to the chosen folder (created on demand), named after t
   const w = await (await E.convertFromWav({ ffmpegPath: null, input: path.join(target, 'Song title.src'), wavBytes: wav, options: C.validateOptions({ format: 'wav', suffix: '' }).options, outDir: target })).promise;
   assert.equal(path.basename(w.output), 'Song title-converted.wav');
 });
+
+test('shutdown cancellation stops active FFmpeg runs and releases registry',opts,async()=>{const a=E.runFfmpeg(FFMPEG,['-hide_banner','-re','-stream_loop','-1','-i',src,'-f','null','-'],{timeoutMs:10000});const b=E.runFfmpeg(FFMPEG,['-hide_banner','-re','-stream_loop','-1','-i',src,'-f','null','-'],{timeoutMs:10000});const settled=Promise.allSettled([a.promise,b.promise]);assert.equal(E.activeRunCount(),2);E.cancelActiveRuns();const results=await settled;assert.ok(results.every(r=>r.status==='rejected'&&r.reason.code==='cancelled'));assert.equal(E.activeRunCount(),0);});

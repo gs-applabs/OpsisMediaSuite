@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.3 / 20C.1
+- Test-only Windows process tree profiling alongside Electron samples, with cumulative I/O transfer counters and optional GPU engine maximum; unavailable measurements explicitly reported. Deduplicate concurrent encoder discovery, cap encoder cache and discovery output, terminate auxiliary FFmpeg subprocesses on quit. Real two-process FFmpeg cancellation regression test. These are not physical SSD write metrics or full GPU utilization; long soak and results pending.
+
 ## Unreleased — Ultra Mega Pass 20B.2
 - Cancel tracked converter jobs and shared FFmpeg runs on app shutdown; request subtitle worker/batch cancellation. Release removed playlist media from paused slots; cancel renderer animation scheduling while hidden. Add opt-in five-sample startup/post-selftest Electron resource reporting and CI artifact. External child processes, disk writes, GPU usage and long-duration soak testing still need dedicated measurements.
 
