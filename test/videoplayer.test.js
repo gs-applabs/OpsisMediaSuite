@@ -493,3 +493,29 @@ test('MKV extraction permits only explicit text subtitle codecs',()=>{
  assert.equal(canExtract({index:3,codec:'dvd_subtitle'}),false);
  assert.equal(canExtract({index:-1,codec:'ass'}),false);
 });
+
+
+test('season plan selects same show and season and excludes multi-episode files',()=>{
+ const {seasonPlan}=require('../subtitle-batch');
+ const files=['Show.S01E03.mkv','Show.S01E01.mkv','Other.S01E01.mkv','Show.S02E01.mkv','Show.S01E02E03.mkv','Show.S01E01.mkv'];
+ assert.deepEqual(seasonPlan(files,'Show.S01E03.mkv'),['Show.S01E01.mkv','Show.S01E03.mkv']);
+ assert.deepEqual(seasonPlan(files,'Movie.mkv'),[]);
+});
+test('season batch skips existing and uncertain files, saves one exact hash only, stops at quota',async()=>{
+ const {runSeasonBatch}=require('../subtitle-batch');
+ const calls=[],files=['a','b','c','d','e','f'];
+ const result=await runSeasonBatch({files,providerId:'opensubtitles',credentials:{apiKey:'fixture'},autoSave:true,hashEnabled:true,approved:()=>true,audit:async p=>p==='a'?'greek':p==='b'?'unknown':'missing',hash:async()=> '0123456789abcdef',sleep:async()=>{},
+ provider:{search:async req=>{calls.push(['search',req.apiKey]);return {ok:true,items:[{id:1,language:'el',hashMatch:calls.length!==1,name:'candidate.srt'}]};},download:async()=>{calls.push(['download']);return {ok:true,subtitle:{ext:'srt',text:'fixture'},remaining:0};}},
+ save:async()=>({ok:true,name:'saved.el.srt'})});
+ assert.deepEqual(result.rows.map(r=>r.status),['already-present','local-review','review','saved']);
+ assert.equal(result.stopped,'quota');assert.deepEqual(calls,[['search','fixture'],['search',undefined],['download']]);
+});
+test('season batch respects cancellation and never auto-downloads SubDL or ambiguous hash results',async()=>{
+ const {runSeasonBatch}=require('../subtitle-batch');
+ let cancelled=false,downloads=0;
+ const base={files:['a','b'],providerId:'subdl',autoSave:true,hashEnabled:true,approved:()=>true,audit:async()=> 'missing',hash:async()=> '0123456789abcdef',sleep:async()=>{},provider:{search:async()=>({ok:true,items:[{id:1,language:'el',hashMatch:true,name:'a.srt'}]}),download:async()=>{downloads++;return {ok:true};}},save:async()=>({ok:true})};
+ const first=await runSeasonBatch({...base,cancelled:()=>cancelled,progress:()=>{cancelled=true;}});
+ assert.equal(first.rows[0].status,'review');assert.equal(first.stopped,'cancelled');assert.equal(downloads,0);
+ const second=await runSeasonBatch({...base,providerId:'opensubtitles',provider:{...base.provider,search:async()=>({ok:true,items:[{id:1,language:'el',hashMatch:true},{id:2,language:'el',hashMatch:true}]})}});
+ assert.deepEqual(second.rows.map(r=>r.status),['review','review']);assert.equal(downloads,0);
+});

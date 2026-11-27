@@ -16,6 +16,7 @@ const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-s
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
 const {resolveProbe,probeMkv,canExtract,extractMkv}=require('./subtitle-probe.js');
 const {createSubdl}=require('./subtitle-subdl.js');
+const {seasonPlan,runSeasonBatch,MAX_BATCH}=require('./subtitle-batch.js');
 const VP=require('./renderer/vplib');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
@@ -154,9 +155,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
   let subtitleProvider=createProvider({decode:decodeText});
   const subdlProvider=createSubdl({decode:decodeText});
   const providerFor=id=>id==='subdl'?subdlProvider:id==='opensubtitles'||id===undefined?subtitleProvider:null;
-  let hashBusy=false;
+  let hashBusy=false,batchState=null;
   ipcMain.handle('vp:sub-search',async(e,req)=>{
     if(!trusted(e)||!req||typeof req!=='object')return {ok:false,code:'denied'};
+    if(batchState?.running)return {ok:false,code:'batch-busy'};
     const provider=providerFor(req.provider);if(!provider)return {ok:false,code:'bad-provider'};
     if(req.provider==='subdl')return provider.search({query:req.query,language:req.language,apiKey:req.apiKey});
     // Do not accept renderer-supplied hash/path as a general read primitive.
@@ -229,6 +231,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   });
   ipcMain.handle('vp:sub-download',async(e,id,video,save,providerId)=>{
     if(!trusted(e))return {ok:false,code:'denied'};
+    if(batchState?.running)return {ok:false,code:'batch-busy'};
     const p=save===true?allowedFile(video,new Set(VIDEO_EXTS)):null;
     const provider=providerFor(providerId);if(!provider)return {ok:false,code:'bad-provider'};
     const result=await provider.download(id);
@@ -236,7 +239,32 @@ function init({ getMainWin, resolveFfmpegPath }) {
     if(save===true)result.saved=await saveDownloaded(e,p,result.subtitle,result.language);
     return result;
   });
-  ipcMain.handle('vp:sub-disconnect',(e,id)=>trusted(e)?providerFor(id)?.clear()===true:false);
+  ipcMain.handle('vp:sub-disconnect',(e,id)=>trusted(e)&&!batchState?.running?providerFor(id)?.clear()===true:false);
+  ipcMain.handle('vp:sub-batch-status',e=>trusted(e)&&batchState?{...batchState,rows:batchState.rows.slice()}:null);
+  ipcMain.handle('vp:sub-batch-cancel',e=>{if(!trusted(e)||!batchState?.running)return false;batchState.cancelled=true;return true;});
+  ipcMain.handle('vp:sub-batch-start',async(e,req)=>{
+    if(!trusted(e)||batchState?.running||!req||!Array.isArray(req.videos)||req.videos.length>2000||req.videos.some(x=>typeof x!=='string'||x.length>32767))return {ok:false,code:'denied-or-busy'};
+    const provider=providerFor(req.provider);if(!provider)return {ok:false,code:'bad-provider'};
+    const exts=new Set(VIDEO_EXTS),isApproved=p=>trusted(e)&&allowedFile(p,exts)===p&&approved.has(p);
+    const anchor=allowedFile(req.anchor,exts);if(!anchor||!isApproved(anchor))return {ok:false,code:'video-not-approved'};
+    const files=seasonPlan([...new Set(req.videos.map(x=>allowedFile(x,exts)).filter(p=>p&&isApproved(p)))],anchor);
+    if(!files.length)return {ok:false,code:'no-single-episode-season'};
+    const autoSave=req.autoSave===true&&req.provider==='opensubtitles'&&req.hashEnabled===true;
+    const state={running:true,cancelled:false,rows:[],done:0,total:Math.min(files.length,MAX_BATCH),truncated:files.length>MAX_BATCH,stopped:null};
+    batchState=state;
+    try{
+      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Start / Έναρξη'],defaultId:0,cancelId:0,message:'Search Greek subtitles for up to '+state.total+' episodes?',detail:'Sends episode titles'+(req.hashEnabled===true&&req.provider==='opensubtitles'?' and optional movie hashes':'')+' to the selected provider. '+(autoSave?'Only a single exact hash match can be downloaded and saved beside its video.':'Search only; review matches manually.')});
+      if(answer.response!==1||!trusted(e)||state.cancelled){state.stopped='cancelled';return {ok:false,code:'cancelled'};}
+      const audit=async p=>{
+        const out=await auditSubtitles({videos:[p],extensions:exts,approved:isApproved,decode:decodeText});
+        return out.rows[0]?.status||'incomplete';
+      };
+      const result=await runSeasonBatch({files,provider,providerId:req.provider,credentials:{apiKey:req.apiKey,username:req.username,password:req.password},autoSave,hashEnabled:req.hashEnabled===true,approved:isApproved,audit,hash:movieHash,save:(p,sub,lang)=>saveDownloaded(e,p,sub,lang),cancelled:()=>state.cancelled||!trusted(e),progress:p=>Object.assign(state,p)});
+      Object.assign(state,result,{done:result.rows.length});
+      return {ok:true,...result};
+    }catch{state.stopped='batch-failed';return {ok:false,code:'batch-failed'};}
+    finally{state.running=false;}
+  });
   let embeddedBusy=false;
   ipcMain.handle('vp:sub-embedded-list',async(e,video)=>{
     const p=allowedFile(video,new Set(['mkv']));

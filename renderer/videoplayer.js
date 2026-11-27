@@ -490,6 +490,42 @@
       const subdl=$('vpSubProvider').value==='subdl';
       $('vpSubUser').disabled=subdl;$('vpSubPassword').disabled=subdl;$('vpSubHash').disabled=subdl;
     });
+    let batchPoll=null,batchBusy=false;
+    const batchStatus=$('vpSubBatchStatus'),batchResults=$('vpSubBatchResults');
+    function showBatch(state){
+      if(!state)return;
+      const selected=batchResults.value;batchResults.textContent='';
+      for(const row of state.rows||[]){
+        const o=document.createElement('option');o.value=row.file;o.textContent=row.status+' — '+VP.titleOf(row.file)+(row.count?' · '+row.count+' matches':'')+(row.name?' · '+row.name:'');batchResults.append(o);
+      }
+      if(Array.from(batchResults.options).some(o=>o.value===selected))batchResults.value=selected;
+      $('vpSubBatchOpen').disabled=!batchResults.options.length||batchBusy;
+      batchStatus.textContent=(state.done??state.rows?.length??0)+' / '+state.total+(state.running?' · Searching…':'')+(state.stopped?' · '+state.stopped:'')+(state.truncated?' · First 10 episodes only':'');
+    }
+    $('vpSubBatchStart').addEventListener('click',async()=>{
+      const anchor=current();
+      if(batchBusy||!anchor||VP.isUrl(anchor)||VP.releaseInfo(anchor).season===null){batchStatus.textContent='Select a local single episode / Επιλέξτε επεισόδιο S01E01';return;}
+      batchBusy=true;
+      for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDownload','vpSubDisconnect','vpSubProvider','vpSubBatchOpen'])$(id).disabled=true;
+      $('vpSubBatchCancel').disabled=false;
+      ++searchGeneration;resultsProvider=null;$('vpSubResults').textContent='';
+      batchResults.textContent='';batchStatus.textContent='Preparing / Προετοιμασία…';
+      const req={anchor,videos:list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),provider:$('vpSubProvider').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashEnabled:$('vpSubHash').checked&&!$('vpSubHash').disabled,autoSave:$('vpSubBatchAuto').checked};
+      for(const id of ['vpSubKey','vpSubUser','vpSubPassword'])$(id).value='';
+      batchPoll=setInterval(()=>api.vpSubBatchStatus().then(showBatch).catch(()=>{}),750);
+      try{const res=await api.vpSubBatchStart(req);if(res?.ok)showBatch(res);else batchStatus.textContent=res?.code||'Batch failed';}
+      catch{batchStatus.textContent='Batch failed';}
+      finally{clearInterval(batchPoll);batchPoll=null;batchBusy=false;
+        for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDisconnect','vpSubProvider'])$(id).disabled=false;
+        $('vpSubBatchCancel').disabled=true;$('vpSubBatchOpen').disabled=!batchResults.options.length;
+      }
+    });
+    $('vpSubBatchCancel').addEventListener('click',async()=>{if(await api.vpSubBatchCancel().catch(()=>false))batchStatus.textContent='Cancellation requested / Ζητήθηκε ακύρωση';});
+    $('vpSubBatchOpen').addEventListener('click',()=>{
+      const file=batchResults.value,i=list.findIndex(p=>p===file||p.toLowerCase()===file.toLowerCase());
+      if(i<0){batchStatus.textContent='Playlist changed — scan again';return;}
+      playAt(i);
+    });
     let embeddedGeneration=0;
     $('vpSubEmbeddedList').addEventListener('click',async()=>{
       const p=current(),g=generation,n=++embeddedGeneration,sel=$('vpSubEmbeddedTracks'),status=$('vpSubEmbeddedStatus');
@@ -553,6 +589,7 @@
     });
     $('vpSubOnlineToggle').addEventListener('click',()=>{$('vpSubOnline').hidden=!$('vpSubOnline').hidden;if(current()&&!$('vpSubQuery').value)$('vpSubQuery').value=VP.titleOf(current());});
     $('vpSubSearch').addEventListener('click',async()=>{
+      if(batchBusy)return;
       const g=generation,n=++searchGeneration;
       $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubSearch').disabled=true;
       const req={provider:$('vpSubProvider').value,query:$('vpSubQuery').value,language:$('vpSubLanguage').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashPath:$('vpSubHash').checked&&current()&&!VP.isUrl(current())?current():null};

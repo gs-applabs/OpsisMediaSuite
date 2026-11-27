@@ -45,6 +45,7 @@
       "native-host.js",
       "subtitle-provider.js",
       "subtitle-subdl.js",
+      "subtitle-batch.js",
       "subtitle-sidecar.js",
       "subtitle-probe.js",
       "subtitle-archive.js",
