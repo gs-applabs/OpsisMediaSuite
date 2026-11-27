@@ -117,8 +117,39 @@ internal static class Program
                 !NativeCommands.Apply(missing,player,media)&&
                 NativeCommands.Apply(reset,player,media)&&player.SpuDelay==0;
         }
-        Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",externalSubtitleAccepted=added,externalSubtitleSelected=selected,tracks=tracks.Length,delayVerified}));
-        player.Stop();return added&&selected&&delayVerified?0:5;
+        // Exercise the same numbered-sidecar command used by the live window.
+        // Keep the fixture directory until after Stop, since VLC can read lazily.
+        string scratch=Path.Combine(Path.GetTempPath(),"opsis-sub-test-"+Guid.NewGuid().ToString("N"));
+        bool replacementAccepted=false,replacementSelected=false,offVerified=false,invalidRejected=false;
+        try{
+            Directory.CreateDirectory(scratch);
+            string initial=Path.Combine(scratch,"synced.srt");
+            File.Copy(subtitle,initial);
+            File.WriteAllText(Path.Combine(scratch,"revision-1.srt"),"1\n00:00:00,500 --> 00:00:03,000\nΔεύτερος υπότιτλος\n",new System.Text.UTF8Encoding(false));
+            var previous=player.SpuDescription.Where(t=>t.Id>=0).Select(t=>t.Id).ToHashSet();
+            // Pause and seek back, so the short fixture does not end during testing.
+            player.SetPause(true);if(player.IsSeekable)player.Time=500;
+            invalidRejected=!NativeCommands.Apply(new NativeCommands.Command(10,"subtitle-replace",25),player,media,initial)
+                &&!NativeCommands.Apply(new NativeCommands.Command(11,"subtitle-replace",2),player,media,initial)
+                &&!NativeCommands.Apply(new NativeCommands.Command(12,"subtitle-replace",1.5),player,media,initial);
+            replacementAccepted=NativeCommands.Apply(new NativeCommands.Command(13,"subtitle-replace",1),player,media,initial);
+            player.SetPause(false);
+            clock.Restart();
+            while(clock.ElapsedMilliseconds<2500){
+                if(player.Spu>=0&&!previous.Contains(player.Spu)){replacementSelected=true;break;}
+                Thread.Sleep(50);
+            }
+            if(replacementSelected){
+                bool off=NativeCommands.Apply(new NativeCommands.Command(14,"subtitle-off",0),player,media,initial);
+                clock.Restart();while(clock.ElapsedMilliseconds<1000&&player.Spu>=0)Thread.Sleep(30);
+                offVerified=off&&player.Spu<0;
+            }
+        }finally{
+            player.Stop();
+            try{Directory.Delete(scratch,true);}catch{}
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",externalSubtitleAccepted=added,externalSubtitleSelected=selected,tracks=tracks.Length,delayVerified,replacementAccepted,replacementSelected,offVerified,invalidRejected}));
+        return added&&selected&&delayVerified&&replacementAccepted&&replacementSelected&&offVerified&&invalidRejected?0:5;
     }
     private static int SelfTest(MediaPlayer player, Media media)
     {
