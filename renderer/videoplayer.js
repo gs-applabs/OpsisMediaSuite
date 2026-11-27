@@ -738,7 +738,7 @@
         const lines=['Electron process snapshot / Στιγμιότυπο διεργασιών','Working set total: '+(report.workingSetKiB===null?'unavailable':(report.workingSetKiB/1024).toFixed(1)+' MiB')];
         for(const row of report.rows)lines.push(row.type+' · PID '+row.pid+' · CPU '+(row.cpuPercent===null?'—':row.cpuPercent+'%')+' · RAM '+(row.workingSetKiB===null?'—':(row.workingSetKiB/1024).toFixed(1)+' MiB'));
         lines.push('Shared pages may be counted twice. Native/FFmpeg subprocesses and physical SSD writes not included.');
-        await showAlertDialog('Resource diagnostics',lines.join('\n'));
+        await showAlertDialog(t('vp.resourceDiagnostics'),lines.join('\n'));
       }catch{say('Resource diagnostics unavailable');}finally{button.disabled=false;}
     });
     $('vpGpuDiagnostics').addEventListener('click',async()=>{
@@ -752,19 +752,19 @@
         lines.push('FFmpeg compiled hardware methods: '+(report.ffmpegMethods?.join(', ')||'none reported'));
         lines.push('LibVLC requested decoder: '+(report.native?.decoderRequested||'not started'));
         lines.push('Actual hardware decoder for this video: not verified / Μη πιστοποιημένο');
-        await showAlertDialog('GPU diagnostics',lines.join('\n'));
+        await showAlertDialog(t('vp.gpuDiagnostics'),lines.join('\n'));
       }catch{say('GPU diagnostics unavailable');}finally{button.disabled=false;}
     });
     $('vpCodecs').addEventListener('click', async () => {
       const report=await api.vpCodecInventory().catch(()=>null);
-      if(!report){await showAlertDialog('Codec Manager','Inventory unavailable / Μη διαθέσιμη ανίχνευση');return;}
+      if(!report){await showAlertDialog(t('vp.codecManager'),t('vp.inventoryUnavailable'));return;}
       const lines=['Active engine / Ενεργός μηχανισμός: '+(playbackEngine||'—'), 'Architecture: '+report.arch, 'Inventory only / Μόνο ανίχνευση — not loaded / χωρίς φόρτωση'];
       for(const row of report.packs)lines.push(row.name+' '+row.version+' ['+row.view+']');
       for(const row of report.filters)lines.push(row.name+' ['+row.view+']');
       for(const row of (report.lav||[]))lines.push(row.name+' ['+row.view+'] '+row.status+' ('+row.hive+')');
       for(const row of report.transforms)lines.push(row.name+' [Media Foundation '+row.view+']');
       if(report.status!=='ok')lines.push('Scan status: '+report.status);
-      await showAlertDialog('Codec Manager',lines.join('\n'));
+      await showAlertDialog(t('vp.codecManager'),lines.join('\n'));
     });
     const picIn = () => { pic.brightness = Number($('vpBright').value); pic.contrast = Number($('vpContrast').value); pic.saturation = Number($('vpSat').value); applyPicture(); };
     for (const id of ['vpBright', 'vpContrast', 'vpSat']) $(id).addEventListener('input', picIn);

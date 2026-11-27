@@ -372,12 +372,12 @@
                 <h3 id="vpGAdv" data-i18n="vp.groupAdvanced">Προχωρημένα</h3>
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpInfo" data-i18n="vp.info">Πληροφορίες αρχείου</button>
-                  <button class="small-btn" id="vpCodecs">Codec Manager</button><button class="small-btn" id="vpGpuDiagnostics">GPU diagnostics / Διαγνωστικά GPU</button><button class="small-btn" id="vpResourceDiagnostics">CPU / RAM diagnostics</button>
-                  <label>LibVLC decoder <select id="vpNativeDecode"><option value="auto">Auto</option><option value="d3d11va">D3D11VA</option><option value="dxva2">DXVA2</option><option value="none">CPU / Software</option></select></label>
+                  <button class="small-btn" id="vpCodecs" data-i18n="vp.codecManager">Διαχείριση codecs</button><button class="small-btn" id="vpGpuDiagnostics" data-i18n="vp.gpuDiagnostics">Διαγνωστικά GPU</button><button class="small-btn" id="vpResourceDiagnostics" data-i18n="vp.resourceDiagnostics">Διαγνωστικά CPU / RAM</button>
+                  <label><span data-i18n="vp.decoder">Αποκωδικοποιητής LibVLC</span> <select id="vpNativeDecode"><option value="auto" data-i18n="vp.decoderAuto">Αυτόματα</option><option value="d3d11va">D3D11VA</option><option value="dxva2">DXVA2</option><option value="none" data-i18n="vp.decoderSoftware">CPU / Λογισμικό</option></select></label>
                   <button class="small-btn" id="vpNative" hidden>LibVLC (Native window)</button><button class="small-btn" id="vpNativeEmbed" hidden>LibVLC (embedded experimental) / Ενσωματωμένη προβολή</button>
                   <button class="small-btn" id="vpDirectShow" hidden>DirectShow (LAV experimental)</button>
                   <button class="small-btn" id="vpMediaFoundation" hidden>Media Foundation (experimental)</button>
-                  <button class="small-btn" id="vpNativeStop" hidden>Close native player</button>
+                  <button class="small-btn" id="vpNativeStop" hidden data-i18n="vp.closeNative">Κλείσιμο native player</button>
                   <label id="vpNativeFallbackLabel" hidden><input type="checkbox" id="vpNativeFallback"> LibVLC fallback (separate window)</label>
                 </div>
                 <p class="hint" data-i18n="vp.shortcuts">Πλήκτρα: διάστημα = αναπαραγωγή/παύση, ←/→ = ±5 s (Shift ±30 s), ↑/↓ = ένταση, M = σίγαση, F = πλήρης οθόνη, N/P = επόμενο/προηγούμενο, B = σελιδοδείκτης, L = επανάληψη A-B, S = στιγμιότυπο, . και , = καρέ-καρέ.</p>
@@ -421,9 +421,9 @@
             <div class="vp-bar">
               <button class="small-btn" id="phOpen" data-i18n="ph.open">Άνοιγμα</button>
               <button class="small-btn" id="phAuto" data-i18n="ph.auto">Αυτόματη βελτίωση</button>
-              <label>Look / Φίλτρο <select id="phLook"><option value="neutral">Neutral / Ουδέτερο</option><option value="portrait">Portrait / Πορτρέτο</option><option value="landscape">Landscape / Τοπίο</option><option value="monochrome">B&amp;W / Ασπρόμαυρο</option><option value="vintage">Vintage</option><option value="document">Document / Έγγραφο</option></select></label><label>Strength % <input id="phLookStrength" type="number" min="0" max="100" step="5" value="100"></label><button class="small-btn" id="phLookApply">Apply look</button>
-              <button class="small-btn" id="phUndo" disabled aria-label="Undo / Αναίρεση">↶ Undo</button>
-              <button class="small-btn" id="phRedo" disabled aria-label="Redo / Επανάληψη">↷ Redo</button>
+              <label><span data-i18n="ph.look">Φίλτρο</span> <select id="phLook"><option value="neutral" data-i18n="ph.lookNeutral">Ουδέτερο</option><option value="portrait" data-i18n="ph.lookPortrait">Πορτρέτο</option><option value="landscape" data-i18n="ph.lookLandscape">Τοπίο</option><option value="monochrome" data-i18n="ph.lookMono">Ασπρόμαυρο</option><option value="vintage" data-i18n="ph.lookVintage">Ρετρό</option><option value="document" data-i18n="ph.lookDocument">Έγγραφο</option></select></label><label><span data-i18n="ph.strength">Ένταση %</span> <input id="phLookStrength" type="number" min="0" max="100" step="5" value="100"></label><button class="small-btn" id="phLookApply" data-i18n="ph.applyLook">Εφαρμογή φίλτρου</button>
+              <button class="small-btn" id="phUndo" disabled data-i18n="ph.undo" data-i18n-aria="ph.undo">Αναίρεση</button>
+              <button class="small-btn" id="phRedo" disabled data-i18n="ph.redo" data-i18n-aria="ph.redo">Επανάληψη</button>
               <button class="small-btn" id="phReset" data-i18n="ph.reset">Επαναφορά</button>
               <button class="small-btn" id="phCompare" data-i18n="ph.compare">Πριν (κράτα πατημένο)</button>
               <button class="small-btn" id="phRotL" data-i18n="ph.rotL">↶ 90°</button>
@@ -433,9 +433,9 @@
               <label class="vp-inline"><span data-i18n="ph.crop">Περικοπή</span>
                 <select id="phCrop"></select></label>
             </div>
-            <div class="vp-bar"><label>Crop X <input id="phCropX" type="range" min="0" max="100" value="50"></label><label>Crop Y <input id="phCropY" type="range" min="0" max="100" value="50"></label><label>Histogram <select id="phHistMode"><option value="luma">Luma</option><option value="rgb">RGB</option></select></label></div>
+            <div class="vp-bar"><label>Crop X <input id="phCropX" type="range" min="0" max="100" value="50"></label><label>Crop Y <input id="phCropY" type="range" min="0" max="100" value="50"></label><label><span data-i18n="ph.histogram">Ιστόγραμμα</span> <select id="phHistMode"><option value="luma" data-i18n="ph.luma">Φωτεινότητα</option><option value="rgb">RGB</option></select></label></div>
             <p class="hint" id="phClipping"></p>
-            <canvas id="phHist" class="ph-hist" width="256" height="64" role="img" aria-label="Histogram"></canvas>
+            <canvas id="phHist" class="ph-hist" width="256" height="64" role="img" data-i18n-aria="ph.histogram" aria-label="Ιστόγραμμα"></canvas>
             <p class="hint" id="phInfo" role="status" aria-live="polite"></p>
           </div>
           <div class="panel ph-controls" id="phControls">
@@ -448,8 +448,8 @@
               <label class="vp-inline" id="phQualityField"><span data-i18n="ph.quality">Ποιότητα</span>
                 <input type="range" id="phQuality" min="50" max="100" step="1" value="92" /></label>
             </div>
-            <label class="vp-inline" id="phMatteField">JPEG background / Φόντο JPEG <input type="color" id="phMatte" value="#ffffff"></label>
-            <div class="vp-bar"><label class="vp-inline">Max edge / Μέγιστη πλευρά <select id="phResize"><option value="0">Original</option><option value="4096">4096 px</option><option value="2048">2048 px</option><option value="1280">1280 px</option><option value="640">640 px</option></select></label><span id="phDimensions" class="hint" aria-live="polite"></span></div>
+            <label class="vp-inline" id="phMatteField"><span data-i18n="ph.matte">Φόντο JPEG</span> <input type="color" id="phMatte" value="#ffffff"></label>
+            <div class="vp-bar"><label class="vp-inline"><span data-i18n="ph.maxEdge">Μέγιστη πλευρά</span> <select id="phResize"><option value="0" data-i18n="ph.original">Αρχική</option><option value="4096">4096 px</option><option value="2048">2048 px</option><option value="1280">1280 px</option><option value="640">640 px</option></select></label><span id="phDimensions" class="hint" aria-live="polite"></span></div>
             <button class="small-btn" id="phSave" data-i18n="ph.save">Αποθήκευση στην αρχική ανάλυση…</button>
           </div>
         </div>

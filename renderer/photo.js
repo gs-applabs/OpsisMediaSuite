@@ -66,7 +66,7 @@
       // turn its path into a general-purpose filesystem read capability.
       openBlob(f, f.name);
     });
-    document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone'); });
+    document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone');if(orig)schedule(); });
   }
 
   function syncCrop(){ $('phCropX').value=String(params.anchorX??50);$('phCropY').value=String(params.anchorY??50);$('phCropX').disabled=$('phCropY').disabled=cropKey==='none'; }
@@ -141,7 +141,7 @@
     for(const [bins,color] of channels){g.fillStyle=color;for(let i=0;i<256;i++){const height=Math.round(Math.min(1,bins[i]/max)*(c.height-2));g.fillRect(i,c.height-height,1,height);}}
     g.globalAlpha=1;
     const pct=n=>stats.total?(100*n/stats.total).toFixed(1)+'%':'—';
-    $('phClipping').textContent='Near black / Σκιές: '+pct(stats.shadow)+' · Near saturation / Κορεσμός: '+pct(stats.highlight);
+    $('phClipping').textContent=t('ph.nearBlack')+': '+pct(stats.shadow)+' · '+t('ph.nearSaturation')+': '+pct(stats.highlight);
   }
 
   function processExport(img,snapshot,maxEdge) {

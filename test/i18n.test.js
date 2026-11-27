@@ -47,9 +47,9 @@ test('no raw keys or stray Greek in the Latin/Cyrillic languages for the new tex
 
 test('every key referenced by the code exists in the Greek reference', () => {
   const used = new Set();
-  for (const f of ['app.js', 'converter.js', 'splash.js', 'video.js', 'index.html']) {
+  for (const f of ['app.js', 'converter.js', 'splash.js', 'video.js', 'photo.js', 'videoplayer.js', 'index.html']) {
     const s = fs.readFileSync(path.join(root, f), 'utf8');
-    for (const m of s.matchAll(/data-i18n(?:-title)?="([\w.]+)"/g)) used.add(m[1]);
+    for (const m of s.matchAll(/data-i18n(?:-title|-aria)?="([\w.]+)"/g)) used.add(m[1]);
     for (const m of s.matchAll(/\bt\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
     for (const m of s.matchAll(/\btr\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
   }
@@ -62,4 +62,12 @@ test('every key referenced by the code exists in the Greek reference', () => {
   for (const s of ['copy', 'aac', 'opus', 'mp3', 'flac']) used.add(`vid.audio.${s}`);
   const missing = [...used].filter((k) => !(k in I18N.el) && !k.includes('$'));
   assert.deepEqual(missing, []);
+});
+
+
+test('new photo and codec controls have translated labels in all 20 languages',()=>{
+ const keys=["ph.look","ph.lookNeutral","ph.lookPortrait","ph.lookLandscape","ph.lookMono","ph.lookVintage","ph.lookDocument","ph.strength","ph.applyLook","ph.undo","ph.redo","ph.histogram","ph.luma","ph.matte","ph.maxEdge","ph.original","ph.nearBlack","ph.nearSaturation","vp.codecManager","vp.gpuDiagnostics","vp.resourceDiagnostics","vp.decoder","vp.decoderAuto","vp.decoderSoftware","vp.closeNative","vp.inventoryUnavailable"];
+ for(const lang of LANGS)for(const key of keys){assert.ok(I18N[lang][key],lang+':'+key);if(lang!=='el')assert.ok(!/[\u0370-\u03ff]/.test(I18N[lang][key]),lang+':'+key);}
+ const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+ for(const id of ['phUndo','phRedo','phLookApply','vpCodecs','vpGpuDiagnostics','vpResourceDiagnostics','vpNativeStop'])assert.match(html,new RegExp('id="'+id+'"[^>]*data-i18n="'));
 });
