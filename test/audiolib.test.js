@@ -130,3 +130,15 @@ test('compressor modes retain legacy standard and bound all parameters',()=>{ass
 test('effect mix is bounded and retains legacy defaults',()=>{assert.equal(lib.effectMix(100,.28),.28);assert.equal(lib.effectMix(50,.28),.14);assert.equal(lib.effectMix(-1,.35),0);assert.equal(lib.effectMix(200,.35),.35);assert.equal(lib.effectMix(undefined,.28),.28);});
 
 test('reverb impulse is repeatable, stereo independent and correct for export sample rate',()=>{const a=lib.impulseSamples(8000,.1,2,0),b=lib.impulseSamples(8000,.1,2,0),r=lib.impulseSamples(8000,.1,2,1);assert.deepEqual(a,b);assert.notDeepEqual(a,r);assert.equal(a.length,800);assert.equal(lib.impulseSamples(48000,.1).length,4800);assert.ok(Math.abs(a.at(-1))<.001);assert.throws(()=>lib.impulseSamples(1));});
+
+
+test('native DSP snapshot reuses existing settings and respects external bypass',()=>{
+ const state={masterEnabled:true,eqBands:[2,NaN,30],bassBoost:6,presence:50,balance:-25,surround:40,volumeBoost:2,compressor:true};
+ const before={...state,eqBands:state.eqBands.slice()};
+ const cfg=lib.nativeDspConfig(state,'native',true);
+ assert.equal(cfg.enabled,1);assert.deepEqual(cfg.eq_db,[2,0,12,0,0,0,0,0,0,0]);assert.equal(cfg.presence_percent,50);
+ assert.equal(lib.nativeDspConfig(state,'external').enabled,0);
+ assert.equal(lib.nativeDspConfig(state,'auto',true).enabled,0);
+ assert.equal(lib.nativeDspConfig({...state,masterEnabled:false}).enabled,0);
+ assert.deepEqual(state,before);
+});

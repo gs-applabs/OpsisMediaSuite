@@ -147,6 +147,16 @@
     const modes={gentle:{threshold:-18,knee:20,ratio:2,attack:.015,release:.35},standard:{threshold:-24,knee:30,ratio:8,attack:.003,release:.25},night:{threshold:-32,knee:24,ratio:12,attack:.005,release:.4}};
     return {...(Object.hasOwn(modes,mode)?modes[mode]:modes.standard)};
   }
+  // Existing playback stays the sole owner until the native DSP is proven.
+  // This versioned snapshot is the adapter contract, not a second live graph.
+  function nativeDspConfig(state,mode='native',defaultIsFxSound=false){
+    const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,Number.isFinite(v)?v:0));
+    const bands=Array.isArray(state?.eqBands)?state.eqBands:[];
+    return {version:1,enabled:state?.masterEnabled===true&&!routeBypass(mode,defaultIsFxSound)?1:0,
+      eq_db:EQ_FREQS.map((_,i)=>clamp(bands[i],-12,12)),bass_db:clamp(state?.bassBoost,-12,12),
+      presence_percent:clamp(state?.presence,0,100),balance_percent:clamp(state?.balance,-100,100),
+      surround_percent:clamp(state?.surround,0,100),preamp_db:clamp(state?.volumeBoost,-24,12)};
+  }
   function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
-  return { impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { nativeDspConfig,impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });
