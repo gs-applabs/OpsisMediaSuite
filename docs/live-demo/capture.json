@@ -1,0 +1,1309 @@
+{
+  "sourceCommit": "5ea6ac6027162cedcf755019c2c9aa605469087a",
+  "version": "2.4.2",
+  "fps": 8,
+  "frames": 240,
+  "uniqueFrames": 238,
+  "elapsedMs": 30000,
+  "events": [
+    {
+      "frame": 0,
+      "event": "player-open",
+      "detail": "",
+      "elapsedMs": 2
+    },
+    {
+      "frame": 16,
+      "event": "built-in-test-tone",
+      "detail": "",
+      "elapsedMs": 2002
+    },
+    {
+      "frame": 40,
+      "event": "visualizer-picker-open",
+      "detail": "",
+      "elapsedMs": 5001
+    },
+    {
+      "frame": 56,
+      "event": "circular-visualizer-selected",
+      "detail": "",
+      "elapsedMs": 7001
+    },
+    {
+      "frame": 80,
+      "event": "enhancement-open",
+      "detail": "",
+      "elapsedMs": 10000
+    },
+    {
+      "frame": 100,
+      "event": "preset-selected",
+      "detail": "🎵ΜουσικήΠλούσιος, ζεστός ήχος με έμφαση στα μεσαία",
+      "elapsedMs": 12501
+    },
+    {
+      "frame": 128,
+      "event": "preset-selected",
+      "detail": "🎬ΤαινίεςΚινηματογραφικός ήχος με βαθύ μπάσο και ευρεία στερεοφωνία",
+      "elapsedMs": 16002
+    },
+    {
+      "frame": 156,
+      "event": "converter-open",
+      "detail": "",
+      "elapsedMs": 19502
+    },
+    {
+      "frame": 180,
+      "event": "video-open",
+      "detail": "",
+      "elapsedMs": 22502
+    },
+    {
+      "frame": 200,
+      "event": "photo-open",
+      "detail": "",
+      "elapsedMs": 25001
+    },
+    {
+      "frame": 220,
+      "event": "settings-open",
+      "detail": "",
+      "elapsedMs": 27500
+    }
+  ],
+  "samples": [
+    {
+      "frame": 0,
+      "elapsedMs": 47,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 0,
+          "workingSetKiB": 116248,
+          "peakWorkingSetKiB": 116664
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 0,
+          "workingSetKiB": 97944,
+          "peakWorkingSetKiB": 114492
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48412,
+          "peakWorkingSetKiB": 48412
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 0,
+          "workingSetKiB": 174012,
+          "peakWorkingSetKiB": 174972
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0,
+          "workingSetKiB": 72228,
+          "peakWorkingSetKiB": 72228
+        }
+      ]
+    },
+    {
+      "frame": 8,
+      "elapsedMs": 1046,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.270589200935706,
+          "workingSetKiB": 167296,
+          "peakWorkingSetKiB": 167296
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 19.01714834237028,
+          "workingSetKiB": 97968,
+          "peakWorkingSetKiB": 114612
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0.5764156779058757,
+          "workingSetKiB": 48412,
+          "peakWorkingSetKiB": 48412
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 49.19896304600232,
+          "workingSetKiB": 174556,
+          "peakWorkingSetKiB": 174972
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.5344810329296367,
+          "workingSetKiB": 72228,
+          "peakWorkingSetKiB": 72228
+        }
+      ]
+    },
+    {
+      "frame": 16,
+      "elapsedMs": 2048,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.160269740597197,
+          "workingSetKiB": 152800,
+          "peakWorkingSetKiB": 181076
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 10.019593090379677,
+          "workingSetKiB": 97996,
+          "peakWorkingSetKiB": 114640
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48412,
+          "peakWorkingSetKiB": 48412
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 22.097099943820954,
+          "workingSetKiB": 175828,
+          "peakWorkingSetKiB": 175992
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.23674006190665306,
+          "workingSetKiB": 72240,
+          "peakWorkingSetKiB": 72240
+        }
+      ]
+    },
+    {
+      "frame": 24,
+      "elapsedMs": 3048,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.169689229289037,
+          "workingSetKiB": 131868,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.79997399661956,
+          "workingSetKiB": 98004,
+          "peakWorkingSetKiB": 114644
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0.001275178524993499,
+          "workingSetKiB": 48412,
+          "peakWorkingSetKiB": 48412
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 23.972954159490648,
+          "workingSetKiB": 176196,
+          "peakWorkingSetKiB": 177008
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.23110804845092847,
+          "workingSetKiB": 72244,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 32,
+      "elapsedMs": 4049,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 6.878308331502307,
+          "workingSetKiB": 182616,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.752012464294989,
+          "workingSetKiB": 98016,
+          "peakWorkingSetKiB": 114660
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48412,
+          "peakWorkingSetKiB": 48412
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 23.95099674410243,
+          "workingSetKiB": 176356,
+          "peakWorkingSetKiB": 177952
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.2356775749004756,
+          "workingSetKiB": 72244,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 40,
+      "elapsedMs": 5042,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 6.949262814568735,
+          "workingSetKiB": 163632,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.941173743321382,
+          "workingSetKiB": 98032,
+          "peakWorkingSetKiB": 114660
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48412,
+          "peakWorkingSetKiB": 48412
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 23.27213730379341,
+          "workingSetKiB": 169604,
+          "peakWorkingSetKiB": 177952
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.2391630803962871,
+          "workingSetKiB": 72244,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 48,
+      "elapsedMs": 6048,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.552957920902787,
+          "workingSetKiB": 145168,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.030736737482917,
+          "workingSetKiB": 98256,
+          "peakWorkingSetKiB": 114900
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0.06689136067762042,
+          "workingSetKiB": 48468,
+          "peakWorkingSetKiB": 48472
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 23.367197035658766,
+          "workingSetKiB": 178548,
+          "peakWorkingSetKiB": 183144
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.21839801366894748,
+          "workingSetKiB": 72244,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 56,
+      "elapsedMs": 7052,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.363960718240406,
+          "workingSetKiB": 126048,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.487666270346272,
+          "workingSetKiB": 98388,
+          "peakWorkingSetKiB": 114908
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48468,
+          "peakWorkingSetKiB": 48472
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 24.196156607442827,
+          "workingSetKiB": 176724,
+          "peakWorkingSetKiB": 183144
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.23278009786173892,
+          "workingSetKiB": 72244,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 64,
+      "elapsedMs": 8049,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 6.633772974360569,
+          "workingSetKiB": 176920,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.835882692701084,
+          "workingSetKiB": 99208,
+          "peakWorkingSetKiB": 115556
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0.03264067579736508,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 24.574813303931272,
+          "workingSetKiB": 180672,
+          "peakWorkingSetKiB": 183144
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.2489718722704851,
+          "workingSetKiB": 72244,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 72,
+      "elapsedMs": 9046,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.13319095106872,
+          "workingSetKiB": 157440,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 10.138019900707128,
+          "workingSetKiB": 99220,
+          "peakWorkingSetKiB": 115560
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 24.693910512023386,
+          "workingSetKiB": 181092,
+          "peakWorkingSetKiB": 183144
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.23641972212469278,
+          "workingSetKiB": 72228,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 80,
+      "elapsedMs": 10044,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.034193677009959,
+          "workingSetKiB": 138148,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 9.650443213740427,
+          "workingSetKiB": 99228,
+          "peakWorkingSetKiB": 115580
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0.000726333548394853,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 23.77442484401361,
+          "workingSetKiB": 176504,
+          "peakWorkingSetKiB": 183144
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.23194830565782554,
+          "workingSetKiB": 72148,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 88,
+      "elapsedMs": 11072,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.345587984829212,
+          "workingSetKiB": 119892,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 23.0277359291181,
+          "workingSetKiB": 109292,
+          "peakWorkingSetKiB": 122796
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.68339793891488,
+          "workingSetKiB": 182404,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.30549670221224773,
+          "workingSetKiB": 72084,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 96,
+      "elapsedMs": 12072,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.037281568158336,
+          "workingSetKiB": 171416,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 25.009802078040543,
+          "workingSetKiB": 109356,
+          "peakWorkingSetKiB": 122816
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.512583692910283,
+          "workingSetKiB": 182400,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.328319932145547,
+          "workingSetKiB": 71408,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 104,
+      "elapsedMs": 13072,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.547638512169723,
+          "workingSetKiB": 151848,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 25.018613775893137,
+          "workingSetKiB": 110356,
+          "peakWorkingSetKiB": 123956
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.960697799688397,
+          "workingSetKiB": 184024,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.32836583096567484,
+          "workingSetKiB": 71204,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 112,
+      "elapsedMs": 14082,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.810508915800987,
+          "workingSetKiB": 132924,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.975254654352064,
+          "workingSetKiB": 109688,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.759149736457896,
+          "workingSetKiB": 184272,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.32844984934809895,
+          "workingSetKiB": 71140,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 120,
+      "elapsedMs": 15072,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.455911329551494,
+          "workingSetKiB": 184520,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 25.00858900788875,
+          "workingSetKiB": 108708,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.728590540551465,
+          "workingSetKiB": 182680,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3232455918759157,
+          "workingSetKiB": 70608,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 128,
+      "elapsedMs": 16082,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.452412194916638,
+          "workingSetKiB": 164852,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 25.008120757646882,
+          "workingSetKiB": 110488,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.818060723344033,
+          "workingSetKiB": 181472,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3306834421581279,
+          "workingSetKiB": 70088,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 136,
+      "elapsedMs": 17079,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.834348937126169,
+          "workingSetKiB": 145660,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.956826177477005,
+          "workingSetKiB": 109608,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.758394114467432,
+          "workingSetKiB": 182204,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.32454606172317035,
+          "workingSetKiB": 69964,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 144,
+      "elapsedMs": 18068,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 9.011483621182025,
+          "workingSetKiB": 126592,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.994566382130422,
+          "workingSetKiB": 110324,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48480,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.335830672896705,
+          "workingSetKiB": 182208,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3195579364301102,
+          "workingSetKiB": 69896,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 152,
+      "elapsedMs": 19075,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 7.934570457925387,
+          "workingSetKiB": 178708,
+          "peakWorkingSetKiB": 184872
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.827084344717424,
+          "workingSetKiB": 110440,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48448,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.19315756347153,
+          "workingSetKiB": 182200,
+          "peakWorkingSetKiB": 192304
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.32644067729305154,
+          "workingSetKiB": 69284,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 160,
+      "elapsedMs": 20066,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 9.418524344856694,
+          "workingSetKiB": 158948,
+          "peakWorkingSetKiB": 185216
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.492070319560014,
+          "workingSetKiB": 114024,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 48044,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 18.6652093135968,
+          "workingSetKiB": 190196,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3154347981934189,
+          "workingSetKiB": 68652,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 168,
+      "elapsedMs": 21078,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.66670255087327,
+          "workingSetKiB": 139404,
+          "peakWorkingSetKiB": 185588
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 25.03343153744579,
+          "workingSetKiB": 112480,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47960,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.03019621515223,
+          "workingSetKiB": 190192,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.32565013980067414,
+          "workingSetKiB": 68516,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 176,
+      "elapsedMs": 22071,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.905726128199728,
+          "workingSetKiB": 119564,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.98742871653998,
+          "workingSetKiB": 110084,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47920,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 16.11329394491197,
+          "workingSetKiB": 190196,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3214123399362516,
+          "workingSetKiB": 68448,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 184,
+      "elapsedMs": 23075,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.2849978747993,
+          "workingSetKiB": 171784,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.947167238212796,
+          "workingSetKiB": 109992,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47604,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 18.01155893293888,
+          "workingSetKiB": 191628,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3288651799588091,
+          "workingSetKiB": 67828,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 192,
+      "elapsedMs": 24071,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.358471997670238,
+          "workingSetKiB": 151648,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.946878803337096,
+          "workingSetKiB": 109968,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47596,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 19.584112412309683,
+          "workingSetKiB": 191608,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.33293768426802917,
+          "workingSetKiB": 67692,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 200,
+      "elapsedMs": 25075,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.525520197179787,
+          "workingSetKiB": 132796,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.940248113544026,
+          "workingSetKiB": 101788,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47588,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 19.568240823946905,
+          "workingSetKiB": 190324,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3364844818637106,
+          "workingSetKiB": 67624,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 208,
+      "elapsedMs": 26075,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.434252763999224,
+          "workingSetKiB": 183708,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.936068615347338,
+          "workingSetKiB": 108896,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47536,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 21.324189825824444,
+          "workingSetKiB": 192056,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.33601316116215546,
+          "workingSetKiB": 66956,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 216,
+      "elapsedMs": 27065,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.140461118695816,
+          "workingSetKiB": 164036,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.922915439901267,
+          "workingSetKiB": 108508,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47276,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 20.97126520224966,
+          "workingSetKiB": 191380,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.34881200248035127,
+          "workingSetKiB": 66284,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 224,
+      "elapsedMs": 28068,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.470857976213157,
+          "workingSetKiB": 145252,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 24.973466281229488,
+          "workingSetKiB": 112464,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0.004713254569612526,
+          "workingSetKiB": 47224,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 19.06529433123586,
+          "workingSetKiB": 188840,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3186609953754504,
+          "workingSetKiB": 66152,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    },
+    {
+      "frame": 232,
+      "elapsedMs": 29088,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 1504,
+          "cpuPercent": 8.410084827761313,
+          "workingSetKiB": 126312,
+          "peakWorkingSetKiB": 185864
+        },
+        {
+          "type": "GPU",
+          "pid": 7584,
+          "cpuPercent": 25.036223785547346,
+          "workingSetKiB": 108244,
+          "peakWorkingSetKiB": 124052
+        },
+        {
+          "type": "Utility",
+          "pid": 8448,
+          "cpuPercent": 0,
+          "workingSetKiB": 47176,
+          "peakWorkingSetKiB": 48480
+        },
+        {
+          "type": "Tab",
+          "pid": 6076,
+          "cpuPercent": 17.38144137873567,
+          "workingSetKiB": 183036,
+          "peakWorkingSetKiB": 259000
+        },
+        {
+          "type": "Utility",
+          "pid": 7180,
+          "cpuPercent": 0.3201247756283631,
+          "workingSetKiB": 66088,
+          "peakWorkingSetKiB": 72244
+        }
+      ]
+    }
+  ],
+  "notes": "Real Electron renderer capture while invoking actual application controls. Video is sampled at 8 fps, silent and uses built-in test tone. CPU/memory samples are observational, include renderer capture overhead, and are not an idle benchmark."
+}
