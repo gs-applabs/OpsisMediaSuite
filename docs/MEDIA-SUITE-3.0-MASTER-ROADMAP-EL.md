@@ -140,3 +140,6 @@ Converter shutdown gate, active-run cancellation, bounded cleanup grace (4 secon
 
 ## 20B.11 — Demand-driven core
 Live AudioContext/DSP graph not created at cold start; preserve state-only controls, instantiate on playback/mic/tone/worklet, restore preferences; offline conversion independent. Dependency scan only when Settings selected, lazy optional archive/probe/codec modules. Existing CI 282 tests, 281 pass, one obsolete static log assertion corrected; pending new verification. Hourly workflow switched to manual to avoid repeat runs; existing runs unaffected. Not yet full DSP per-node deactivation or full startup certification.
+
+## 20B.12 — Active feature ownership
+Music parks video resources without losing selected item/subtitle edits; explicit resume restores position and FX preference for local video. Idle live music context suspended after 1.5 s, photo preview gated by visibility, background converter preview queue stops after current item, user-started export/conversion continues. Native stop remains asynchronous and full overlap/long-duration tests pending.

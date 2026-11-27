@@ -576,6 +576,10 @@ function init({ getMainWin, resolveFfmpegPath }) {
           await js("document.getElementById('vpFx').click(); 1");
           await new Promise((r) => setTimeout(r, 400));
           check('equalizer on the video sound turns on (CORS-enabled wfmedia: source)', await js("document.getElementById('vpFx').getAttribute('aria-pressed') === 'true' && !/./.test(document.getElementById('vpStatus').textContent.match(/equalizer|ισοσταθμιστ/i) || '')"), await js("document.getElementById('vpStatus').textContent"));
+          const parked=await js("(async()=>{const p=WaveframeVideoPlayer;const el=document.getElementById('vpVideo');el.pause();el.currentTime=1;p.parkForAudio();return {...p.diagnostics(),src:document.getElementById('vpVideo').getAttribute('src')};})()");
+          check('audio ownership parks video without losing selection',parked.parked&&!parked.session&&!parked.ticket&&!parked.fx&&!parked.saveTimer&&!parked.src&&parked.selected>=0,JSON.stringify(parked));
+          await js("document.getElementById('vpPlay').click();1");
+          check('parked video resumes from retained position',await until("(()=>{const v=document.getElementById('vpVideo');return !WaveframeVideoPlayer.diagnostics().parked&&v.readyState>=2&&v.currentTime>=.9&&!v.paused;})()",10000));
           const unapproved = path.join(dir,'unapproved.mp4'); fs.copyFileSync(file, unapproved);
           const unauthorized = await js(`fetch('wfmedia://f/' + encodeURIComponent(${JSON.stringify(unapproved)})).then(r => r.status).catch(() => 'blocked')`);
           check('wfmedia rejects an unapproved media path', unauthorized === 404 || unauthorized === 'blocked', String(unauthorized));

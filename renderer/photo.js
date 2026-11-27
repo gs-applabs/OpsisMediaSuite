@@ -146,7 +146,12 @@
   }
   const full = () => ({ ...params, crop: cropParams() });
 
-  function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+  let previewDirty=false;
+  function photoVisible(){return !document.hidden&&$('tab-photo').classList.contains('active');}
+  function schedule(){previewDirty=true;if(!raf&&photoVisible())raf=requestAnimationFrame(()=>{raf=0;if(photoVisible()&&previewDirty){previewDirty=false;render();}});}
+  function syncPreviewVisibility(){if(!photoVisible()){if(raf)cancelAnimationFrame(raf);raf=0;}else if(previewDirty)schedule();}
+  window.addEventListener('waveframe:tab-selected',syncPreviewVisibility);
+  document.addEventListener('visibilitychange',syncPreviewVisibility);
   function render() {
     if (!orig) return;
     const out = comparing ? P.geometry(orig, { ...P.defaults(), rotate: params.rotate, flipH: params.flipH, flipV: params.flipV, crop: cropParams() }) : P.process(orig, full());

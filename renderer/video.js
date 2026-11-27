@@ -15,8 +15,8 @@
   let previewBusy=false,previewRender=0;
   function refreshPreviews(){if(!previewRender)previewRender=setTimeout(()=>{previewRender=0;renderList();fillTracks();estimate();},200);}
   async function drainPreviews(){
-    if(previewBusy)return;previewBusy=true;
-    try{while(previewQueue.size){
+    if(previewBusy||!$('tab-converter').classList.contains('active'))return;previewBusy=true;
+    try{while(previewQueue.size&&$('tab-converter').classList.contains('active')){
       const it=previewQueue.values().next().value;previewQueue.delete(it);
       if(!items.includes(it))continue;
       try{const info=await api.vidProbe(it.path);if(items.includes(it)&&info)it.info=info;}catch{}
@@ -25,6 +25,7 @@
       refreshPreviews();
     }}finally{previewBusy=false;}
   }
+  window.addEventListener('waveframe:tab-selected',e=>{if(e.detail==='converter')void drainPreviews();});
   function forgetPreview(it){previewQueue.delete(it);previewCache.delete(it);}
   function clearPreviews(){previewQueue.clear();previewCache.clear();}
 

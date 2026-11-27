@@ -293,7 +293,8 @@ class AudioEngine {
 
   resume() {
     this.ensureGraph();
-    if(this.ctx.state==='suspended')this.ctx.resume().catch(()=>{});
+    // A previous suspend request may still be settling. Resume is queued after it.
+    this.ctx.resume().catch(()=>{});
   }
 
   stopAlternateSources() {
@@ -347,7 +348,7 @@ class AudioEngine {
 
   play() {
     if(!this.activeEl.getAttribute('src'))return Promise.resolve();
-    window.WaveframeVideoPlayer?.pause();
+    window.WaveframeVideoPlayer?.parkForAudio();
     this.resume();
     this.cancelCrossfade(true);
     this.stopAlternateSources();
@@ -978,6 +979,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     if (btn.dataset.tab === 'video') loadVideoPlayer();
     if (btn.dataset.tab === 'photo') loadPhoto();
     if (btn.dataset.tab === 'settings') void refreshDepsStatus();
+    window.dispatchEvent(new CustomEvent('waveframe:tab-selected',{detail:btn.dataset.tab}));
   });
 });
 
@@ -1364,6 +1366,17 @@ function syncOsNowPlaying() {
   if(state!==lastNowPlaying){lastNowPlaying=state;window.waveframe?.updateNowPlaying?.({ title, playing });}
 }
 function audioVisualActive(){return !!(engine.testOsc||engine.micStream||engine.slots.some(s=>!s.el.paused&&!s.el.ended));}
+let audioIdleTimer=0;
+function scheduleAudioIdle(){
+  clearTimeout(audioIdleTimer);audioIdleTimer=0;
+  if(!engine.ctx||audioVisualActive()||engine.pendingTransition)return;
+  audioIdleTimer=setTimeout(()=>{
+    audioIdleTimer=0;
+    if(engine.ctx&&!audioVisualActive()&&!engine.pendingTransition&&engine.ctx.state==='running')engine.ctx.suspend().catch(()=>{});
+  },1500);
+}
+window.addEventListener('waveframe:audio-activity',scheduleAudioIdle);
+window.addEventListener('waveframe:audio-graph-ready',scheduleAudioIdle);
 function fmtTime(s) {
   if (!isFinite(s)) return '0:00';
   const m = Math.floor(s / 60);
@@ -1404,7 +1417,7 @@ if ('mediaSession' in navigator) {
 engine.slots.forEach((s) => {
   s.el.addEventListener('loadedmetadata',()=>{if(s===engine.slots[engine.activeSlot])requestLoudness(s.item);});
   s.el.addEventListener('play', syncPlayButton);
-  s.el.addEventListener('playing', syncPlayButton);
+  s.el.addEventListener('playing',()=>{syncPlayButton();if(s===engine.slots[engine.activeSlot])requestLoudness(s.item);});
   s.el.addEventListener('pause', syncPlayButton);
   s.el.addEventListener('ended', () => { syncPlayButton();if (engine.activeSlot === engine.slots.indexOf(s)) onTrackEnded(); });
   s.el.addEventListener('error', () => {
@@ -1430,7 +1443,7 @@ function computeLoudnessGain(buffer) { return measureLoudness(buffer).gain; }
 // Keep only the latest requested track waiting for one bounded analysis.
 let loudnessBusy=false,loudnessNext=null;
 function requestLoudness(item){
-  if(!item||playlist[currentTrackIndex]!==item||engine.slots[engine.activeSlot].item!==item||!engine.state.normalizationEnabled||typeof item.normGain==='number')return;
+  if(!item||engine.activeEl.paused||playlist[currentTrackIndex]!==item||engine.slots[engine.activeSlot].item!==item||!engine.state.normalizationEnabled||typeof item.normGain==='number')return;
   const decision=OpsisFeatureGuide.loudnessEligibility({local:!!(item.file||item.path),size:item.file?.size,duration:engine.activeEl.duration});
   if(decision==='wait')return;
   if(decision!=='ok'){item.normStatus=decision;showLoudnessInfo(item);return;}
@@ -1476,7 +1489,7 @@ async function analyzeLoudness(item) {
 function playTrackAt(index) {
   if (index < 0 || index >= playlist.length) return;
   engine.stopAlternateSources();
-  window.WaveframeVideoPlayer?.pause();
+  window.WaveframeVideoPlayer?.parkForAudio();
   currentTrackIndex = index;
   const item = playlist[index];
   if(item.path&&!musicArtCache.has(item)&&!noArtwork.has(item))void enrichTrackMetadata(item,true);
@@ -1802,12 +1815,12 @@ els.btnUrl.addEventListener('click', async () => {
   if (wasEmpty) playTrackAt(playlist.length - 1);
 });
 els.btnMic.addEventListener('click', async () => {
-  window.WaveframeVideoPlayer?.pause();
+  window.WaveframeVideoPlayer?.parkForAudio();
   try { if(await engine.startMic())els.trackName.textContent = t('player.micLabel'); }
   catch (err) { await showAlertDialog(t('player.micErrorTitle'), err.message); }
 });
 els.btnTestTone.addEventListener('click', () => {
-  window.WaveframeVideoPlayer?.pause();
+  window.WaveframeVideoPlayer?.parkForAudio();
   engine.playTestTone();
   els.trackName.textContent = t('player.toneLabel');
 });
@@ -3122,7 +3135,7 @@ window.__resourceSoak=async function(requestedCycles=20){
   const old={list:playlist,index:currentTrackIndex,crossfade:engine.crossfadeSeconds,normalize:engine.state.normalizationEnabled,muted:engine.state.muted,mediaMuted:engine.slots.map(s=>s.el.muted)};
   let completed=0,advancing=0,removed=0,transitions=0;const failures=[];
   try{
-    window.WaveframeVideoPlayer?.pause();
+    window.WaveframeVideoPlayer?.parkForAudio();
     engine.pauseActive();engine.stopAlternateSources();engine.setMuted(true);engine.slots.forEach(s=>s.el.muted=true);
     setSleepStep(0);engine.setTempo(1);
     engine.setNormalizationEnabled(false);engine.setNormalizationGain(1);engine.crossfadeSeconds=.15;

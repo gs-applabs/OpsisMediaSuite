@@ -12,7 +12,7 @@
   const put = (k, v) => { try { const encoded=JSON.stringify(v);if(localStorage.getItem(k)!==encoded)localStorage.setItem(k,encoded); } catch (_) { /* storage unavailable */ } };
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let session = null, playbackEngine = null,fxClosing=null;
+  let session = null, playbackEngine = null,fxClosing=null,parked=null;
   let ab = { stage: 'off', a: 0, b: 0 }, pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }, stopAfter = false;
   let generation = 0, subRevision = 0, resumePath = null, eventController = null, activeTicket = null, nativeSubtitleTrack = null;
   let video, list = [], idx = -1, subSrc = [], subSel = -1, subDelay = 0, subScale = 1, subFps=0, saveTimer = 0, built = false, fx = null;
@@ -62,8 +62,16 @@
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function disposeSession(){const previous=session;session=null;if(previous)previous.stop().catch(()=>{});}
-  function stop() { stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
+  function stop() { parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
+  function parkForAudio(){
+    if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return;
+    parked={path:current(),seconds:handoff?Number(handoff.status?.positionMs||0)/1000:video.currentTime||0,fx:$('vpFx').getAttribute('aria-pressed')==='true'};
+    // Keep the selected subtitle and unsaved edits; release only the playback machinery.
+    saveResume();++generation;stopNative();releaseTicket();disposeSession();playbackEngine=null;resumePath=null;
+    replaceVideo();
+    say(document.documentElement.lang==='el'?'Το βίντεο τέθηκε σε αναστολή. Πάτησε αναπαραγωγή για συνέχεια.':'Video resources released. Press play to resume.');
+  }
 
   let handoff=null,nativePoll=null,viewportTimer=null;
   function clearViewport(){clearInterval(viewportTimer);viewportTimer=null;}
@@ -170,11 +178,12 @@
     const g = ++generation;
     disposeSession(); playbackEngine=null;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
-    idx = i; const p = list[i];
-    clearSubs();
+    idx = i; const p = list[i],resumeParked=parked?.path===p?parked:null;
+    parked=null;
+    if(!resumeParked)clearSubs();
     // A media element bound to Web Audio remains bound even after bypass. Replace
     // it on source change, so non-CORS streams have a fresh native audio path.
-    const restoreFx = !VP.isUrl(p) && $('vpFx').getAttribute('aria-pressed') === 'true';
+    const restoreFx = !VP.isUrl(p) && (resumeParked?.fx||$('vpFx').getAttribute('aria-pressed') === 'true');
     replaceVideo();
     renderList(); renderBookmarks();
     const source = VP.isUrl(p) ? p : await api.vpOpenSource(p).catch(() => null);
@@ -185,12 +194,14 @@
     const opening=session.open(source,{local:!VP.isUrl(p)});
     // The adapter sets the source synchronously on its first microtask. Wait
     // for actual decoded data before declaring the engine ready.
-    if (!VP.isUrl(p)) loadSiblingSubs(p, g, subRevision);
+    if (!VP.isUrl(p)&&!resumeParked) loadSiblingSubs(p, g, subRevision);
     const result=await opening;
     if(g!==generation)return;
     if(!result.ok){releaseTicket();say(t('vp.cantPlay'));if(!VP.isUrl(p)&&$('vpNativeFallback').checked){await nativeHandoff('libvlc',p,g);}return;}
     playbackEngine=result.engine;
-    if (restoreFx) toggleFx();
+    if(resumeParked){seekTo(resumeParked.seconds);rebuildTrack();}
+    if (restoreFx) await toggleFx();
+    if(g!==generation)return;
     $('vpFrame').classList.add('has-media');
     video.playbackRate = Number($('vpSpeed').value) || 1;
     renderList(); renderBookmarks();
@@ -206,6 +217,10 @@
   function checkpoint(file,pos,duration,force=false){
     const map=VP.resumeUpdate(get(K.resume,{}),file,pos,duration,force);
     if(map)put(K.resume,map);
+  }
+  function syncResumeTimer(){
+    if(saveTimer){clearInterval(saveTimer);saveTimer=0;}
+    if(video&&!video.paused&&!video.ended)saveTimer=setInterval(()=>saveResume(false),15000);
   }
   function saveResume(force=true) {
     const it = resumePath; if (!it || it !== current() || !Number.isFinite(video.duration) || video.duration <= 0) return;
@@ -448,8 +463,8 @@
     const on = (name, handler) => video.addEventListener(name, handler, { signal: eventController.signal });
     on('volumechange', () => { $('vpVolume').value = String(Math.round((video.muted ? 0 : video.volume) * 100)); syncTransport(); });
     on('timeupdate', syncTime); on('durationchange', syncTime);
-    for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev, syncTransport);
-    on('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev,()=>{syncTransport();syncResumeTimer();});
+    on('click', () => { if(parked){playAt(idx);return;}if (video.paused) video.play().catch(() => {}); else video.pause(); });
     on('dblclick', () => $('vpFull').click());
     on('error', () => say(t('vp.cantPlay')));
     on('ended', onEnded);
@@ -474,7 +489,7 @@
     old.replaceWith(fresh); video = fresh; nativeSubtitleTrack = null;
     video.volume = volume; video.muted = muted;
     $('vpFx').setAttribute('aria-pressed','false'); $('vpFx').classList.remove('active');
-    bindVideoEvents(); applyPicture(); applySubStyle(); syncTime(); syncTransport();
+    bindVideoEvents(); applyPicture(); applySubStyle(); syncTime(); syncTransport();syncResumeTimer();
   }
 
   /* ---------------- build ---------------- */
@@ -788,7 +803,7 @@
     aria(); document.addEventListener('waveframe:language-changed', aria);
 
 
-    saveTimer = setInterval(() => { if (!video.paused) saveResume(false); }, 15000);
+    syncResumeTimer();
     window.addEventListener('beforeunload', () => { clearInterval(saveTimer);stopNative();saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
@@ -839,6 +854,8 @@
       if(current()&&!playbackEngine){++generation;releaseTicket();disposeSession();video.pause();return;}
       if(video&&!video.paused)video.pause();
     },
+    parkForAudio,
+    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,saveTimer:!!saveTimer,selected:idx};},
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();

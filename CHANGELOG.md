@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.12
+- Music ownership parks video playback, releasing ticket/session/decoder and video DSP; retains selected item, subtitle edits, in-memory position and FX preference for explicit resume. Suspend unused music AudioContext after 1.5 s, resume when used. Video resume checkpoint timer runs only during playback; hidden photo preview and converter preview queue pause when leaving their tabs. Explicit conversion/export jobs continue. New renderer tests for video park/resume. CI pending.
+
 ## Unreleased — Ultra Mega Pass 20B.11 demand-driven activation
 - Defer live AudioContext and DSP graph until audio playback/mic/test tone/explicit worklet use; preferences remain state-only while inactive, offline conversion stays independent. Defer dependency scan to settings and archive/codec/probe helpers to their respective operations. Add cold-renderer and first-activation assertions. Fix stale static crash-log assertion to track the bounded writer without weakening runtime limits. Hourly workflow changed to manual to avoid duplicate jobs on every PR update; three existing runs remain. New CI pending.
 
