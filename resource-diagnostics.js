@@ -13,6 +13,21 @@ function summarizeMetrics(metrics){
  }
  return {rows,workingSetKiB:rows.every(r=>r.workingSetKiB!==null)?rows.reduce((n,r)=>n+r.workingSetKiB,0):null};
 }
+// Private bytes is platform-dependent. Missing fields are never counted as zero.
+function privateBytesKiB(metrics){
+ const rows=Array.isArray(metrics)?metrics.filter(r=>Number.isSafeInteger(r?.pid)&&r.pid>0):[];
+ if(!rows.length||rows.length>64||!rows.every(r=>Number.isFinite(r.memory?.privateBytes)&&r.memory.privateBytes>=0))return null;
+ return rows.reduce((sum,r)=>sum+r.memory.privateBytes,0);
+}
+// Compare median early/late windows, not a single peak. Diagnostic only:
+// no leak verdict from working set or insufficient samples.
+function resourceTrend(samples,key){
+ const values=samples.map(s=>s?.[key]).filter(Number.isFinite);
+ if(values.length<6)return {samples:values.length,early:null,late:null,delta:null};
+ const median=a=>{const b=[...a].sort((x,y)=>x-y),m=Math.floor(b.length/2);return b.length%2?b[m]:(b[m-1]+b[m])/2;};
+ const n=Math.max(3,Math.floor(values.length/4)),early=median(values.slice(0,n)),late=median(values.slice(-n));
+ return {samples:values.length,early,late,delta:late-early};
+}
 function aggregateSamples(samples){
  const good=samples.filter(s=>s&&Array.isArray(s.rows)&&s.rows.length);
  const memory=good.map(s=>s.workingSetKiB).filter(Number.isFinite);
@@ -54,4 +69,4 @@ function createProgressGate(interval=100,clock=Date.now){
   last.set(key,now);return true;
  },release(key){last.delete(key);},size(){return last.size;}};
 }
-module.exports={summarizeMetrics,aggregateSamples,createScratch,appendBoundedLog,createProgressGate};
+module.exports={summarizeMetrics,aggregateSamples,privateBytesKiB,resourceTrend,createScratch,appendBoundedLog,createProgressGate};

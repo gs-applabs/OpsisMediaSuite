@@ -211,6 +211,13 @@ One phase or independently testable slice per PR, no direct merge of unverified 
 
 ## Παράρτημα Β — Ιστορικό προηγούμενων περασμάτων (καταστάσεις κατά τον χρόνο καταγραφής)
 
+## ULTRA 1 — shared shutdown and bounded resource trends (2026-11-27)
+
+- Prior head `6333d4836635b13cfc5bf4e2e887717236b7aef2`: RAR, AudioWorklet and plugin CI PASS at inspection, other six pending; 21B.2 remains last complete 9/9. No pending runs counted as green.
+- Existing converter graceful quit barrier now also waits (within same four-second deadline) for native video, native DSP, subtitle worker/embedded/provider/batch activity. Media IPC admission closes on before-quit and delayed media authorization cannot grant after shutdown. No second quit coordinator, no termination of external user processes. Deadline is not proof every process exited; worker FFmpeg kill confirmation and all nonregistered auxiliaries remain open.
+- Resource diagnostics expose platform-dependent Electron private bytes only when all valid rows have the field; unknown remains unavailable. Test-only 15s sampling during real soak, cap 300 snapshots, robust first/last window medians for working set, private bytes and Electron process count; short runs with fewer than six samples report insufficient evidence. No new production polling, GPU/SSD or physical RAM claims.
+- Two unit tests for missing values and robust trend. New CI pending; one-hour candidate, eight-hour hardware, true process-tree private bytes/handle and disk/GPU trends remain open. No release/merge.
+
 ## 21C + 22A — integrated stability, selective resource release and independent jobs (2026-11-27)
 
 - Frozen 21B.2 head `6bfd202eaa51bdc709618286f7dc8f3e15520995`: nine of nine CI workflows passed; 46067019821 general 284/284, real Electron PASS, six live ownership checks and keyboard native park passed. Installer 46067019763 PASS. 21A 9/9; 21B.1 six PASS and three cancelled by subsequent commit (not failures). Five-sample 21B.2 startup CPU 0.08%, working set 523680.8 KiB; post-short-soak 0.05% / 563442.4 KiB. No controlled savings claim.

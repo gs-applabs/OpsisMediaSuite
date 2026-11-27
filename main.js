@@ -278,7 +278,12 @@ function createWindow() {
           await sample('post-selftest');
           if(profile&&process.env.OPSIS_RESOURCE_SOAK==='1'){
             const cycles=Math.max(20,Math.min(1200,Number.parseInt(process.env.OPSIS_SOAK_CYCLES,10)||20));
-            results.push(...await win.webContents.executeJavaScript('window.__resourceSoak('+cycles+')'));
+            const {summarizeMetrics,privateBytesKiB,resourceTrend}=require('./resource-diagnostics.js');
+            const history=[];const capture=()=>{try{const metrics=app.getAppMetrics(),summary=summarizeMetrics(metrics);if(history.length<300)history.push({elapsedMs:Date.now()-started,workingSetKiB:summary.workingSetKiB,privateBytesKiB:privateBytesKiB(metrics),processCount:summary.rows.length});}catch{}};
+            const started=Date.now();capture();
+            const ticker=setInterval(capture,15000);
+            try{results.push(...await win.webContents.executeJavaScript('window.__resourceSoak('+cycles+')'));}
+            finally{clearInterval(ticker);capture();console.log('RESOURCE_TREND '+JSON.stringify({elapsedMs:Date.now()-started,samples:history.length,workingSetKiB:resourceTrend(history,'workingSetKiB'),privateBytesKiB:resourceTrend(history,'privateBytesKiB'),processCount:resourceTrend(history,'processCount'),scope:'Electron only; diagnostic, not leak certification'}));}
             await sample('post-soak');
           }
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
@@ -650,6 +655,7 @@ if (!gotSingleInstanceLock) {
     });
     converterApi = converter.init({
       getMainWin: () => mainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload,
+      otherBusy:()=>mediaApi?.shutdownBusy()===true,
       // default place for every encode: Windows Music folder > Opsis Media Suite (created automatically; the old Music\WaveFrame folder of earlier versions is left as it is)
       defaultVideoOutDir: () => { const d = path.join(app.getPath('videos'), 'Opsis Media Suite'); fs.mkdirSync(d, { recursive: true }); return d; },
       defaultOutDir: () => { const d = path.join(app.getPath('music'), 'Opsis Media Suite'); fs.mkdirSync(d, { recursive: true }); return d; },

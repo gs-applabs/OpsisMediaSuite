@@ -15,7 +15,7 @@ const SUB_TYPES = new Set(['srt','ass','ssa','vtt','sub']);
 
 const MAX_READ = 600 * 1024 * 1024; // the renderer decodes the whole file in memory
 
-function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir }) {
+function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownload, defaultOutDir, defaultVideoOutDir, otherBusy=()=>false }) {
   const trusted = (e) => { const w = getMainWin(); return !closing && !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
   const jobs = new Map(); // id -> { cancel }
   const cancelledEarly = new Set();
@@ -23,7 +23,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   let closing=false,quitAllowed=false;
   const progressGate=require('./resource-diagnostics').createProgressGate();
   let probeBusy=false,thumbBusy=false;
-  const busy=()=>pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy;
+  const busy=()=>pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
   app.on('before-quit',event=>{
     if(quitAllowed)return;
     event.preventDefault();

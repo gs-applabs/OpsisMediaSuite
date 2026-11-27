@@ -176,6 +176,6 @@ function createNativeHost({app,extensions,authorize}){
   return operation.promise;
  }
  if(typeof app.on==='function')app.on('before-quit',stop);
- return {available,status,open,stop,command,replaceSubtitle,updateViewport,audioEndpoints};
+ return {available,status,open,stop,command,replaceSubtitle,updateViewport,audioEndpoints,busy:()=>!!child||opening};
 }
 module.exports={createNativeHost,parseHostEvent,prepareSubtitle,normalizeCommand,createLineFramer,normalizeViewport,parseAudioEndpoints,stopChildAndWait};

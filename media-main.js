@@ -81,7 +81,9 @@ function siblingSubtitles(video) {
 }
 
 function init({ getMainWin, resolveFfmpegPath }) {
-  const trusted = (e) => { const w = getMainWin(); return !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
+  let closing=false;
+  app.once('before-quit',()=>{closing=true;});
+  const trusted = (e) => { const w = getMainWin(); return !closing && !!w && !w.isDestroyed() && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame; };
   ipcMain.handle('vp:codec-inventory', e => trusted(e) ? inventory() : null);
   const approved = new Set(), tickets = new Map();
   const remember = p => { if (!p) return; if (approved.size >= 4096) approved.delete(approved.values().next().value); approved.add(p); };
@@ -92,7 +94,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
     mediaConsentBusy=true;
     try{
       const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Open / Άνοιγμα'],defaultId:0,cancelId:0,message:'Allow this local media file? / Να επιτραπεί η πρόσβαση στο αρχείο;',detail:p});
-      if(r.response!==1||allowedFile(p,PLAY_EXTS)!==p)return false;
+      if(closing||r.response!==1||allowedFile(p,PLAY_EXTS)!==p)return false;
       remember(p);return true;
     }finally{mediaConsentBusy=false;}
   }
@@ -134,7 +136,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   ipcMain.handle('vp:resource-diagnostics',e=>{
     if(!trusted(e))return null;
     if(resourceCache&&Date.now()-resourceLast<2000)return resourceCache;
-    try{resourceCache=summarizeMetrics(app.getAppMetrics());resourceLast=Date.now();return resourceCache;}catch{return null;}
+    try{const metrics=app.getAppMetrics();resourceCache={...summarizeMetrics(metrics),privateBytesKiB:require('./resource-diagnostics').privateBytesKiB(metrics)};resourceLast=Date.now();return resourceCache;}catch{return null;}
   });
   let gpuBusy=false,gpuCache=null,gpuCacheTime=0;
   ipcMain.handle('vp:gpu-diagnostics',async e=>{
@@ -782,7 +784,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
     return r.filePaths.slice(0, 20).map(M3U.readM3uFile).filter(Boolean);
   });
 
-  return { selfTest };
+  return { selfTest,shutdownBusy:()=>nativeHost.busy()||dspBridge.busy()||autoSyncBusy||embeddedBusy||providerBusy||!!batchState?.running };
 }
 
 module.exports = { init, registerScheme, decodeText, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };

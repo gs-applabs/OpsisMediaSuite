@@ -96,6 +96,6 @@ function createDspBridge({app}){
    const done=await finish(session.session);return done.ok?{ok:true,pcm:output}:done;
   }finally{cancel(session.session);}
  }
- return {available:()=>!!exe(),open,chunk,finish,cancel,render};
+ return {available:()=>!!exe(),open,chunk,finish,cancel,render,busy:()=>!!active};
 }
 module.exports={makeHeader,makeRequest,createDspBridge,BLOCK_FRAMES,MAX_SECONDS,MAX_BYTES};

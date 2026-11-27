@@ -811,6 +811,7 @@
       const button=$('vpResourceDiagnostics');button.disabled=true;
       try{const report=await api.vpResourceDiagnostics();if(!report){say('Resource diagnostics unavailable');return;}
         const lines=['Electron process snapshot / Στιγμιότυπο διεργασιών','Working set total: '+(report.workingSetKiB===null?'unavailable':(report.workingSetKiB/1024).toFixed(1)+' MiB')];
+        lines.push('Private bytes (Electron): '+(Number.isFinite(report.privateBytesKiB)?(report.privateBytesKiB/1024).toFixed(1)+' MiB':'unavailable'));
         for(const row of report.rows)lines.push(row.type+' · PID '+row.pid+' · CPU '+(row.cpuPercent===null?'—':row.cpuPercent+'%')+' · RAM '+(row.workingSetKiB===null?'—':(row.workingSetKiB/1024).toFixed(1)+' MiB'));
         lines.push('Shared pages may be counted twice. Native/FFmpeg subprocesses and physical SSD writes not included.');
         await showAlertDialog(t('vp.resourceDiagnostics'),lines.join('\n'));

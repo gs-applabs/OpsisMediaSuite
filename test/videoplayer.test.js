@@ -683,3 +683,18 @@ test('native stop timeout is not a successful acknowledgement and removes listen
  const child=new EventEmitter();let kills=0;child.kill=()=>{kills++;return true;};
  assert.equal(await stopChildAndWait(child,15),false);assert.equal(kills,1);assert.equal(child.listenerCount('close'),0);
 });
+
+
+test('private bytes diagnostics preserve missing and zero values',()=>{
+ const {privateBytesKiB}=require('../resource-diagnostics');
+ assert.equal(privateBytesKiB([{pid:1,memory:{privateBytes:0}},{pid:2,memory:{privateBytes:2048}}]),2048);
+ assert.equal(privateBytesKiB([{pid:1,memory:{workingSetSize:10}}]),null);
+ assert.equal(privateBytesKiB([]),null);
+ assert.equal(privateBytesKiB([{pid:1,memory:{privateBytes:-1}}]),null);
+});
+test('resource trend requires enough samples and uses robust window medians',()=>{
+ const {resourceTrend}=require('../resource-diagnostics');
+ assert.equal(resourceTrend([{x:1},{x:2}], 'x').delta,null);
+ assert.deepEqual(resourceTrend([1,2,100,4,5,6,7,8,9,10,11,1000].map(x=>({x})), 'x'),{samples:12,early:2,late:11,delta:9});
+ assert.equal(resourceTrend(Array.from({length:12},()=>({x:null})), 'x').samples,0);
+});
