@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const L = require('./renderer/convlib.js');
 const {localDirectory}=require('./local-media-policy');
+const {createScratch}=require('./resource-diagnostics');
 
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif', 'alac', 'ape', 'wv', 'mka', 'mp2', 'ac3', 'amr'];
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mpg', 'mpeg', '3gp'];
@@ -124,22 +125,24 @@ async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress
     }finally{if(created)try{fs.unlinkSync(tmp);}catch{}}
   }
   if (!ffmpegPath) throw Object.assign(new Error('no-ffmpeg'), { code: 'no-ffmpeg' });
-  const wavTmp = path.join(require('os').tmpdir(), `waveframe-conv-${process.pid}-${crypto.randomBytes(16).toString('hex')}.wav`);
+  const scratch=createScratch('opsis-conv-');
+  const wavTmp=path.join(scratch.dir,'source.wav');
   let created=false;
   try{
     const handle=fs.openSync(wavTmp,'wx',0o600);created=true;
     try{fs.writeFileSync(handle,wavBytes);}finally{fs.closeSync(handle);}
-  }catch(err){if(created)try{fs.unlinkSync(wavTmp);}catch{}throw err;}
+  }catch(err){scratch.release();throw err;}
   let job;
   try { job = await runToTemp({ ffmpegPath, input, options, mode: 'encode', source: wavTmp, duration, onProgress, outDir }); }
-  catch (e) { try { fs.unlinkSync(wavTmp); } catch (_) {} throw e; }
-  const cleanup = () => { try { fs.unlinkSync(wavTmp); } catch (_) { /* none */ } };
+  catch (e) { scratch.release();throw e; }
+  const cleanup = () => {scratch.release();};
   return { promise: job.promise.finally(cleanup), cancel: job.cancel };
 }
 
 // ffmpeg decodes anything it knows to 32-bit float WAV when the renderer's own decoder cannot (WMA, AIFF, some video containers).
 async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
-  const tmp = path.join(require('os').tmpdir(), `waveframe-pre-${process.pid}-${crypto.randomBytes(16).toString('hex')}.wav`);
+  const scratch=createScratch('opsis-predecode-');
+  const tmp=path.join(scratch.dir,'decoded.wav');
   const args = ['-hide_banner', '-nostdin', '-y', '-protocol_whitelist','file,pipe','-i', input, '-vn', '-map', '0:a:0', ...(sampleRate > 0 ? ['-ar', String(sampleRate)] : []), '-c:a', 'pcm_f32le', '-f', 'wav', tmp];
   try {
     const max = 600 * 1024 * 1024;
@@ -149,7 +152,7 @@ async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
     const size = fs.statSync(tmp).size;
     if (size >= max - 65536) throw new Error('predecode-too-large');
     return await fs.promises.readFile(tmp);
-  } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
+  } finally { scratch.release(); }
 }
 
 module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelActiveRuns, activeRunCount, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };

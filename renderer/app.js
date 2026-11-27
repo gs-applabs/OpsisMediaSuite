@@ -920,7 +920,7 @@ document.getElementById('miniBarVis').addEventListener('click', () => {
   const next = modes[(i + 1) % modes.length];
   visMode = next.key;
   window.dispatchEvent(new Event('waveframe:visual-changed'));
-  localStorage.setItem('waveframe.visMode', visMode);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.visMode', visMode);
   [...visPickerGrid.children].forEach((c) => c.classList.toggle('active', c.dataset.mode === visMode));
   visualizerWrap.classList.toggle('mode-none', false);
   document.getElementById('miniBarVis').title = next.label;
@@ -1618,7 +1618,7 @@ const metadataProgress=document.getElementById('metadataProgress');
 const metadataCancel=document.getElementById('metadataCancel');
 const inferDisplay=document.getElementById('metadataInferDisplay');
 inferDisplay.checked=localStorage.getItem('waveframe.metadata.inferDisplay')==='true';
-inferDisplay.addEventListener('change',()=>{localStorage.setItem('waveframe.metadata.inferDisplay',String(inferDisplay.checked));scheduleMetadataScan();});
+inferDisplay.addEventListener('change',()=>{OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.metadata.inferDisplay',String(inferDisplay.checked));scheduleMetadataScan();});
 metadataCancel.addEventListener('click',async()=>{metadataCancel.disabled=true;await window.waveframe.cancelMetadata();});
 window.waveframe.onMetadataProgress(p=>{if(metadataUiBusy&&Number.isInteger(p.done)&&Number.isInteger(p.total))metadataProgress.textContent=p.done+' / '+p.total;});
 async function completeMusicTags(mode){
@@ -2085,11 +2085,11 @@ function isLightSkin(theme) {
 
 function applySkin(theme) {
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem('waveframe.skin', theme);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.skin', theme);
   [...els.skinGrid.children].forEach((b) => b.classList.toggle('active', b.dataset.theme === theme));
   const light = isLightSkin(theme);
   btnThemeToggle.textContent = light ? '🌙' : '☀️';
-  if (!light) localStorage.setItem('waveframe.lastDarkSkin', theme);
+  if (!light) OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.lastDarkSkin', theme);
   window.waveframe?.sendThemeChange?.(theme);
 }
 
@@ -2145,21 +2145,28 @@ function hslToHex(h, s, l) {
   const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
-function applyAccentColor(hex) {
+let pendingAccent=null,accentTimer=0;
+function commitAccent(){clearTimeout(accentTimer);accentTimer=0;if(pendingAccent!==null){OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.accentColor',pendingAccent);pendingAccent=null;}}
+function applyAccentColor(hex,persist=true) {
   const [h, s, l] = hexToHsl(hex);
   document.documentElement.style.setProperty('--accent', hex);
   document.documentElement.style.setProperty('--accent-2', hslToHex(h, s, Math.max(0, l - 10)));
   document.documentElement.style.setProperty('--accent-3', hslToHex(h, s, Math.min(100, l + 12)));
-  localStorage.setItem('waveframe.accentColor', hex);
+  if(persist)OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.accentColor',hex);
 }
 function resetAccentColor() {
+  clearTimeout(accentTimer);accentTimer=0;pendingAccent=null;
   document.documentElement.style.removeProperty('--accent');
   document.documentElement.style.removeProperty('--accent-2');
   document.documentElement.style.removeProperty('--accent-3');
   localStorage.removeItem('waveframe.accentColor');
   document.getElementById('accentColorPicker').value = '#7c6cf0';
 }
-document.getElementById('accentColorPicker').addEventListener('input', (e) => applyAccentColor(e.target.value));
+const accentPicker=document.getElementById('accentColorPicker');
+accentPicker.addEventListener('input',e=>{applyAccentColor(e.target.value,false);pendingAccent=e.target.value;clearTimeout(accentTimer);accentTimer=setTimeout(commitAccent,500);});
+accentPicker.addEventListener('change',commitAccent);
+accentPicker.addEventListener('blur',commitAccent);
+window.addEventListener('beforeunload',commitAccent);
 document.getElementById('btnAccentReset').addEventListener('click', resetAccentColor);
 
 /* ---- track-change notifications ---- */
@@ -2214,7 +2221,7 @@ document.getElementById('crashReload').addEventListener('click', () => location.
 const layoutSeg = document.getElementById('layoutSeg');
 function applyLayout(layout) {
   document.documentElement.dataset.layout = layout;
-  localStorage.setItem('waveframe.layout', layout);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.layout', layout);
   [...layoutSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.layout === layout));
 }
 layoutSeg.addEventListener('click', (e) => {
@@ -2226,7 +2233,7 @@ layoutSeg.addEventListener('click', (e) => {
 const btnStyleSeg = document.getElementById('btnStyleSeg');
 function applyBtnStyle(style) {
   document.documentElement.dataset.btnStyle = style;
-  localStorage.setItem('waveframe.btnStyle', style);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.btnStyle', style);
   [...btnStyleSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.btnStyle === style));
 }
 btnStyleSeg.addEventListener('click', (e) => {
@@ -2240,7 +2247,7 @@ els.bgGrid.addEventListener('click', (e) => {
   if (!btn) return;
   const mode = btn.dataset.bg;
   Backgrounds.setMode(mode);
-  localStorage.setItem('waveframe.bg', mode);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.bg', mode);
   [...els.bgGrid.children].forEach((b) => b.classList.toggle('active', b === btn));
 });
 document.getElementById('bgArrowLeft').addEventListener('click', () => els.bgGrid.scrollBy({ left: -220, behavior: 'smooth' }));
@@ -2256,7 +2263,7 @@ let autoHue = 0;
 
 function applyHueMode(mode) {
   hueMode = mode;
-  localStorage.setItem('waveframe.hueMode', mode);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.hueMode', mode);
   [...hueModeSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.hueMode === mode));
   hueSliderRow.classList.toggle('dep-hidden', mode !== 'manual');
   if (mode === 'manual') bgCanvasEl.style.filter = `hue-rotate(${hueSlider.value}deg)`;
@@ -2465,7 +2472,7 @@ visPickerGrid.addEventListener('click', (e) => {
   if (!card) return;
   visMode = card.dataset.mode;
   window.dispatchEvent(new Event('waveframe:visual-changed'));
-  localStorage.setItem('waveframe.visMode', visMode);
+  OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.visMode', visMode);
   [...visPickerGrid.children].forEach((c) => c.classList.toggle('active', c === card));
   visualizerWrap.classList.toggle('mode-none', visMode === 'none');
 });

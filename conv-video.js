@@ -63,12 +63,7 @@ function thumbnail(ffmpegPath, file, atSec = 1) {
   });
 }
 
-function removePassFiles(prefix) {
-  try {
-    const dir = path.dirname(prefix), base = path.basename(prefix);
-    for (const f of fs.readdirSync(dir)) if (f.startsWith(base)) { try { fs.unlinkSync(path.join(dir, f)); } catch (_) { /* in use */ } }
-  } catch (_) { /* gone */ }
-}
+
 
 const lastLines = (text) => String(text).split(/\r?\n/).filter(Boolean).slice(-3).join(' ');
 
@@ -87,8 +82,8 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   const duration = span > 0 ? span : info.duration;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   const finalPath = () => L.buildOutputPath({ inputPath: input, ext, suffix: options.suffix, pathApi: path, exists: fs.existsSync, dir: outDir || undefined });
-  let current = null, cancelled = false, tmp = null, passLog = null;
-  const cleanup = () => { if (tmp) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } } if (passLog) removePassFiles(passLog); tmp = null; passLog = null; };
+  let current = null, cancelled = false, tmp = null, passLog = null, passScratch=null;
+  const cleanup = () => { if (tmp) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } } if(passScratch)passScratch.release();passScratch=null;tmp=null;passLog=null; };
   const run = (args, scale, offset) => {
     args.splice(args.indexOf('-i'),0,'-protocol_whitelist','file,pipe');
     current = runFfmpeg(ffmpegPath, args, { duration, onProgress: (p) => { if (onProgress) onProgress(offset + p * scale); } });
@@ -100,8 +95,9 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
       if (cancelled) break;
       const twoPass = !!enc && options.passes === 2 && V.canTwoPass(enc);
       tmp = path.join(path.dirname(finalPath()), `.waveframe-${process.pid}-${crypto.randomBytes(16).toString('hex')}.${ext}`);
-      passLog = twoPass ? path.join(os.tmpdir(), `waveframe-pass-${process.pid}-${crypto.randomBytes(16).toString('hex')}`) : null;
       try {
+        passScratch=twoPass?require('./resource-diagnostics').createScratch('opsis-pass-'):null;
+        passLog=passScratch?path.join(passScratch.dir,'ffmpeg-pass'):null;
         if (twoPass) {
           const r1 = await run(V.buildArgs({ input, output: tmp, options, encoder: enc, pass: 1, passLog, info }), 0.5, 0);
           if (r1.code !== 0) throw new Error(lastLines(r1.stderr) || 'pass 1 failed');
@@ -114,8 +110,8 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
         if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
         const out=publishOutput(tmp,{input,ext,suffix:options.suffix,outDir});
         try{fs.unlinkSync(tmp);}catch{}
-        if (passLog) removePassFiles(passLog);
-        tmp = null; passLog = null;
+        if(passScratch)passScratch.release();
+        passScratch=null;tmp=null;passLog=null;
         if (onProgress) onProgress(1);
         return { output: out, encoder: enc, fellBackFrom: firstTried };
       } catch (e) {

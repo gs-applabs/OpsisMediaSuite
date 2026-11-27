@@ -40,5 +40,6 @@ function createSerialQueue(work,maxPending=64){
  }
  return {request,remove(key){const job=pending.get(key);if(job){pending.delete(key);job.resolve(null);}},diagnostics(){return {pending:pending.size,active:active?1:0,peak};}};
 }
-const api={list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage,createSerialQueue};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
+function setIfChanged(storage,key,value){try{const next=String(value);if(storage.getItem(key)===next)return false;storage.setItem(key,next);return true;}catch{return false;}}
+const api={list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage,createSerialQueue,setIfChanged};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
 })(typeof window!=='undefined'?window:globalThis);

@@ -382,14 +382,16 @@ function createWindow() {
   let trackNotificationsEnabled = true;
   ipcMain.on('settings:track-notifications', (event, enabled) => { if (fromMain(event) && typeof enabled === 'boolean') trackNotificationsEnabled = enabled; });
 
+  let lastCrashText='',lastCrashAt=0,crashWindowStart=0,crashWindowCount=0;
   ipcMain.on('crash:log', (event, details) => {
     if (!fromMain(event) || typeof details !== 'string') return;
     try {
       const logPath = path.join(app.getPath('userData'), 'crash.log');
-      // bounded: one entry is at most 4000 characters and the log restarts when it passes 512 KB
-      try { if (fs.statSync(logPath).size > 512 * 1024) fs.renameSync(logPath, logPath + '.old'); } catch { /* no log yet */ }
-      const line = `[${new Date().toISOString()}] ${details.slice(0, 4000)}\n`;
-      fs.appendFileSync(logPath, line);
+      const now=Date.now(),message=details.slice(0,4000);
+      if(now-crashWindowStart>=60000){crashWindowStart=now;crashWindowCount=0;}
+      if(crashWindowCount>=12||(message===lastCrashText&&now-lastCrashAt<10000))return;
+      crashWindowCount++;lastCrashText=message;lastCrashAt=now;
+      require('./resource-diagnostics').appendBoundedLog(logPath,`[${new Date(now).toISOString()}] ${message}\n`);
     } catch { /* best-effort — never let logging itself crash the app */ }
   });
   ipcMain.handle('crash:get-log-path', (e) => (fromMain(e) ? path.join(app.getPath('userData'), 'crash.log') : null));

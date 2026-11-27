@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.9
+- Conversion WAV/predecode and two-pass statistics use isolated owned scratch directories with bounded cleanup retries; no broad deletion of user or legacy temp files. Bound crash log writes, suppress duplicate reports, stop appending on rotation failure. Debounce accent preference writes and skip unchanged appearance settings. Add scratch/log/preference regressions. Hour-long 20B.8 Windows soak is running; newest changes await CI.
+
 ## Unreleased — Ultra Mega Pass 20B.8
 - Explicit close media controls: photo close confirms discarded edits and releases bitmap, canvas and history; video close disposes session, media element, ticket and DSP context without deleting playlist. Serialize video DSP context replacement. Add feature guide entries and renderer regressions. Dedicated hour-long Windows resource soak workflow (1,200 cycles), separate from normal CI. Previous 278/278 and 20/20 playback verified; new workflow not yet complete.
 
