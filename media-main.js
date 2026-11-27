@@ -447,6 +447,24 @@ function init({ getMainWin, resolveFfmpegPath }) {
           const mp4 = path.join(dir,'h264.mp4');
           const mp4Built = await new Promise(res => require('child_process').execFile(ff,['-hide_banner','-v','error','-y','-f','lavfi','-i','testsrc2=size=352x192:rate=25:duration=3','-f','lavfi','-i','sine=frequency=440:duration=3','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart','-shortest',mp4],{timeout:60000},err=>res(!err)));
           check('H.264/AAC MP4 test fixture generated',mp4Built && fs.existsSync(mp4),'MP4');
+          // Exercise real embedded track metadata and text extraction, not just
+          // a mocked codec list. FFprobe may be absent from a standalone install.
+          const probeExe=await resolveProbe(ff);
+          if(probeExe){
+            const mkv=path.join(dir,'embedded.mkv'),sourceSub=path.join(dir,'embedded-fixture.srt');
+            fs.writeFileSync(sourceSub,'1\n00:00:00,500 --> 00:00:02,000\nΕνσωματωμένος ελληνικός υπότιτλος\n','utf8');
+            const mkvBuilt=await new Promise(res=>require('child_process').execFile(ff,['-hide_banner','-v','error','-y','-i',file,'-i',sourceSub,'-map','0:v:0','-map','1:s:0','-c:v','copy','-c:s','srt','-metadata:s:s:0','language=gre',mkv],{timeout:30000},err=>res(!err)));
+            const tracks=mkvBuilt?await probeMkv(probeExe,localPath(mkv)):null;
+            const track=tracks?.find(x=>x.language==='el'&&canExtract(x));
+            const extracted=track?await extractMkv(ff,localPath(mkv),track):null;
+            check('real MKV Greek subtitle metadata and SRT extraction',!!extracted&&extracted.text.includes('Ενσωματωμένος ελληνικός υπότιτλος'));
+            if(extracted){
+              const approvedMkv=localPath(mkv);remember(approvedMkv);
+              const saved=await saveBesideVideo({video:approvedMkv,subtitle:extracted,language:'el',extensions:new Set(VIDEO_EXTS),approved:p=>approved.has(p)});
+              check('real extracted MKV subtitle persisted adjacent',saved.ok&&fs.readFileSync(path.join(dir,saved.name),'utf8').includes('Ενσωματωμένος ελληνικός υπότιτλος'));
+            }
+          }
+
           if(mp4Built && fs.existsSync(mp4)) {
             remember(allowedFile(mp4,PLAY_EXTS));
             await js(`window.WaveframeVideoPlayer.open(${JSON.stringify(mp4)});1`);
