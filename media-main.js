@@ -305,6 +305,28 @@ function init({ getMainWin, resolveFfmpegPath }) {
           }
         }
       }
+      if(process.env.WAVEFRAME_SELFTEST==='1'&&process.env.OPSIS_PUBLIC_SUBTITLE_FIXTURE==='1'){
+        const source=path.join(__dirname,'public-subtitle-fixture'),file=path.join(source,'sintel.mp4'),sub=path.join(source,'sintel.en.vtt');
+        const approvedFile=allowedFile(file,PLAY_EXTS);
+        const expected=require('./renderer/vplib').subtitleToVtt(readSubtitle(sub).text,'vtt',0).entries;
+        remember(approvedFile);
+        await js("document.querySelector('.tab-btn[data-tab=\"video\"]').click();loadVideoPlayer().then(()=>1)");
+        await js("WaveframeVideoPlayer.open("+JSON.stringify(file)+");1");
+        const ready=await until("document.getElementById('vpVideo').readyState>=2&&document.getElementById('vpVideo').videoWidth>0&&Array.from(document.getElementById('vpVideo').textTracks).some(t=>t.mode==='showing'&&t.cues?.length>=2)",15000);
+        check('public MDN Sintel video and downloaded WebVTT loaded',ready,expected.length+' parsed cues');
+        const cue=expected[1],mid=(cue.start+cue.end)/2;
+        await js("(()=>{const v=document.getElementById('vpVideo');v.pause();v.currentTime="+mid+";return 1})()");
+        const matches=await until("!document.getElementById('vpVideo').seeking&&Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==="+JSON.stringify(cue.text)+"))",6000);
+        check('downloaded public subtitle active at matching source time',matches,mid+' s');
+        await new Promise(r=>setTimeout(r,250));
+        fs.writeFileSync(path.join(source,'sintel-caption.png'),(await win.webContents.capturePage()).toPNG());
+        await js("document.getElementById('vpSubDelayExact').value='2';document.getElementById('vpSubDelayExact').dispatchEvent(new Event('change'));1");
+        const target=cue.start+2+.25;
+        await js("document.getElementById('vpVideo').currentTime="+target+";1");
+        const shifted=await until("!document.getElementById('vpVideo').seeking&&Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==="+JSON.stringify(cue.text)+"&&Math.abs(c.startTime-"+(cue.start+2)+")<.001))",6000);
+        check('downloaded public subtitle follows 2s timing correction',shifted,target+' s');
+        fs.writeFileSync(path.join(source,'sintel-caption-synced.png'),(await win.webContents.capturePage()).toPNG());
+      }
       const codecReport = await inventory();
       check('Windows codec inventory returns bounded registry metadata', process.platform !== 'win32' || (codecReport.status==='ok' && Array.isArray(codecReport.packs) && Array.isArray(codecReport.filters) && Array.isArray(codecReport.transforms)), JSON.stringify({status:codecReport.status,arch:codecReport.arch,packs:codecReport.packs.length,filters:codecReport.filters.length,transforms:codecReport.transforms.length}));
       /* photo editor */

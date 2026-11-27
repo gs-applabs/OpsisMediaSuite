@@ -90,3 +90,6 @@ OpenSubtitles.com REST session client (user API key, optional login, in-memory o
 
 ## Pass 28 — real renderer online subtitle integration test
 A self-test-only loopback HTTP fixture drives production provider request parsing, IPC, UI search/download, actual Greek cue timing, 1s delay and cue alignment. Captured compositor video pixels compared with captions on/off at the same paused frame. No external credentials or fake provider success claimed; this checks actual transport/UI with a controlled provider. Public service authentication remains unverified. CI pending.
+
+## Pass 29 — external public media subtitle proof
+Dedicated CI downloads the MDN Sintel excerpt and matching WebVTT from a pinned shared-assets revision over HTTPS (bounded, verified Git blob identities), loads the real video and downloaded subtitle in Electron, checks active cue at correct time and after +2s correction, saves screenshots as test evidence. This complements loopback provider integration and is not an authenticated OpenSubtitles download. Clears search title when changing source. Prior checkpoint d3c83505: 181/181 tests, Electron selftest, native seek and plugin 12/12 passed. New runs pending.

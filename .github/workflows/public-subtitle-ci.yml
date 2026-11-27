@@ -1,0 +1,36 @@
+name: Public subtitle HTTPS and renderer CI
+on:
+  push:
+    branches: ['feat/photo-tools-fxsound-coexistence']
+    paths: ['.github/workflows/public-subtitle-ci.yml','test/public-subtitle-fixture.js']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-subtitles:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fetch and verify public MDN Sintel video and WebVTT over HTTPS
+        run: node test/public-subtitle-fixture.js
+      - run: choco install ffmpeg --no-progress -y
+      - name: Real Electron playback, public subtitle timing and screenshot
+        shell: pwsh
+        env:
+          OPSIS_PUBLIC_SUBTITLE_FIXTURE: '1'
+        run: |
+          npm run selftest 2>&1 | Tee-Object public-subtitle-test.log
+          if ($LASTEXITCODE) { throw 'Renderer test failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-subtitle-render-evidence
+          path: |
+            public-subtitle-test.log
+            public-subtitle-fixture/*.png

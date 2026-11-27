@@ -154,7 +154,7 @@
   }
 
   /* ---------------- subtitles ---------------- */
-  function clearSubs() { $('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
+  function clearSubs() { $('vpSubQuery').value='';$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;$('vpSubCue').textContent='';$('vpSubDelayExact').value='0'; ++subRevision; subSrc = []; subSel = -1; subDelay = 0; subScale=1;subFps=0;$('vpSubFps').value='1';$('vpMicroFps').value='0'; $('vpSubDelay').textContent = '0 s'; rebuildTrack(); fillSubSelect(); }
   function fillSubSelect() {
     const sel = $('vpSubTrack'); sel.textContent = '';
     const off = document.createElement('option'); off.value = '-1'; off.textContent = t('vp.subOff'); sel.append(off);
@@ -435,7 +435,7 @@
       }catch{onlineStatus('Search failed');}finally{$('vpSubSearch').disabled=false;}
     });
     $('vpSubDownload').addEventListener('click',async()=>{
-      if(!current())return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
+      if(!current()||handoff)return;const g=generation,n=searchGeneration,revision=++subRevision,id=Number($('vpSubResults').value);
       $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
       try{const r=await api.vpSubDownload(id);if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
         if(!r?.ok){onlineStatus(r?.code||'Download failed');return;}
