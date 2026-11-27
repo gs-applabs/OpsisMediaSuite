@@ -61,7 +61,7 @@ async function saveBesideVideo({video,subtitle,language,extensions,approved,sync
  }
  return {ok:false,code:'filename-limit'};
 }
-// Filename-only audit: an unlabeled track is unknown, not proof of Greek.
+// Adjacent filename tags and optional bounded text evidence; neither proves dialogue quality.
 const TEXT_EXTS=new Set(['srt','vtt','ass','ssa','sub','ttml','dfxp']);
 function classifyName(video,name){
  const ext=path.extname(name).slice(1).toLowerCase();if(!TEXT_EXTS.has(ext))return null;
@@ -75,7 +75,32 @@ function classifyName(video,name){
  if(tokens.some(t=>LANGS.has(t)&&t!=='und'||['eng','english','fra','fre','ger','deu','ita','spa'].includes(t)))return 'other';
  return 'unknown';
 }
-async function auditSubtitles({videos,extensions,approved}){
+function detectGreekScript(sub){
+ if(!sub||!['srt','vtt','ass','ssa'].includes(sub.ext)||typeof sub.text!=='string')return 'unknown';
+ const cues=VP.subtitleToVtt(sub.text,sub.ext,0).entries;
+ if(!cues.length)return 'invalid';
+ const text=cues.slice(0,100).map(c=>c.text.replace(/<[^>]*>|\{[^}]*\}/g,'')).join(' ').slice(0,20000);
+ let greek=0,letters=0;
+ for(const ch of text){if(/\p{L}/u.test(ch)){letters++;if(/\p{Script=Greek}/u.test(ch))greek++;}}
+ if(greek>=20&&greek/letters>=.8)return 'greek';
+ if(letters>=50&&greek/letters<=.05)return 'non-greek';
+ return 'unknown';
+}
+async function inspectText(file,decode){
+ let fd;
+ try{
+  fd=await fs.open(file,'r');const st=await fd.stat();
+  if(!st.isFile()||st.size<=0||st.size>MAX)return 'invalid';
+  const size=Math.min(st.size,128*1024),data=Buffer.alloc(size);let offset=0;
+  while(offset<size){const rr=await fd.read(data,offset,size-offset,offset);if(!rr.bytesRead)return 'unknown';offset+=rr.bytesRead;}
+  // A partial sample may cut a cue or UTF-8 codepoint. Only accept positive
+  // evidence; an invalid parse of a partial sample is inconclusive.
+  const detected=detectGreekScript({ext:path.extname(file).slice(1).toLowerCase(),text:decode(data)});
+  return size<st.size&&detected==='invalid'?'unknown':detected;
+ }catch{return 'unknown';}finally{try{await fd?.close();}catch{}}
+}
+async function auditSubtitles({videos,extensions,approved,decode,embeddedProbe}){
+ const started=Date.now();let textBudget=96,probeBudget=20;
  const rows=[],dirs=new Map(),seen=new Set();
  for(const input of videos.slice(0,200)){
   const source=allowedFile(input,extensions);
@@ -93,16 +118,30 @@ async function auditSubtitles({videos,extensions,approved}){
    }catch{complete=false;}
    dirs.set(dir,{entries,complete});
   }
-  const {entries,complete}=dirs.get(dir);let greek=false,unknown=false,other=false;
+  const {entries,complete}=dirs.get(dir);let greek=false,unknown=false,other=false,greekContent=false,conflict=false;
   for(const entry of entries){
    if(!entry.isFile())continue;
    const kind=classifyName(source,entry.name);if(!kind)continue;
    const safe=localPath(path.join(dir,entry.name));if(!safe)continue;
    try{const st=await fs.stat(safe);if(!st.size||st.size>MAX)continue;}catch{continue;}
-   if(kind==='greek')greek=true;else if(kind==='unknown')unknown=true;else other=true;
+   let evidence='unknown';
+   if(decode&&textBudget>0&&Date.now()-started<35000&&approved(source)&&['.srt','.vtt','.ass','.ssa'].includes(path.extname(safe).toLowerCase())){textBudget--;evidence=await inspectText(safe,decode);}
+   if(evidence==='invalid'){unknown=true;continue;}
+   if(evidence==='greek'){greekContent=true;continue;}
+   if(kind==='greek'&&evidence==='non-greek'){conflict=true;unknown=true;continue;}
+   if(kind==='greek')greek=true;else if(kind==='unknown'&&evidence!=='non-greek')unknown=true;else other=true;
   }
-  rows.push({path:input,status:greek?'greek':!complete?'incomplete':unknown?'unknown':other?'other-language':'missing'});
+  let embedded='not-requested',tracks=null;
+  if(embeddedProbe&&path.extname(source).toLowerCase()==='.mkv'){
+   embedded='unchecked';
+   if(!greekContent&&!greek&&probeBudget>0&&Date.now()-started<35000&&approved(source)){
+    probeBudget--;tracks=await embeddedProbe(source).catch(()=>null);
+    if(Array.isArray(tracks))embedded=tracks.some(x=>x.language==='el')?'greek-tag':tracks.some(x=>!x.language||x.language==='und')?'unknown':tracks.length?'other':'none';
+   }
+  }
+  const status=greekContent||greek?'greek':embedded==='greek-tag'?'embedded-greek':!complete||embedded==='unchecked'?'incomplete':unknown||embedded==='unknown'?'unknown':other||embedded==='other'?'other-language':'missing';
+  rows.push({path:input,status,evidence:greekContent?'text-script':greek?'filename-tag':embedded==='greek-tag'?'embedded-tag':conflict?'tag-text-conflict':null,embedded});
  }
  return {rows,truncated:videos.length>200};
 }
-module.exports={saveBesideVideo,canonicalSrt,website,sidecarStem,classifyName,auditSubtitles};
+module.exports={saveBesideVideo,canonicalSrt,website,sidecarStem,classifyName,auditSubtitles,detectGreekScript};

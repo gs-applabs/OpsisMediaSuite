@@ -14,6 +14,7 @@ const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
+const {resolveProbe,probeMkv}=require('./subtitle-probe.js');
 const VP=require('./renderer/vplib');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
@@ -173,10 +174,14 @@ function init({ getMainWin, resolveFfmpegPath }) {
     finally{sidecarBusy=false;}
   }
   let subtitleAuditBusy=false;
-  ipcMain.handle('vp:sub-audit',async(e,videos)=>{
+  ipcMain.handle('vp:sub-audit',async(e,videos,embedded)=>{
     if(!trusted(e)||subtitleAuditBusy||!Array.isArray(videos)||videos.length>2000||videos.some(x=>typeof x!=='string'||x.length>32767))return {ok:false,code:'denied-or-busy'};
     subtitleAuditBusy=true;
-    try{return {ok:true,...await auditSubtitles({videos,extensions:new Set(VIDEO_EXTS),approved:p=>trusted(e)&&approved.has(p)})};}
+    try{
+      const exe=embedded===true?await resolveProbe(await resolveFfmpegPath()):null;
+      const embeddedProbe=embedded===true?async p=>exe&&trusted(e)&&approved.has(p)?probeMkv(exe,p):null:null;
+      return {ok:true,probeAvailable:!!exe,...await auditSubtitles({videos,extensions:new Set(VIDEO_EXTS),approved:p=>trusted(e)&&approved.has(p),decode:decodeText,embeddedProbe})};
+    }
     catch{return {ok:false,code:'audit-failed'};}finally{subtitleAuditBusy=false;}
   });
   ipcMain.handle('vp:sub-save-synced',(e,video,text,language)=>saveDownloaded(e,video,{ext:'srt',text},language,true));

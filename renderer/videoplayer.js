@@ -489,17 +489,17 @@
       results.textContent='';$('vpSubAuditOpen').disabled=true;$('vpSubAudit').disabled=true;
       status.textContent='Checking approved videos / Έλεγχος…';
       try{
-        const result=await api.vpSubAudit(snapshot);
+        const embedded=$('vpSubAuditEmbedded').checked,result=await api.vpSubAudit(snapshot,embedded);
         if(!result?.ok){status.textContent='Audit unavailable';return;}
-        const counts={greek:0,missing:0,'other-language':0,unknown:0,'not-approved':0,incomplete:0};
+        const counts={greek:0,'embedded-greek':0,missing:0,'other-language':0,unknown:0,'not-approved':0,incomplete:0};
         const labels={missing:'Missing / Λείπουν','other-language':'Other language / Άλλη γλώσσα',unknown:'Unlabeled / Άγνωστη γλώσσα','not-approved':'Not approved / Χωρίς έγκριση',incomplete:'Incomplete / Μερικός έλεγχος'};
         for(const row of result.rows){
           counts[row.status]=(counts[row.status]||0)+1;
-          if(row.status==='greek')continue;
+          if(row.status==='greek'||row.status==='embedded-greek')continue;
           const o=document.createElement('option');o.value=row.path;o.textContent=(labels[row.status]||row.status)+' — '+VP.titleOf(row.path);results.append(o);
         }
         $('vpSubAuditOpen').disabled=!results.options.length;
-        status.textContent='Greek-labeled / Με ένδειξη EL: '+counts.greek+' · Missing/other: '+(counts.missing+counts['other-language'])+' · Unknown: '+counts.unknown+' · Unchecked: '+(counts['not-approved']+counts.incomplete)+(result.truncated?' · First 200 only':'')+' — filenames only / βάσει ονόματος';
+        status.textContent='Greek external / Ελληνικοί εξωτερικοί: '+counts.greek+' · MKV EL tag: '+counts['embedded-greek']+' · Missing/other: '+(counts.missing+counts['other-language'])+' · Unknown: '+counts.unknown+' · Unchecked: '+(counts['not-approved']+counts.incomplete)+(result.truncated?' · First 200 only':'')+(embedded&&!result.probeAvailable?' · FFprobe unavailable':'')+' — bounded text/filename and optional track tags / ενδείξεις, όχι πλήρης πιστοποίηση';
       }catch{status.textContent='Audit failed';}finally{$('vpSubAudit').disabled=false;}
     });
     $('vpSubAuditOpen').addEventListener('click',()=>{

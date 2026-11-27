@@ -439,3 +439,36 @@ test('playlist subtitle audit distinguishes Greek filename tags, unknown, missin
   assert.equal(result.truncated,false);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+
+test('Greek script detection uses parsed dialogue and abstains on short or mixed text',()=>{
+ const {detectGreekScript}=require('../subtitle-sidecar');
+ const sub=text=>({ext:'srt',text:'1\n00:00:01,000 --> 00:00:03,000\n'+text});
+ assert.equal(detectGreekScript(sub('Καλημέρα σας, σήμερα θα πάμε όλοι μαζί στην όμορφη πόλη.')),'greek');
+ assert.equal(detectGreekScript(sub('This is a sufficiently long sentence with many letters and no Greek dialogue at all.')),'non-greek');
+ assert.equal(detectGreekScript(sub('Γεια')),'unknown');
+ assert.equal(detectGreekScript({ext:'srt',text:'<html>Καλημέρα σας</html>'}),'invalid');
+});
+
+test('MKV probe parses subtitle stream language metadata conservatively',()=>{
+ const {parseTracks}=require('../subtitle-probe');
+ assert.deepEqual(parseTracks(JSON.stringify({streams:[{index:2,codec_name:'subrip',tags:{language:'gre'}},{index:3,codec_name:'hdmv_pgs_subtitle',tags:{language:'eng'}},{index:4,codec_name:'ass'}]})),[{index:2,codec:'subrip',language:'el'},{index:3,codec:'hdmv_pgs_subtitle',language:'eng'},{index:4,codec:'ass',language:''}]);
+ assert.deepEqual(parseTracks('{"streams":[]}'),[]);
+ assert.equal(parseTracks('not json'),null);
+ assert.equal(parseTracks('{"streams":[{"index":-1}]}'),null);
+});
+
+test('audit recognizes Greek text in unlabeled file and preserves embedded uncertainty',async()=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const {auditSubtitles}=require('../subtitle-sidecar');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-greek-audit-'));
+ try{
+  const videos=['A','B','C','D'].map(n=>path.join(dir,n+'.mkv'));
+  for(const p of videos)await fs.writeFile(p,'fixture');
+  await fs.writeFile(path.join(dir,'A.srt'),'1\n00:00:01,000 --> 00:00:02,000\nΚαλημέρα σας, σήμερα θα πάμε όλοι μαζί στην όμορφη πόλη.');
+  await fs.writeFile(path.join(dir,'D.el.srt'),'1\n00:00:01,000 --> 00:00:02,000\nThis is a sufficiently long sentence with many letters and no Greek dialogue at all.');
+  const result=await auditSubtitles({videos,extensions:new Set(['mkv']),approved:()=>true,decode:b=>b.toString('utf8'),embeddedProbe:async p=>path.basename(p)==='B.mkv'?[{language:'el'}]:path.basename(p)==='C.mkv'?null:[]});
+  assert.deepEqual(result.rows.map(x=>x.status),['greek','embedded-greek','incomplete','unknown']);
+  assert.equal(result.rows[0].evidence,'text-script');assert.equal(result.rows[3].evidence,'tag-text-conflict');
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
