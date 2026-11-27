@@ -13,6 +13,7 @@ const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const {gpuSummary}=require('./gpu-diagnostics.js');
 const {summarizeMetrics}=require('./resource-diagnostics.js');
+const {createDspBridge}=require('./native-dsp-bridge.js');
 const {detectEncoders}=require('./conv-video.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
 const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
@@ -92,6 +93,15 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }finally{mediaConsentBusy=false;}
   }
   const nativeHost=createNativeHost({app,extensions:PLAY_EXTS,authorize});
+  const dspBridge=createDspBridge({app});
+  ipcMain.handle('audio:dsp-available',e=>trusted(e)&&dspBridge.available());
+  ipcMain.handle('audio:dsp-render',async(e,rate,channels,pcm,cfg)=>{
+    if(!trusted(e))return {ok:false,code:'denied'};
+    const result=await dspBridge.render(rate,channels,pcm,cfg);
+    return trusted(e)?result:{ok:false,code:'denied'};
+  });
+  ipcMain.handle('audio:dsp-cancel',e=>{if(!trusted(e))return false;dspBridge.cancel();return true;});
+  app.once('before-quit',()=>dspBridge.cancel());
   ipcMain.handle('vp:native-status',e=>trusted(e)?nativeHost.status():null);
   let audioInventoryBusy=false;
   ipcMain.handle('audio:endpoints',async e=>{

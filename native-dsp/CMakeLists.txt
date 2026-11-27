@@ -19,3 +19,6 @@ if(WIN32)
   add_test(NAME opsis_wasapi_test COMMAND opsis_wasapi_test)
   set_tests_properties(opsis_wasapi_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 20)
 endif()
+
+add_executable(opsis_dsp_pcm pcm_adapter.cpp)
+target_link_libraries(opsis_dsp_pcm PRIVATE opsis_dsp)

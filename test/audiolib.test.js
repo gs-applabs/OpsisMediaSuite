@@ -152,3 +152,34 @@ test('v2 native effects map existing toggles and preset amounts without new rout
  assert.equal(lib.nativeDspConfigV2(state,'external').base.enabled,0);
  assert.equal(lib.nativeDspConfigV2({...state,compressor:false}).compressor_mode,0);
 });
+
+
+test('native offline wire validates format, all settings and frame budget',()=>{
+ const {makeRequest}=require('../native-dsp-bridge');
+ const cfg=lib.nativeDspConfigV2({masterEnabled:true,eqBands:[0,0,0,0,0,6]});
+ const pcm=new Uint8Array(8),packet=makeRequest(48000,2,pcm,cfg);
+ assert.equal(packet.length,104);assert.equal(packet.toString('ascii',0,4),'ODP2');
+ assert.equal(packet.readUInt32LE(12),1);assert.equal(packet.readFloatLE(40),6);
+ assert.equal(makeRequest(8000,2,pcm,cfg),null);
+ assert.equal(makeRequest(48000,6,pcm,cfg),null);
+ assert.equal(makeRequest(48000,2,new Uint8Array(7),cfg),null);
+ assert.equal(makeRequest(48000,2,pcm,{...cfg,ambience_percent:101}),null);
+});
+test('native offline adapter actually processes PCM when built by CI',async t=>{
+ const {createDspBridge}=require('../native-dsp-bridge');
+ const bridge=createDspBridge({app:{isPackaged:false}});
+ if(!bridge.available()){
+   if(process.platform==='win32'&&process.env.GITHUB_ACTIONS==='true')assert.fail('CI native DSP adapter absent');
+   t.skip('native DSP developer build absent');return;
+ }
+ const rate=48000,frames=rate,bytes=new Uint8Array(frames*8),v=new DataView(bytes.buffer);
+ for(let i=0;i<frames;i++){const x=.025*Math.sin(2*Math.PI*1000*i/rate);v.setFloat32(i*8,x,true);v.setFloat32(i*8+4,x,true);}
+ const cfg=lib.nativeDspConfigV2({masterEnabled:true,eqBands:[0,0,0,0,0,6]});
+ const out=await bridge.render(rate,2,bytes,cfg);assert.equal(out.ok,true,out.code);
+ assert.equal(out.pcm.byteLength,bytes.byteLength);
+ const view=new DataView(out.pcm.buffer,out.pcm.byteOffset,out.pcm.byteLength);let a=0,b=0;
+ for(let i=rate/2;i<rate;i++){a+=v.getFloat32(i*8,true)**2;b+=view.getFloat32(i*8,true)**2;}
+ assert.ok(Math.abs(10*Math.log10(b/a)-6)<.2);
+ const bypass=await bridge.render(rate,2,bytes,{...cfg,base:{...cfg.base,enabled:0}});
+ assert.equal(bypass.ok,true);assert.deepEqual(bypass.pcm,bytes);
+});

@@ -33,6 +33,14 @@ jobs:
       - name: FFmpeg for the real-conversion tests and the converter self-test
         shell: pwsh
         run: ./.github/scripts/ensure-ffmpeg.ps1
+      - name: Build experimental native DSP adapter for integration tests
+        shell: pwsh
+        run: |
+          cmake -S native-dsp -B native-dsp-build -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE) { throw 'native DSP configure failed' }
+          cmake --build native-dsp-build --config Release
+          if ($LASTEXITCODE) { throw 'native DSP build failed' }
+          if (-not (Test-Path native-dsp-build/Release/opsis_dsp_pcm.exe)) { throw 'adapter missing' }
       - name: Unit, localisation, security and real-conversion tests
         run: npm test
       - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
