@@ -1652,10 +1652,10 @@ wireSwitch(els.swMasterEnable, (on) => engine.setMasterEnable(on), engine.state.
     details.push(engine.state.routeBypass?(el?'Τα ζωντανά εφέ OPSIS παρακάμπτονται.':'OPSIS live effects bypassed.'):(el?'Η ρύθμιση Master DSP διατηρείται.':'Master DSP preference retained.'));
     details.push(el?'Δεν επιβεβαιώνεται ενεργή επεξεργασία FxSound. Η ένταση/limiter και οι ρυθμίσεις εξαγωγής δεν αλλάζουν.':'FxSound processing is not verified. Volume/limiter and export preferences are unchanged.');
     status.textContent=details.join(' · ');
-    select.options[0].textContent=el?'Εφέ OPSIS':'OPSIS effects';
-    select.options[1].textContent=el?'Εξωτερική επεξεργασία — παράκαμψη':'External processing — bypass';
-    select.options[2].textContent=el?'Αυτόματη παράκαμψη για έξοδο FxSound':'Auto bypass for FxSound output';
-    bypass.textContent=el?'Παράκαμψη ζωντανών εφέ':'Bypass live effects';
+    select.options[0].textContent=t('enhance.dspNative');
+    select.options[1].textContent=t('enhance.dspExternal');
+    select.options[2].textContent=t('enhance.dspAuto');
+    bypass.textContent=t('enhance.dspBypass');
   }
   function change(){mode=select.value;try{localStorage.setItem('waveframe.fxSoundMode',mode);}catch{}show();}
   async function devices(){

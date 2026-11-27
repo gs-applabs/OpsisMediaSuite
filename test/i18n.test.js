@@ -71,3 +71,9 @@ test('new photo and codec controls have translated labels in all 20 languages',(
  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
  for(const id of ['phUndo','phRedo','phLookApply','vpCodecs','vpGpuDiagnostics','vpResourceDiagnostics','vpNativeStop'])assert.match(html,new RegExp('id="'+id+'"[^>]*data-i18n="'));
 });
+
+
+test('subtitle and live DSP labels are available in all supported languages',()=>{
+ const keys=["vp.onlineSubs","vp.saveSynced","vp.saveSrt","vp.saveVtt","vp.provider","vp.bothApis","vp.downloadDisplay","vp.importDownloaded","vp.checkPlaylist","vp.searchSeason","vp.reviewEpisode","vp.listMkv","vp.extractSrt","vp.suggestSync","vp.editCue","enhance.voicePresence","enhance.dspNative","enhance.dspExternal","enhance.dspAuto","enhance.dspBypass","enhance.audioDevices"];
+ for(const lang of LANGS)for(const key of keys){assert.ok(I18N[lang][key],lang+':'+key);if(lang!=='el')assert.ok(!/[\u0370-\u03ff]/.test(I18N[lang][key]),lang+':'+key);}
+});

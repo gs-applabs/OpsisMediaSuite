@@ -272,15 +272,18 @@ const Backgrounds = (() => {
     ctx.globalAlpha = 1;
   }
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduceMotion=motionQuery.matches,frameId=0;
+  function scheduleFrame(){if(!frameId&&!document.hidden)frameId=requestAnimationFrame(frame);}
+  function invalidate(){dirty=true;scheduleFrame();}
   let lastFrame=0,dirty=true,lastWidth=0,lastHeight=0;
   function frame(now) {
-    requestAnimationFrame(frame);
+    frameId=0;
     if(document.hidden)return;
     if(W!==lastWidth||H!==lastHeight){dirty=true;lastWidth=W;lastHeight=H;}
     // 30 fps maximum, static backgrounds draw once unless resized/changed.
     const staticMode=reduceMotion||mode==='none';
-    if(!dirty&&(staticMode||now-lastFrame<32))return;
+    if(!dirty&&(staticMode||now-lastFrame<32)){if(!staticMode)scheduleFrame();return;}
     if(!reduceMotion)t+=Math.min(.1,lastFrame?(now-lastFrame)/1000:.016);
     lastFrame=now;dirty=false;
     if (mode === 'equalizer') drawEqualizer();
@@ -294,15 +297,21 @@ const Backgrounds = (() => {
     else if (mode === 'grid') drawPulseGrid();
     else if (mode === 'bokeh') drawBokeh();
     else drawNone();
+    if(!staticMode)scheduleFrame();
   }
-  const styleObserver=new MutationObserver(()=>{dirty=true;});
+  const styleObserver=new MutationObserver(invalidate);
   styleObserver.observe(document.documentElement,{attributes:true,attributeFilter:['style','class','data-theme','data-skin']});
   if(document.body)styleObserver.observe(document.body,{attributes:true,attributeFilter:['class','style','data-theme','data-skin']});
-  document.addEventListener('visibilitychange',()=>{dirty=true;lastFrame=0;});
-  requestAnimationFrame(frame);
+  window.addEventListener('resize',invalidate);
+  motionQuery.addEventListener('change',e=>{reduceMotion=e.matches;lastFrame=0;invalidate();});
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){if(frameId)cancelAnimationFrame(frameId);frameId=0;}
+    else{lastFrame=0;invalidate();}
+  });
+  scheduleFrame();
 
   return {
-    setMode(m) { mode = m;dirty=true; },
+    setMode(m) { mode = m;invalidate(); },
     setAnalyser(analyser, freqData) { analyserRef = analyser; freqDataRef = freqData; },
   };
 })();

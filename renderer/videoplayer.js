@@ -517,7 +517,7 @@
       const subdl=$('vpSubProvider').value==='subdl';
       $('vpSubUser').disabled=subdl;$('vpSubPassword').disabled=subdl;$('vpSubHash').disabled=subdl;
     });
-    let batchPoll=null,batchBusy=false;
+    let batchPoll=null,batchBusy=false,batchEpoch=0,batchPolling=false;
     const batchStatus=$('vpSubBatchStatus'),batchResults=$('vpSubBatchResults');
     function showBatch(state){
       if(!state)return;
@@ -532,17 +532,22 @@
     $('vpSubBatchStart').addEventListener('click',async()=>{
       const anchor=current();
       if(batchBusy||$('vpSubProvider').value==='both'||!anchor||VP.isUrl(anchor)||VP.releaseInfo(anchor).season===null){batchStatus.textContent='Select a local single episode / Επιλέξτε επεισόδιο S01E01';return;}
-      batchBusy=true;
+      batchBusy=true;const epoch=++batchEpoch;
       for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDownload','vpSubDisconnect','vpSubProvider','vpSubBatchOpen'])$(id).disabled=true;
       $('vpSubBatchCancel').disabled=false;
       ++searchGeneration;resultsProvider=null;$('vpSubResults').textContent='';
       batchResults.textContent='';batchStatus.textContent='Preparing / Προετοιμασία…';
       const req={anchor,offset:Number($('vpSubBatchOffset').value)-1,videos:list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),provider:$('vpSubProvider').value,apiKey:$('vpSubKey').value,username:$('vpSubUser').value,password:$('vpSubPassword').value,hashEnabled:$('vpSubHash').checked&&!$('vpSubHash').disabled,autoSave:$('vpSubBatchAuto').checked};
       for(const id of ['vpSubKey','vpSubUser','vpSubPassword'])$(id).value='';
-      batchPoll=setInterval(()=>api.vpSubBatchStatus().then(showBatch).catch(()=>{}),750);
+      batchPoll=setInterval(async()=>{
+        if(batchPolling||!batchBusy||epoch!==batchEpoch)return;
+        batchPolling=true;
+        try{const state=await api.vpSubBatchStatus();if(batchBusy&&epoch===batchEpoch)showBatch(state);}
+        catch{}finally{batchPolling=false;}
+      },750);
       try{const res=await api.vpSubBatchStart(req);if(res?.ok){showBatch(res);if(res.nextOffset!=null)$('vpSubBatchOffset').value=String(res.nextOffset+1);}else batchStatus.textContent=res?.code||'Batch failed';}
       catch{batchStatus.textContent='Batch failed';}
-      finally{clearInterval(batchPoll);batchPoll=null;batchBusy=false;
+      finally{++batchEpoch;clearInterval(batchPoll);batchPoll=null;batchBusy=false;
         for(const id of ['vpSubBatchStart','vpSubSearch','vpSubDisconnect','vpSubProvider'])$(id).disabled=false;
         $('vpSubBatchCancel').disabled=true;$('vpSubBatchOpen').disabled=!batchResults.options.length;
       }

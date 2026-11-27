@@ -13,7 +13,7 @@
   const root = document.getElementById('tab-converter');
   const $ = (id) => document.getElementById(id);
   let files = [];
-  let running = null;
+  let running = null,starting=false;
   let seq = 0,activeDspSession=null;
 
   const h = (tag, props = {}, kids = []) => {
@@ -351,12 +351,24 @@
   }
 
   async function start() {
-    if (running) return;
+    if(running||starting)return;
+    starting=true;
+    const startButton=$('convStart');startButton.disabled=true;
+    try{await startQueue();}
+    catch(e){$('convStatus').textContent=String(e?.message||e).slice(0,200);}
+    finally{
+      starting=false;running=null;current=null;
+      $('convStart').disabled=false;
+      $('convStart').classList.remove('dep-hidden');$('convCancel').classList.add('dep-hidden');
+    }
+  }
+  async function startQueue() {
     const status = $('convStatus');
     if (!files.length) { status.textContent = t('conv.needFiles'); return; }
     const v = C.validateOptions(collect());
     if (!v.ok) { status.textContent = fmt(t('conv.invalid'), { what: v.errors.join(', ') }); return; }
     const o = {...v.options};
+    const outMode=$('convOut').value,outDir=localStorage.getItem('waveframe.destFolder')||'';
     if(o.effects&&$('convNativeDsp').checked&&!$('convNativeDsp').disabled){
       o.nativeDsp=true;
       o.nativeDspConfig=WaveframeAudio.nativeDspConfigV2(engine.state,'native',false);
@@ -369,13 +381,13 @@
       if (!r.ok) { status.textContent = r.declined ? t('conv.ffmpegDeclined') : fmt(t('conv.ffmpegFailed'), { why: r.error || '' }); return; }
       st = await api.convStatus();
     }
-    if ($('convOut').value === 'custom' && !localStorage.getItem('waveframe.destFolder')) { status.textContent = t('conv.out.needFolder'); return; }
+    if (outMode === 'custom' && !outDir) { status.textContent = t('conv.out.needFolder'); return; }
     for (const f of files) { f.state = 'wait'; f.pct = 0; f.err = ''; f.note = ''; f.out = ''; }
     $('convStart').classList.add('dep-hidden'); $('convCancel').classList.remove('dep-hidden'); $('convTrack').classList.remove('dep-hidden');
     status.textContent = warn;
     const queue = C.createQueue(files, async (item, qctx) => {
       current = item; base = 0; item.state = 'work'; renderList();
-      const ctx = { outMode: $('convOut').value, outDir: localStorage.getItem('waveframe.destFolder') || '', ffmpeg: st.ffmpeg, cancelled: qctx.cancelled, report: (p) => { item.pct = p; qctx.report(p); const b = $(`bar-${item.id}`); if (b) b.style.width = `${Math.round(p * 100)}%`; }, setBase: (b) => { base = b; } };
+      const ctx = { outMode, outDir, ffmpeg: st.ffmpeg, cancelled: qctx.cancelled, report: (p) => { item.pct = p; qctx.report(p); const b = $(`bar-${item.id}`); if (b) b.style.width = `${Math.round(p * 100)}%`; }, setBase: (b) => { base = b; } };
       try {
         const r = await convertFile(item, o, ctx);
         item.state = 'done'; item.out = r.output;
@@ -405,7 +417,7 @@
 
   build();
   api.onConvProgress(onProgress);
-  document.addEventListener('waveframe:language-changed', () => { if (!running) { if ($('convFormat')) collect(); build(); } });
+  document.addEventListener('waveframe:language-changed', () => { if (!running&&!starting) { if ($('convFormat')) collect(); build(); } });
   // addPaths / showRunning are exposed for the layout self-test (every language x zoom, with files in the list and while converting)
   function showRunning(on) { $('convStart').classList.toggle('dep-hidden', on); $('convCancel').classList.toggle('dep-hidden', !on); $('convTrack').classList.toggle('dep-hidden', !on); }
   window.WaveframeConverter = { processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { files = []; renderList(); } };
