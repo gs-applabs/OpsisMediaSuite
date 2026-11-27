@@ -81,3 +81,6 @@ Prevent stale Chromium resume writes and duplicate transport while native handof
 
 ## Full pass 25 — synchronized subtitle export and plugin CI
 SRT/VTT export from processed cues with current delay/FPS, native save dialog, UTF-8 bounded payload, exclusive creation (no original overwrite). Added round-trip tests. Added .NET 11 plugin build/test/contract/checksum/build-path CI. Published release checksum and Defender scans now fail if no assets or scan cannot verify; all gates independent. Current release assets unchanged, no security certification from this edit alone. Prior general CI 178/178 with renderer selftest passed at 54825a2. Latest CI pending.
+
+## Full pass 26 — native seek compilation and runtime tests
+Pass 23 native CI failed because DirectShowLib enum lacks AbsolutePosition. Use Windows AM_SEEKING_AbsolutePositioning value 1, check HRESULT, add real DirectShow WAV seek-to-1s and LibVLC MKV seek-to-2s checks. Native ready handoff itself still needs real interactive testing. Latest CI pending.

@@ -62,8 +62,11 @@ internal static class Program
                 a=a&&player.AudioTrack==audio.Id;s=s&&player.Spu==subtitle.Id;
                 Console.WriteLine(JsonSerializer.Serialize(new { engine="libvlc", elapsed=player.Time, length=player.Length,
                     audioTracks=player.AudioTrackDescription.Count(t => t.Id >= 0), subtitleTracks=player.SpuDescription.Count(t => t.Id >= 0), audioSelected=a, subtitleSelected=s }));
+                player.SetPause(true);player.Time=2000;
+                var seekClock=Stopwatch.StartNew();while(seekClock.ElapsedMilliseconds<2500&&Math.Abs(player.Time-2000)>500)Thread.Sleep(50);
+                bool seekOk=Math.Abs(player.Time-2000)<=500;Console.WriteLine(JsonSerializer.Serialize(new{engine="libvlc",seekOk,positionMs=player.Time}));
                 player.Stop();
-                return a && s ? 0 : 4;
+                return a && s && seekOk ? 0 : 4;
             }
             Thread.Sleep(100);
         }

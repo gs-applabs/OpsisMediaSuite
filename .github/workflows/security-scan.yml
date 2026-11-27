@@ -59,7 +59,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          # The hosted image does not always run the Defender service: try to start it, and report NOT VERIFIED (warning) instead of failing when it cannot scan.
+          # Try to start Defender. Missing service/scanner or unverified scan must fail the security gate.
           try { Set-Service WinDefend -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service WinDefend -ErrorAction SilentlyContinue } catch { }
           $svc = Get-Service WinDefend -ErrorAction SilentlyContinue
           "WinDefend: $($svc.Status)"

@@ -168,9 +168,12 @@ internal static class DirectShowHost
         Check(g.Seeking.GetDuration(out long duration));Check(g.Control.Run());
         var timer=Stopwatch.StartNew();long pos=0;
         while(timer.ElapsedMilliseconds<2500){Check(g.Seeking.GetCurrentPosition(out pos));if(pos>=1000000)break;Thread.Sleep(30);}
+        Check(g.Control.Pause());
+        Check(g.Seeking.SetPositions(10000000,(AMSeekingSeekingFlags)1,0,AMSeekingSeekingFlags.NoPositioning));
+        Check(g.Seeking.GetCurrentPosition(out long seekPosition));
         Check(g.Control.Stop());
-        Console.WriteLine(JsonSerializer.Serialize(new{engine="directshow",graph="AsyncReader -> WaveParser -> NullRenderer",duration100ns=duration,position100ns=pos}));
-        return duration>10000000&&pos>=1000000?0:6;
+        Console.WriteLine(JsonSerializer.Serialize(new{seekPosition100ns=seekPosition,engine="directshow",graph="AsyncReader -> WaveParser -> NullRenderer",duration100ns=duration,position100ns=pos}));
+        return duration>10000000&&pos>=1000000&&Math.Abs(seekPosition-10000000)<=2500000?0:6;
     }
 #if CODEC_CI_TEST
     // Compiled only into the isolated codec CI binary. Not present in release builds.
@@ -224,7 +227,7 @@ internal static class DirectShowHost
         long Duration(){Check(g.Seeking.GetDuration(out long n));return n/10000;}
         long Position(){Check(g.Seeking.GetCurrentPosition(out long n));return n/10000;}
         timer.Tick+=(_,_)=>{try{Program.HostEvent("position",Position(),Duration());}catch{}};
-        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;g.Seeking.SetPositions(pos,AMSeekingSeekingFlags.AbsolutePosition,0,AMSeekingSeekingFlags.NoPositioning);}Program.HostEvent("ready",Position(),Duration());timer.Start();};
+        form.Shown+=(_,_)=>{Check(window.put_Owner(panel.Handle));Check(window.put_WindowStyle(WindowStyle.Child|WindowStyle.ClipChildren|WindowStyle.ClipSiblings));Check(window.SetWindowPosition(0,0,panel.Width,panel.Height));Check(window.put_Visible(OABool.True));Check(g.Control.Run());if(resume>0){long pos=Math.Min(resume,Math.Max(0,Duration()-500))*10000;Check(g.Seeking.SetPositions(pos,(AMSeekingSeekingFlags)1 /* AM_SEEKING_AbsolutePositioning */,0,AMSeekingSeekingFlags.NoPositioning));}Program.HostEvent("ready",Position(),Duration());timer.Start();};
         panel.Resize+=(_,_)=>{if(form.Visible)window.SetWindowPosition(0,0,panel.Width,panel.Height);};
         form.FormClosing+=(_,_)=>{timer.Stop();try{Program.HostEvent("closed",Position(),Duration());}catch{}g.Control.Stop();window.put_Visible(OABool.False);window.put_Owner(IntPtr.Zero);};
         Application.Run(form);return 0;
