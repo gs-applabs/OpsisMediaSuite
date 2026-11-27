@@ -66,3 +66,6 @@ Photo picker grants canonical selected images only (bounded session set); arbitr
 
 ## Pass 20 — repair generated registry script and gate syntax
 Pass 18 native CI 45940154870 succeeded: Media Foundation decoded 8 PCM samples / 70,560 bytes (WAV), 8 PCM samples / 16,384 bytes and 8 NV12 samples / 737,280 bytes (MP4). LibVLC and built-in DirectShow also passed. Pass 17–19 JS CI and installed-pack CI failed because a replacement string expanded a PowerShell regex terminator into duplicated JS source. Removed duplicated suffix and repaired registry script; added JS syntax gates before expensive steps. Retry installed-pack decode. No previous general CI success claimed for affected commits.
+
+## Pass 21 — converter scoped local I/O
+Session-bounded picker grants for input/subtitles, explicit native confirmation for drag/drop files, separate output-folder grants and reconfirmation for restored custom directories, output reveal restricted to produced files. Capped single raw read and predecode, canonical paths, before/after stat, job reservation before FFmpeg resolution, real renderer negative grant check. TOCTOU and nested demuxer file access remain limitations; not a sandbox. New CI pending.

@@ -330,7 +330,7 @@
     $('vidDrop').addEventListener('keydown', async (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addPaths(await api.vidPick('video')); } });
     for (const ev of ['dragenter', 'dragover']) $('vidDrop').addEventListener(ev, (e) => { e.preventDefault(); $('vidDrop').classList.add('over'); });
     $('vidDrop').addEventListener('dragleave', () => $('vidDrop').classList.remove('over'));
-    $('vidDrop').addEventListener('drop', (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths([...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean)); });
+    $('vidDrop').addEventListener('drop', async (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[])); });
     $('vidClear').addEventListener('click', () => { if (!running) { items = []; renderList(); fillTracks(); estimate(); } });
     $('vidPresets').addEventListener('click', (e) => { const b = e.target.closest('button[data-preset]'); if (b) applyPreset(b.dataset.preset); });
     for (const id of ['vidCodec', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
@@ -339,7 +339,7 @@
     }
     $('vidOut').addEventListener('change', () => { localStorage.setItem('waveframe.vidDestMode', $('vidOut').value); sync(); });
     $('vidOutPick').addEventListener('click', async () => {
-      const r = await api.chooseFolder();
+      const r = await api.convChooseFolder();
       if (r && !r.canceled) { $('vidOutPath').textContent = r.folderPath; localStorage.setItem('waveframe.vidDestFolder', r.folderPath); }
     });
     $('vidSubFile').addEventListener('click', async () => {

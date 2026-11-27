@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-function localPath(value) {
+function resolveLocal(value, directory=false) {
   if (typeof value !== 'string' || value.length > 32767 || /[\0\r\n]/.test(value) || !path.isAbsolute(value)) return null;
   if (process.platform === 'win32' && (!/^[a-z]:[\\/]/i.test(value) || value.slice(2).includes(':'))) return null;
   try {
@@ -15,11 +15,13 @@ function localPath(value) {
     }
     const real = fs.realpathSync.native(normalized);
     if (process.platform === 'win32' && (!/^[a-z]:[\\/]/i.test(real) || real.slice(2).includes(':'))) return null;
-    return fs.statSync(real).isFile() ? real : null;
+    const stat=fs.statSync(real);return (directory?stat.isDirectory():stat.isFile())?real:null;
   } catch (_) { return null; }
 }
+const localPath=value=>resolveLocal(value,false);
+const localDirectory=value=>resolveLocal(value,true);
 function allowedFile(value, extensions) {
   const resolved = localPath(value);
   return resolved && extensions.has(path.extname(resolved).slice(1).toLowerCase()) ? resolved : null;
 }
-module.exports = { localPath, allowedFile };
+module.exports = { localPath, localDirectory, allowedFile };

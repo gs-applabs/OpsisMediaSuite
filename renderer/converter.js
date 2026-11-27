@@ -228,7 +228,7 @@
     const syncOut = () => { outRow.classList.toggle('dep-hidden', outSel.value !== 'custom'); localStorage.setItem('waveframe.destMode', outSel.value); };
     outSel.addEventListener('change', syncOut); syncOut();
     outPick.addEventListener('click', async () => {
-      const r = await api.chooseFolder();
+      const r = await api.convChooseFolder();
       if (r && !r.canceled) { outPath.textContent = r.folderPath; localStorage.setItem('waveframe.destFolder', r.folderPath); }
     });
     btnPlaylist.addEventListener('click', () => addTracks());
@@ -241,9 +241,9 @@
     drop.addEventListener('keydown', async (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addPaths(await api.convPick()); } });
     for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-    drop.addEventListener('drop', (e) => {
+    drop.addEventListener('drop', async (e) => {
       e.preventDefault(); drop.classList.remove('over');
-      addPaths([...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean));
+      addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[]));
     });
     bStart.addEventListener('click', start);
     bCancel.addEventListener('click', cancel);

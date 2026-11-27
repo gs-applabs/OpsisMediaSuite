@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('waveframe', {
   vidThumb: (p, at) => ipcRenderer.invoke('vid:thumb', p, at),
   vidEncode: (req) => ipcRenderer.invoke('vid:encode', req),
   convPick: () => ipcRenderer.invoke('conv:pick'),
+  convApproveDrop: (paths)=>ipcRenderer.invoke('conv:approve-drop',paths),
+  convChooseFolder: ()=>ipcRenderer.invoke('conv:choose-folder'),
   convStatus: () => ipcRenderer.invoke('conv:status'),
   convEnsureFfmpeg: () => ipcRenderer.invoke('conv:ensure-ffmpeg'),
   convProbe: (p) => ipcRenderer.invoke('conv:probe', p),

@@ -9,7 +9,7 @@ const L = require('./renderer/convlib.js');
 const E = require('./conv-engine.js');
 const EV = require('./conv-video.js');
 const V = require('./renderer/vidlib.js');
-const { localPath, allowedFile } = require('./local-media-policy.js');
+const { localPath, localDirectory, allowedFile } = require('./local-media-policy.js');
 const MEDIA_TYPES = new Set([...E.AUDIO_EXTS, ...E.VIDEO_EXTS]);
 const SUB_TYPES = new Set(['srt','ass','ssa','vtt','sub']);
 
@@ -22,7 +22,32 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
   const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
   const okFile = p => !!localPath(p);
-  const inputFile = p => allowedFile(p, MEDIA_TYPES);
+  const sourceGrants=new Set(),subtitleGrants=new Set(),directoryGrants=new Set(),outputGrants=new Set();
+  const boundedAdd=(set,p,limit=4096)=>{if(set.size>=limit)set.delete(set.values().next().value);set.add(p);return p;};
+  const approveSource=p=>{const f=allowedFile(p,MEDIA_TYPES);return f?boundedAdd(sourceGrants,f):null;};
+  const approveSubtitle=p=>{const f=allowedFile(p,SUB_TYPES);return f?boundedAdd(subtitleGrants,f,128):null;};
+  const inputFile=p=>{const f=allowedFile(p,MEDIA_TYPES);return f&&sourceGrants.has(f)?f:null;};
+  let consentBusy=false,readBusy=false,decodeBusy=false;
+  ipcMain.handle('conv:approve-drop',async(e,paths)=>{
+    if(!trusted(e)||consentBusy||!Array.isArray(paths))return [];
+    const files=[...new Set(paths.slice(0,200).map(p=>allowedFile(p,MEDIA_TYPES)).filter(Boolean))];
+    if(!files.length)return [];
+    consentBusy=true;
+    try{
+      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Allow / Επιτρέπεται'],defaultId:0,cancelId:0,message:'Allow the converter to read '+files.length+' selected media files?',detail:files.slice(0,10).join('\n')+(files.length>10?'\n…':'')});
+      return answer.response===1?files.map(approveSource).filter(Boolean):[];
+    }finally{consentBusy=false;}
+  });
+  ipcMain.handle('conv:choose-folder',async(e)=>{
+    if(!trusted(e))return {canceled:true};
+    const r=await dialog.showOpenDialog(getMainWin(),{properties:['openDirectory','createDirectory']});
+    const p=!r.canceled&&localDirectory(r.filePaths[0]);return p?{canceled:false,folderPath:boundedAdd(directoryGrants,p,64)}:{canceled:true};
+  });
+  async function approveOutput(req){
+    if(req.outMode!=='custom')return true;
+    const p=localDirectory(req.outDir);if(!p)return false;if(directoryGrants.has(p))return true;if(consentBusy)return false;
+    consentBusy=true;try{const r=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Allow / Επιτρέπεται'],defaultId:0,cancelId:0,message:'Allow writing converted files in this folder?',detail:p});if(r.response!==1||localDirectory(p)!==p)return false;boundedAdd(directoryGrants,p,64);return true;}finally{consentBusy=false;}
+  }
   const okId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
   const errorOf = (e) => ({ ok: false, code: e && e.code || 'failed', error: (e && e.message || String(e)).slice(0, 400) });
 
@@ -32,7 +57,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Audio / Video', extensions: [...E.AUDIO_EXTS, ...E.VIDEO_EXTS] }, { name: 'All files', extensions: ['*'] }],
     });
-    return r.canceled ? [] : r.filePaths.filter(inputFile).slice(0, 2000);
+    return r.canceled ? [] : r.filePaths.slice(0,2000).map(approveSource).filter(Boolean);
   });
 
   ipcMain.handle('conv:status', async (e) => (trusted(e) ? { ffmpeg: !!(await resolveFfmpegPath()) } : null));
@@ -50,24 +75,26 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('conv:probe', async (e, p) => {
     if (!trusted(e) || !inputFile(p)) return null;
     const ff = await resolveFfmpegPath();
-    return ff ? E.probe(ff, p) : null;
+    const f=inputFile(p);return ff&&f ? E.probe(ff, f) : null;
   });
 
   ipcMain.handle('conv:read', async (e, p) => {
-    if (!trusted(e) || !inputFile(p)) return null;
-    try { const h = await fs.promises.open(p, 'r'); try { const st = await h.stat(); if (st.size > MAX_READ) return { tooLarge: true }; const b = Buffer.alloc(st.size); let n=0; while(n < b.length) { const r = await h.read(b,n,b.length-n,n); if (!r.bytesRead) break; n+=r.bytesRead; } return { bytes: b.subarray(0,n) }; } finally { await h.close(); } } catch (_) { return null; }
+    if (!trusted(e) || !inputFile(p)||readBusy) return null;
+    const f=inputFile(p);readBusy=true;
+    try { const h = await fs.promises.open(f, 'r'); try { const st = await h.stat(); if (!st.isFile()||st.size > MAX_READ) return { tooLarge: true }; const b = Buffer.alloc(st.size); let n=0; while(n < b.length) { const r = await h.read(b,n,b.length-n,n); if (!r.bytesRead) return null; n+=r.bytesRead; } const after=await h.stat();if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)return null;return { bytes: b }; } finally { await h.close(); } } catch (_) { return null; }finally{readBusy=false;}
   });
 
   ipcMain.handle('conv:predecode', async (e, p, sampleRate) => {
-    if (!trusted(e) || !inputFile(p)) return null;
-    const ff = await resolveFfmpegPath();
-    if (!ff) return null;
-    try { return { bytes: await E.predecodeToWav({ ffmpegPath: ff, input: p, sampleRate: Number.isFinite(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate : 0 }) }; } catch (_) { return null; }
+    if (!trusted(e) || !inputFile(p)||decodeBusy) return null;
+    decodeBusy=true;try{
+      const ff=await resolveFfmpegPath(),f=inputFile(p);if(!ff||!f)return null;
+      return { bytes: await E.predecodeToWav({ ffmpegPath: ff, input: f, sampleRate: Number.isFinite(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate : 0 }) };
+    } catch (_) { return null; }finally{decodeBusy=false;}
   });
 
   // 'default' = MusicWaveFrame (created on demand), 'custom' = a folder the user picked, 'source' = next to the original (undefined).
   function resolveOutDir(req, hasSource, def = defaultOutDir) {
-    if (req.outMode === 'custom' && typeof req.outDir === 'string' && path.isAbsolute(req.outDir)) return req.outDir;
+    if(req.outMode==='custom'){const p=localDirectory(req.outDir);if(!p||!directoryGrants.has(p))throw Object.assign(Error('output folder not approved'),{code:'denied'});return p;}
     if (req.outMode === 'source' && hasSource) return undefined;
     return def();
   }
@@ -82,6 +109,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       jobs.set(id, job);
       if (cancelledEarly.delete(id)) job.cancel();
       const r = await job.promise;
+      const output=localPath(r.output);if(output)boundedAdd(outputGrants,output);
       return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
     } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); pending.delete(id); }
   }
@@ -90,26 +118,33 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (!trusted(e) || !req || !okId(req.id) || !inputFile(req.path)) return { ok: false, code: 'bad-request' };
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    const ff = await resolveFfmpegPath();
-    if (!ff) return { ok: false, code: 'no-ffmpeg' };
-    return track(req.id, () => E.convertDirect({ ffmpegPath: ff, input: req.path, options: v.options, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir: resolveOutDir(req, true) }));
+    return track(req.id,async()=>{
+      if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});
+      const ff=await resolveFfmpegPath(),f=inputFile(req.path);if(!ff||!f)throw Object.assign(Error('source or ffmpeg unavailable'),{code:ff?'denied':'no-ffmpeg'});
+      return E.convertDirect({ffmpegPath:ff,input:f,options:v.options,onProgress:p=>sendProgress({id:req.id,pct:p}),outDir:resolveOutDir(req,true)});
+    });
   });
 
   ipcMain.handle('conv:encode', async (e, req) => {
     if (!trusted(e)) return {ok:false,code:'bad-request'};
     const hasSource = !!req && !!inputFile(req.path);
+    if(req?.path&&!hasSource)return {ok:false,code:'denied'};
     const hasName = !!req && typeof req.name === 'string' && req.name.length > 0 && req.name.length < 200;
     if (!trusted(e) || !req || !okId(req.id) || !(hasSource || hasName) || !(req.wav instanceof Uint8Array || req.wav instanceof ArrayBuffer)) return { ok: false, code: 'bad-request' };
     if (req.wav.byteLength > MAX_READ) return {ok:false,code:'too-large'};
     const v = L.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
+    return track(req.id,async()=>{
+    if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});
     const ff = v.options.format === 'wav' ? null : await resolveFfmpegPath();
-    if (v.options.format !== 'wav' && !ff) return { ok: false, code: 'no-ffmpeg' };
+    if (v.options.format !== 'wav' && !ff) throw Object.assign(Error('ffmpeg unavailable'),{code:'no-ffmpeg'});
     const wavBytes = req.wav instanceof ArrayBuffer ? new Uint8Array(req.wav) : req.wav;
     const outDir = resolveOutDir(req, hasSource);
     // tracks that come from the playlist have no file on disk: name them after the track inside the output folder
-    const input = hasSource ? req.path : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
-    return track(req.id, () => E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir }));
+    const input = hasSource ? inputFile(req.path) : path.join(outDir, `${req.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'track'}.src`);
+    if(!input)throw Object.assign(Error('source unavailable'),{code:'denied'});
+    return E.convertFromWav({ ffmpegPath: ff, input, wavBytes, options: v.options, duration: Number(req.duration) || 0, onProgress: (p) => sendProgress({ id: req.id, pct: p }), outDir });
+    });
   });
 
   /* ---------- video (Opsis Media Suite, 2.1.0): same trust rules as the audio channels ---------- */
@@ -127,7 +162,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       filters: subs ? [{ name: 'Subtitles', extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'] }] : [{ name: 'Video', extensions: E.VIDEO_EXTS }, { name: 'All files', extensions: ['*'] }],
     });
     if (r.canceled) return [];
-    return r.filePaths.filter((p) => okFile(p) && (!subs || V.validSubtitlePath(p))).slice(0, V.LIMITS.maxFiles);
+    return r.filePaths.slice(0,V.LIMITS.maxFiles).map(p=>subs?(V.validSubtitlePath(p)?approveSubtitle(p):null):approveSource(p)).filter(Boolean);
   });
 
   // What this ffmpeg can encode (only the encoder names Waveframe knows are reported) and which one is chosen for each codec.
@@ -143,31 +178,34 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('vid:probe', async (e, p) => {
     if (!trusted(e) || !okMedia(p)) return null;
     const ff = await resolveFfmpegPath();
-    return ff ? EV.probeVideo(ff, p) : null;
+    const f=inputFile(p);return ff&&f ? EV.probeVideo(ff, f) : null;
   });
   ipcMain.handle('vid:thumb', async (e, p, at) => {
     if (!trusted(e) || !okMedia(p)) return null;
     const ff = await resolveFfmpegPath();
-    return ff ? EV.thumbnail(ff, p, Number(at) || 1) : null;
+    const f=inputFile(p);return ff&&f ? EV.thumbnail(ff, f, Number(at) || 1) : null;
   });
 
   ipcMain.handle('vid:encode', async (e, req) => {
     if (!trusted(e) || !req || !okId(req.id) || !okMedia(req.path)) return { ok: false, code: 'bad-request' };
     const v = V.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
-    if (v.options.subtitleFile && !allowedFile(v.options.subtitleFile, SUB_TYPES)) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
-    const ff = await resolveFfmpegPath();
-    if (!ff) return { ok: false, code: 'no-ffmpeg' };
-    const d = await EV.detectEncoders(ff);
-    const outDir = resolveOutDir(req, true, defaultVideoOutDir);
-    return track(req.id, () => EV.encodeVideo({ ffmpegPath: ff, input: req.path, options: v.options, available: d.encoders, outDir, onProgress: (p) => sendProgress({ id: req.id, pct: Math.max(0, Math.min(1, p)) }) }));
+    if (v.options.subtitleFile && !subtitleGrants.has(allowedFile(v.options.subtitleFile, SUB_TYPES))) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
+    return track(req.id,async()=>{
+      if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});
+      const ff=await resolveFfmpegPath(),f=inputFile(req.path);if(!ff||!f)throw Object.assign(Error('source or ffmpeg unavailable'),{code:ff?'denied':'no-ffmpeg'});
+      const d=await EV.detectEncoders(ff);
+      const outDir=resolveOutDir(req,true,defaultVideoOutDir);
+      if(v.options.subtitleFile){const sub=allowedFile(v.options.subtitleFile,SUB_TYPES);if(!sub||!subtitleGrants.has(sub))throw Object.assign(Error('subtitle not approved'),{code:'denied'});v.options.subtitleFile=sub;}
+      return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
+    });
   });
 
   ipcMain.on('conv:cancel', (e, id) => {
     if (!trusted(e) || !okId(id)) return;
     if (jobs.has(id)) jobs.get(id).cancel(); else if (pending.has(id)) cancelledEarly.add(id);
   });
-  ipcMain.on('conv:reveal', (e, p) => { if (trusted(e) && okFile(p)) shell.showItemInFolder(p); });
+  ipcMain.on('conv:reveal', (e, p) => { if(trusted(e)){const f=localPath(p);if(f&&outputGrants.has(f))shell.showItemInFolder(f);} });
 
   // WAVEFRAME_SELFTEST: runs the real renderer converter (lazy load, decode, Enhancer chain, BS.1770 gain, ffmpeg encode) on a generated tone.
   async function selfTest() {
@@ -185,6 +223,8 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       for (let i = 0; i < n; i++) { l[i] = 0.05 * Math.sin(2 * Math.PI * 440 * i / 44100); r[i] = 0.05 * Math.sin(2 * Math.PI * 660 * i / 44100); }
       const src = path.join(dir, 'tone.wav');
       fs.writeFileSync(src, Buffer.from(L.writeWav([l, r], 44100, 16)));
+      check('converter denies an unapproved local file',await win.webContents.executeJavaScript(`waveframe.convRead(${JSON.stringify(src)}).then(r=>r===null)`));
+      approveSource(src);
       const run = (opts) => win.webContents.executeJavaScript(`(async () => {
         await loadConverter();
         const v = WaveframeConv.validateOptions(${JSON.stringify(opts)});
@@ -263,6 +303,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       if (ff) {
         const vsrc = path.join(dir, 'clip.mp4');
         await new Promise((res) => require('child_process').execFile(ff, ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=25:duration=2', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'mpeg4', '-c:a', 'aac', vsrc], res));
+        approveSource(vsrc);
         const vr = await win.webContents.executeJavaScript(`(async () => { const v = WaveframeVideo.validateOptions({ preset: 'webSmall', suffix: '-selftest' }); return await window.waveframe.vidEncode({ id: 'selfvid', path: ${JSON.stringify(vsrc)}, options: v.options, outMode: 'source' }); })()`);
         check('real video encode through IPC (preset "small web")', vr && vr.ok && vr.output, vr && (vr.error || vr.output));
         if (vr && vr.ok) {
