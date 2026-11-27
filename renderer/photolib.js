@@ -279,8 +279,42 @@
     for(const k of Object.keys(RANGE))old[k]=base[k]+((LOOKS[name][k]??base[k])-base[k])*weight;
     return clampParams(old);
   }
+  // Read bounded image headers before invoking the browser decoder.
+  // AVIF and unusual JPEG headers may require decoder fallback.
+  function headerSize(bytes){
+    if(!(bytes instanceof Uint8Array)||bytes.length<10)return null;
+    const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=bytes.length;
+    const ascii=(o,s)=>o+s.length<=n&&[...s].every((c,i)=>bytes[o+i]===c.charCodeAt(0));
+    const size=(width,height)=>({width,height});
+    if(n>=24&&bytes[0]===137&&ascii(1,'PNG\r\n\x1a\n')&&ascii(12,'IHDR'))return size(v.getUint32(16),v.getUint32(20));
+    if(ascii(0,'GIF87a')||ascii(0,'GIF89a'))return size(v.getUint16(6,true),v.getUint16(8,true));
+    if(n>=26&&ascii(0,'BM')){
+      const dib=v.getUint32(14,true);
+      if(dib===12)return size(v.getUint16(18,true),v.getUint16(20,true));
+      if(dib>=40)return size(v.getInt32(18,true),Math.abs(v.getInt32(22,true)));
+    }
+    if(n>=30&&ascii(0,'RIFF')&&ascii(8,'WEBP')){
+      if(ascii(12,'VP8X'))return size(1+bytes[24]+bytes[25]*256+bytes[26]*65536,1+bytes[27]+bytes[28]*256+bytes[29]*65536);
+      if(ascii(12,'VP8L')&&bytes[20]===47){const b=v.getUint32(21,true);return size((b&16383)+1,((b>>>14)&16383)+1);}
+      if(ascii(12,'VP8 ')&&bytes[23]===157&&bytes[24]===1&&bytes[25]===42)return size(v.getUint16(26,true)&16383,v.getUint16(28,true)&16383);
+    }
+    if(bytes[0]===255&&bytes[1]===216){
+      let i=2;
+      while(i+4<=n){
+        if(bytes[i++]!==255)break;
+        while(i<n&&bytes[i]===255)i++;
+        const marker=bytes[i++];if(marker===217||marker===218||i+2>n)break;
+        if(marker===1||marker>=208&&marker<=215)continue;
+        const len=v.getUint16(i);if(len<2||i+len>n)break;
+        if([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker)&&len>=7)return size(v.getUint16(i+5),v.getUint16(i+3));
+        i+=len;
+      }
+    }
+    return null;
+  }
+  function validImageSize(w,h){return Number.isSafeInteger(w)&&Number.isSafeInteger(h)&&w>0&&h>0&&w*h<=LIMITS.maxPixels&&Math.max(w,h)<=32768;}
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

@@ -53,7 +53,7 @@
     const down = () => { comparing = true; schedule(); }, up = () => { comparing = false; schedule(); };
     cmp.addEventListener('pointerdown', down); cmp.addEventListener('pointerup', up); cmp.addEventListener('pointerleave', up); cmp.addEventListener('pointercancel',up);cmp.addEventListener('blur',up);window.addEventListener('blur',up);
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
-    $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png'); });
+    $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png');$('phMatteField').hidden=$('phFormat').value!=='jpeg'; });
     $('phSave').addEventListener('click', save);
     $('phResize').addEventListener('change',exportSize);
     const drop = $('phDrop');
@@ -91,9 +91,12 @@
     if (busy) return;
     if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
     try {
+      const header=P.headerSize(new Uint8Array(await blob.slice(0,1024*1024).arrayBuffer()));
+      if(generation!==openGeneration||busy)return;
+      if(header&&!P.validImageSize(header.width,header.height)){info(t('ph.tooLarge'));return;}
       const b = await createImageBitmap(blob, { imageOrientation: 'from-image' });
       if (generation !== openGeneration || busy) { b.close(); return; }
-      if (b.width * b.height > P.LIMITS.maxPixels) { b.close(); info(t('ph.tooLarge')); return; }
+      if (!P.validImageSize(b.width,b.height)) { b.close(); info(t('ph.tooLarge')); return; }
       if (bmp) bmp.close();
       bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders();
       const sz = P.previewSize(b.width, b.height);
@@ -153,7 +156,7 @@
   async function save() {
     if (!bmp || busy) return;
     busy = true; ++openGeneration;
-    const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value);
+    const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value),matte=$('phMatte').value;
     if(!P.exportBudget(source.width,source.height,snapshot,maxEdge)){busy=false;info(t('ph.tooLarge'));return;}
     $('phSave').disabled = true; info(t('ph.processing'));
     await new Promise((r) => setTimeout(r, 30)); // let the message paint before the heavy work
@@ -168,6 +171,7 @@
       const size=P.resizeOutput(out.width,out.height,maxEdge);
       let target=oc;
       if(size.width!==out.width||size.height!==out.height){target=document.createElement('canvas');target.width=size.width;target.height=size.height;const ctx=target.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(oc,0,0,size.width,size.height);oc.width=0;oc.height=0;}
+      if(f==='jpeg'){const ctx=target.getContext('2d');ctx.globalCompositeOperation='destination-over';ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(matte)?matte:'#ffffff';ctx.fillRect(0,0,target.width,target.height);ctx.globalCompositeOperation='source-over';}
       const blob = await new Promise((res) => target.toBlob(res, P.OUT_FORMATS[f].mime, q));
       target.width=0;target.height=0;
       if (!blob || blob.type!==P.OUT_FORMATS[f].mime) { info(t('ph.saveFailed')); return; }

@@ -255,16 +255,9 @@ class AudioEngine {
     this.analyser.connect(ctx.destination);
   }
 
-  _makeImpulseResponse(duration, decay) {
-    const rate = this.ctx.sampleRate;
-    const length = Math.floor(rate * duration);
-    const impulse = this.ctx.createBuffer(2, length, rate);
-    for (let ch = 0; ch < 2; ch++) {
-      const data = impulse.getChannelData(ch);
-      for (let i = 0; i < length; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
-      }
-    }
+  _makeImpulseResponse(duration,decay,context=this.ctx) {
+    const rate=context.sampleRate,impulse=context.createBuffer(2,Math.floor(rate*duration),rate);
+    for(let ch=0;ch<2;ch++)impulse.copyToChannel(WaveframeAudio.impulseSamples(rate,duration,decay,ch),ch);
     return impulse;
   }
 
@@ -559,7 +552,7 @@ class AudioEngine {
     }
     if (this.state.reverb) {
       const conv = offline.createConvolver();
-      conv.buffer = this._makeImpulseResponse(2.2, 2.0);
+      conv.buffer = this._makeImpulseResponse(2.2, 2.0,offline);
       const dry = offline.createGain(); dry.gain.value = 1;
       const wet = offline.createGain(); wet.gain.value = WaveframeAudio.effectMix(this.state.reverbAmount,.28);
       const sum = offline.createGain();

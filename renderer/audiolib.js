@@ -136,11 +136,17 @@
     return {frequency:2800,q:.85,gain:6*n};
   }
   function balanceValue(amount) {return Math.max(-1,Math.min(1,(Number(amount)||0)/100));}
+  function impulseSamples(rate,duration=2.2,decay=2,channel=0){
+    if(!Number.isFinite(rate)||rate<8000||rate>192000||!Number.isFinite(duration)||duration<=0||duration>4||!Number.isFinite(decay)||decay<.1||decay>8)throw Error('invalid impulse');
+    const n=Math.floor(rate*duration),out=new Float32Array(n);let seed=(0x9e3779b9^(channel*0x85ebca6b))>>>0;
+    for(let i=0;i<n;i++){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;out[i]=((seed>>>0)/4294967296*2-1)*Math.pow(1-i/n,decay);}
+    return out;
+  }
   function effectMix(amount,legacy){return Math.max(0,Math.min(100,Number.isFinite(Number(amount))?Number(amount):100))/100*legacy;}
   function compressorParams(mode){
     const modes={gentle:{threshold:-18,knee:20,ratio:2,attack:.015,release:.35},standard:{threshold:-24,knee:30,ratio:8,attack:.003,release:.25},night:{threshold:-32,knee:24,ratio:12,attack:.005,release:.4}};
     return {...(Object.hasOwn(modes,mode)?modes[mode]:modes.standard)};
   }
   function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
-  return { effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  return { impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

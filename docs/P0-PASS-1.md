@@ -135,3 +135,6 @@ Public Sintel CI 45953965247 confirmed both original and artificially shifted ca
 
 ## Pass 43 — exact crop geometry and renderer verification
 Pass 41 native pipe CI 45954049506/45954043622 passed actual redirected process acknowledgments and seek. Shared crop bounds for output dimensions and pixel processing (odd-size edge rounding), avoid redundant allocation for crop-only geometry, reject unexpected canvas encoder MIME instead of silently saving wrong file type. Add actual Electron checks for RGB histogram/clipping, square crop/export size, crop position undo, reverb/exciter sliders. Public subtitle CI triggers on relevant parser/provider changes. Latest CI pending.
+
+## Pass 44 — image decode preflight and deterministic reverb
+Pass 43 public renderer CI 45954475346 passed new photo crop/RGB and audio mix controls, layout 20 languages at 100/150%; native and plugin CI passed. Add bounded header inspection for PNG/JPEG/GIF/BMP/WebP before bitmap allocation (unknown headers/AVIF still use decoder then post-check, not a complete decompression-bomb defense), dimension guard; explicit JPEG matte for transparent exports, default white. Reverb impulse generation is deterministic per channel and uses actual offline sample rate rather than live context, preserving reproducibility at a given rate. No change to legacy tail length. Unit tests; latest CI pending.

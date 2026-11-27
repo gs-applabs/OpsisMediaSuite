@@ -128,3 +128,5 @@ test('presence and stereo balance are bounded and neutral by default',()=>{
 test('compressor modes retain legacy standard and bound all parameters',()=>{assert.equal(lib.compressorParams('standard').ratio,8);assert.equal(lib.compressorParams('gentle').ratio,2);assert.equal(lib.compressorParams('night').threshold,-32);assert.deepEqual(lib.compressorParams('__proto__'),lib.compressorParams('standard'));});
 
 test('effect mix is bounded and retains legacy defaults',()=>{assert.equal(lib.effectMix(100,.28),.28);assert.equal(lib.effectMix(50,.28),.14);assert.equal(lib.effectMix(-1,.35),0);assert.equal(lib.effectMix(200,.35),.35);assert.equal(lib.effectMix(undefined,.28),.28);});
+
+test('reverb impulse is repeatable, stereo independent and correct for export sample rate',()=>{const a=lib.impulseSamples(8000,.1,2,0),b=lib.impulseSamples(8000,.1,2,0),r=lib.impulseSamples(8000,.1,2,1);assert.deepEqual(a,b);assert.notDeepEqual(a,r);assert.equal(a.length,800);assert.equal(lib.impulseSamples(48000,.1).length,4800);assert.ok(Math.abs(a.at(-1))<.001);assert.throws(()=>lib.impulseSamples(1));});
