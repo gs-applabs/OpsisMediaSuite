@@ -105,6 +105,8 @@ async function convertDirect({ ffmpegPath, input, options, onProgress, outDir })
 
 // The renderer already applied trim/rate/channels/effects/gain and sent a WAV: for WAV output it is written as is, otherwise ffmpeg encodes it.
 async function convertFromWav({ ffmpegPath, input, wavBytes, options, onProgress, duration, outDir }) {
+  if (wavBytes instanceof ArrayBuffer) wavBytes=Buffer.from(wavBytes);
+  if (!ArrayBuffer.isView(wavBytes)) throw Object.assign(new Error('invalid WAV byte payload'),{code:'invalid-wav'});
   if (options.format === 'wav') {
     const { tmp } = planOutput(input, options, fs.existsSync, outDir);
     let created=false;

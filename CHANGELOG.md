@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19A.1
+- Visible contextual feature finder with category selector and keyboard focus; no right-click interception. Converter accepts ArrayBuffer WAV payloads again. CI fixtures use canonical temporary directories on Windows to avoid short-path alias mismatches without weakening production file-path validation. Retest pending.
+
 ## Unreleased — Ultra Mega Pass 19A
 - Shared searchable feature guide with 26 entries, direct navigation to existing tabs/controls, Help catalog and development history, and eight-page welcome guide updates. No media action runs when navigating. Greek/English text with English fallback; full 20-language and visual accessibility checks remain pending.
 

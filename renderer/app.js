@@ -928,6 +928,8 @@ function initFeatureGuide(){
  const input=document.getElementById('featureGuideQuery'), results=document.getElementById('featureGuideResults'),status=document.getElementById('featureGuideStatus');
  const lang=()=>localStorage.getItem('waveframe.lang')||'el';
  const gr=()=>lang()==='el';
+ const group=document.getElementById('featureGuideGroup'),quick=document.getElementById('featureGuideQuick');
+ function renderGroups(){const chosen=group.value;group.replaceChildren();for(const [key,label] of [['',gr()?'Όλες οι καρτέλες':'All tabs'],...Object.entries(OpsisFeatureGuide.tabs).map(([k,v])=>[k,v[gr()?0:1]])]){const opt=document.createElement('option');opt.value=key;opt.textContent=label;group.append(opt);}group.value=chosen;}
  async function navigate(row){
   showTab(row.tab);
   try{if(row.tab==='converter')await loadConverter();if(row.tab==='video')await loadVideoPlayer();if(row.tab==='photo')await loadPhoto();}
@@ -945,14 +947,16 @@ function initFeatureGuide(){
   document.getElementById('featureGuideTitle').textContent=gr()?'Εύρεση λειτουργιών και ρυθμίσεων':'Find features and settings';
   document.getElementById('featureGuideHint').textContent=gr()?'Αναζήτησε μια δυνατότητα. Η επιλογή ανοίγει το υπάρχον εργαλείο χωρίς να εκτελεί ενέργειες.':'Search for a feature. Selecting a result opens the existing tool without running an action.';
   input.placeholder=gr()?'π.χ. υπότιτλοι, metadata, GPU':'e.g. subtitles, metadata, GPU';
-  const rows=OpsisFeatureGuide.list(lang(),input.value);results.replaceChildren();
+  document.getElementById('featureGuideQuickLabel').textContent=gr()?'Εύρεση':'Find';
+  document.getElementById('featureGuideGroupLabel').textContent=gr()?'Καρτέλα':'Tab';
+  quick.title=gr()?'Εύρεση λειτουργιών της τρέχουσας καρτέλας':'Find features in the current tab';quick.setAttribute('aria-label',quick.title);
+  const rows=OpsisFeatureGuide.list(lang(),input.value).filter(r=>!group.value||r.tab===group.value);results.replaceChildren();
   for(const row of rows){const btn=document.createElement('button');btn.type='button';btn.className='small-btn feature-guide-result';const name=document.createElement('strong');name.textContent=row.category+' — '+row.title;const d=document.createElement('span');d.textContent=row.description;btn.append(name,d);btn.addEventListener('click',()=>navigate(row));results.append(btn);}
   status.textContent=gr()?rows.length+' αποτελέσματα':rows.length+' results';
  }
- input.addEventListener('input',render);document.addEventListener('waveframe:language-changed',render);render();
- // One unobtrusive entry point in each existing tab; no new parallel feature controls.
- for(const tab of document.querySelectorAll('.tab-btn')){const name=tab.dataset.tab;if(name==='settings')continue;tab.addEventListener('contextmenu',e=>{e.preventDefault();showTab('settings');input.value=OpsisFeatureGuide.tabs[name][gr()?0:1];render();input.focus();});}
- const quick=document.getElementById('featureGuideQuick');quick.addEventListener('click',()=>{showTab('settings');input.value='';render();input.focus();});
+ input.addEventListener('input',render);group.addEventListener('change',render);document.addEventListener('waveframe:language-changed',()=>{renderGroups();render();});renderGroups();render();
+ // The same clearly labelled entry point works from every tab, without intercepting right-click.
+ quick.addEventListener('click',()=>{const active=document.querySelector('.tab-btn.active')?.dataset.tab;showTab('settings');group.value=active==='settings'?'':active||'';input.value='';render();input.focus();});
 }
 initFeatureGuide();
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it

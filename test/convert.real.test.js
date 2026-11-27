@@ -19,7 +19,7 @@ function findFfmpeg() {
 const FFMPEG = findFfmpeg();
 const opts = { skip: FFMPEG ? false : 'ffmpeg not available' };
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-conv-'));
+const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-conv-')));
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 function tone(file, seconds, rate, channels) {

@@ -191,7 +191,7 @@ test('normalization gain is applied once to shared mono-to-stereo buffers',()=>{
 test('exclusive publication preserves a concurrently created output and cleans completed staging file',()=>{
  const fs=require('node:fs'),os=require('node:os');
  const {publishOutput}=require('../conv-engine');
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-publish-'));
+ const dir=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'opsis-publish-')));
  const src=path.join(dir,'source.wav'),tmp=path.join(dir,'.temp.wav'),first=path.join(dir,'source-out.wav');
  try{
   fs.writeFileSync(src,'source');fs.writeFileSync(tmp,'complete');

@@ -17,7 +17,7 @@ function findFfmpeg() {
 }
 const FFMPEG = findFfmpeg();
 const skip = FFMPEG ? false : 'ffmpeg not available';
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-'));
+const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-')));
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 const ff = (args) => execFileSync(FFMPEG, ['-hide_banner', '-v', 'error', '-y', ...args], { stdio: 'ignore' });

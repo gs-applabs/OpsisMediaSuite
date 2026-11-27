@@ -11,7 +11,7 @@ test('real MP3 completion preserves payload and original backup',async(t)=>{
  const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
  const {complete}=require('../music-tags');
  try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip('ffmpeg unavailable');return;}
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-tags-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-tags-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const file=path.join(dir,'Artist - Title.mp3');
  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=1','-c:a','libmp3lame','-id3v2_version','3','-metadata','album=Existing album',file]);
  const before=await fs.readFile(file);
@@ -35,7 +35,7 @@ test('FLAC comment insertion preserves STREAMINFO and unknown existing comment',
 test('real FLAC preserves all encoded audio bytes and original tags',async(t)=>{
  const {execFileSync}=require('node:child_process'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
  try{execFileSync('ffmpeg',['-version'],{stdio:'ignore'});}catch{if(process.env.CI)throw Error('CI requires ffmpeg');t.skip('ffmpeg unavailable');return;}
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-flac-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-flac-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const file=path.join(dir,'sample.flac');
  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=1','-c:a','flac','-metadata','album=Keep me',file]);
  const before=await fs.readFile(file);const payload=b=>{let i=4;while(true){const done=b[i]&128;i+=4+b.readUIntBE(i+1,3);if(done)return b.subarray(i);}};
