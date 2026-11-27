@@ -137,3 +137,12 @@ test('resize output preserves aspect ratio, never upscales and validates budget'
  assert.equal(P.exportBudget(4000,3000,{},2048),true);
  assert.equal(P.exportBudget(0,10,{},0),false);
 });
+
+test('RGB channels and clarity preserve alpha and source data',()=>{
+ const img={width:3,height:1,data:new Uint8ClampedArray([80,80,80,90,120,120,120,100,80,80,80,110])};
+ const c=P.process(img,{...P.defaults(),red:100,blue:-100});
+ assert.equal(c.data[0],120);assert.equal(c.data[2],40);assert.equal(c.data[3],90);assert.equal(img.data[0],80);
+ const crisp=P.process(img,{...P.defaults(),clarity:100});
+ assert.ok(crisp.data[4]>120);assert.equal(crisp.data[7],100);
+ assert.deepEqual(P.process(img,P.defaults()).data,img.data);
+});

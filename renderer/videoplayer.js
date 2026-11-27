@@ -61,7 +61,7 @@
     };
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
-  function stop() { saveResume(); releaseTicket(); ++generation; if(session)session.stop().catch(()=>{}); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
+  function stop() { stopNative();saveResume(); releaseTicket(); ++generation; if(session)session.stop().catch(()=>{}); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); video.pause(); video.removeAttribute('src'); video.load(); $('vpFrame').classList.remove('has-media'); syncTime(); syncTransport(); }
 
   let handoff=null,nativePoll=null;
   async function nativeHandoff(engine,p,g){
@@ -73,9 +73,9 @@
     $('vpNativeStop').hidden=false;
     say(engine+' — opening native player…');
     const r=await api.vpNativeOpen(p,engine,resume).catch(()=>null);
-    if(handoff!==marker||g!==generation){if(r?.ok)api.vpNativeStop().catch(()=>{});return false;}
+    if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
-    marker.session=r.session;playbackEngine=engine;
+    marker.session=r.session;playbackEngine=engine;resumePath=null;
     say(engine+' — native playback ready');
     const poll=async()=>{
       if(handoff!==marker)return;
@@ -398,8 +398,8 @@
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
-    $('vpPlay').addEventListener('click', () => { if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
-    $('vpStop').addEventListener('click', () => { video.pause(); seekTo(0); syncTime(); syncTransport(); });
+    $('vpPlay').addEventListener('click', () => { if(handoff){say('Use the native player controls / Χειριστήρια native player');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)session.play().catch(()=>{});else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
+    $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
 
@@ -465,7 +465,7 @@
 
 
     saveTimer = setInterval(() => { if (!video.paused) saveResume(); }, 5000);
-    window.addEventListener('beforeunload', () => { saveResume(); releaseTicket(); });
+    window.addEventListener('beforeunload', () => { stopNative();saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
     window.addEventListener('waveframe:dsp-route-changed',refreshFx);

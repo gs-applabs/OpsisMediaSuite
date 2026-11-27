@@ -45,7 +45,7 @@ function createNativeHost({app,extensions,authorize}){
      }
     });
     proc.once('error',()=>{if(child===proc){child=null;state={...state,phase:'error'};}finish({ok:false,code:'launch-failed'});});
-    proc.once('close',code=>{if(child===proc){child=null;state={...state,phase:code===0?'closed':'error'};}finish({ok:false,code:code===2?'native-cancelled':'native-exited'});});
+    proc.once('close',code=>{if(child===proc){child=null;state={...state,phase:state.phase==='error'||code!==0?'error':'closed'};}finish({ok:false,code:code===2?'native-cancelled':'native-exited'});});
    });
   }finally{opening=false;}
  }

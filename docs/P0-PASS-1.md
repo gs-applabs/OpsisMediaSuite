@@ -75,3 +75,6 @@ Frame-number MicroDVD .sub parser, declared or explicitly selected FPS, multilin
 
 ## Full pass 23 — native handoff and status protocol
 Installed K-Lite CI 45941014419 succeeded with x64 LAV splitter/video/audio graph on actual MKV H.264/AAC (5s duration, 529ms position, module SHA256 recorded). Added bounded JSON line protocol, actual native ready/position/closed/error status, resume handoff, explicit close and optional unchecked-by-default LibVLC fallback for local Chromium decode failure. Separate windows, no native DSP sharing. DirectShow ready reports graph Run success, not observed pixels. Native transport build and renderer CI pending.
+
+## Full pass 24 — native lifecycle and Photo Studio RGB/clarity
+Prevent stale Chromium resume writes and duplicate transport while native handoff active; stop native on stop/new source/unload. Add independent red/green/blue channel multipliers and signed local-luma contrast (clarity) shared by preview and worker export, preserve alpha and neutral result. All 20 locale entries added for new photo controls. Tests added; not yet CI certified.

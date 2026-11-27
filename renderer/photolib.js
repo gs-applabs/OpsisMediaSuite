@@ -9,10 +9,10 @@
   const RANGE = {
     exposure: [-2, 2], contrast: [-100, 100], saturation: [-100, 100], temperature: [-100, 100], tint: [-100, 100],
     highlights: [-100, 100], shadows: [-100, 100], sharpen: [0, 100], denoise: [0, 100],
-    black: [0, 254], white: [1, 255], gamma: [0.2, 5], vibrance: [-100, 100], sepia: [0, 100], vignette: [0, 100],
+    black: [0, 254], white: [1, 255], gamma: [0.2, 5], vibrance: [-100, 100], sepia: [0, 100], vignette: [0, 100], red: [-100,100], green: [-100,100], blue: [-100,100], clarity: [-100,100],
   };
   function defaults() {
-    return { exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, sharpen: 0, denoise: 0, black: 0, white: 255, gamma: 1, vibrance: 0, sepia: 0, vignette: 0, rotate: 0, flipH: false, flipV: false, crop: null };
+    return { exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, sharpen: 0, denoise: 0, black: 0, white: 255, gamma: 1, vibrance: 0, sepia: 0, vignette: 0, red:0, green:0, blue:0, clarity:0, rotate: 0, flipH: false, flipV: false, crop: null };
   }
   const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
   function clampParams(p) {
@@ -53,8 +53,8 @@
   function applyColor(data, params) {
     const p = clampParams(params), lut = toneLut(p);
     const t = p.temperature / 100, g = p.tint / 100, sat = 1 + p.saturation / 100;
-    const mr = 1 + 0.25 * t + 0.06 * g, mg = 1 - 0.12 * g, mb = 1 - 0.25 * t + 0.06 * g;
-    const neutral = t === 0 && g === 0 && p.saturation === 0;
+    const mr = (1 + 0.25*t + 0.06*g)*(1+p.red/200), mg=(1-0.12*g)*(1+p.green/200), mb=(1-0.25*t+0.06*g)*(1+p.blue/200);
+    const neutral = t===0&&g===0&&p.saturation===0&&!p.red&&!p.green&&!p.blue;
     for (let i = 0; i < data.length; i += 4) {
       let r = lut[data[i]], gg = lut[data[i + 1]], b = lut[data[i + 2]];
       if (!neutral) {
@@ -157,6 +157,22 @@
     return img;
   }
 
+  // Local luma contrast, scaled to the current image size; preserve alpha.
+  // A cross-shaped neighbourhood avoids expensive full-image convolutions.
+  function clarity(img,amount){
+    if(!amount)return img;
+    const {data,width:w,height:h}=img,out=new Uint8ClampedArray(data.length);
+    const radius=Math.max(1,Math.min(32,Math.round(Math.min(w,h)/140)));
+    const k=amount/100*.65;
+    const lum=i=>.2126*data[i]+.7152*data[i+1]+.0722*data[i+2];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=(y*w+x)*4,l=lum(i);
+      const n=(lum((y*w+Math.max(0,x-radius))*4)+lum((y*w+Math.min(w-1,x+radius))*4)+lum((Math.max(0,y-radius)*w+x)*4)+lum((Math.min(h-1,y+radius)*w+x)*4))/4;
+      const weight=1-Math.abs(l-127.5)/127.5,delta=(l-n)*k*weight;
+      out[i]=data[i]+delta;out[i+1]=data[i+1]+delta;out[i+2]=data[i+2]+delta;out[i+3]=data[i+3];
+    }
+    return {data:out,width:w,height:h};
+  }
   // Whole pipeline. The source is never modified (a copy is made).
   function process(img, params) {
     const p = clampParams(params);
@@ -164,7 +180,7 @@
     if (cur.data === img.data) cur = { data: new Uint8ClampedArray(img.data), width: img.width, height: img.height };
     cur = denoise(cur, p.denoise);
     applyColor(cur.data, p);
-    return sharpen(creative(cur, p), p.sharpen);
+    return sharpen(creative(clarity(cur,p.clarity),p),p.sharpen);
   }
 
   function histogram(data) {
@@ -228,5 +244,5 @@
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { clarity, resizeOutput, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

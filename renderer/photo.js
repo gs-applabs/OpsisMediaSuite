@@ -9,7 +9,7 @@
   const SLIDERS = [
     ['exposure', -2, 2, 0.05], ['contrast', -100, 100, 1], ['highlights', -100, 100, 1], ['shadows', -100, 100, 1],
     ['saturation', -100, 100, 1], ['temperature', -100, 100, 1], ['tint', -100, 100, 1], ['sharpen', 0, 100, 1], ['denoise', 0, 100, 1],
-    ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01], ['vibrance', -100, 100, 1], ['sepia', 0, 100, 1], ['vignette', 0, 100, 1],
+    ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01], ['vibrance', -100, 100, 1], ['sepia', 0, 100, 1], ['vignette', 0, 100, 1], ['red',-100,100,1], ['green',-100,100,1], ['blue',-100,100,1], ['clarity',-100,100,1],
   ];
   const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);

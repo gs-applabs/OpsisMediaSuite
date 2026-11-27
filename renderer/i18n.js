@@ -2,6 +2,7 @@
 
 const I18N = {
   el: {
+    'ph.red': "Κόκκινο", 'ph.green': "Πράσινο", 'ph.blue': "Μπλε", 'ph.clarity': "Τοπική αντίθεση",
     'ph.vibrance': "Ζωντάνια χρωμάτων", 'ph.sepia': "Σέπια", 'ph.vignette': "Βινιέτα",
     'common.cancel': 'Άκυρο',
     'common.ok': 'OK',
@@ -519,6 +520,7 @@ const I18N = {
     'preset.trebleBoost.name': 'Ενίσχυση Πρίμων', 'preset.trebleBoost.desc': 'Έμφαση στα υψηλά για λεπτομέρεια',
   },
   en: {
+    'ph.red': "Red", 'ph.green': "Green", 'ph.blue': "Blue", 'ph.clarity': "Clarity",
     'ph.vibrance': "Vibrance", 'ph.sepia': "Sepia", 'ph.vignette': "Vignette",
     'common.cancel': 'Cancel',
     'common.ok': 'OK',
@@ -1035,6 +1037,7 @@ const I18N = {
     'preset.trebleBoost.name': 'Treble Boost', 'preset.trebleBoost.desc': 'Extra high-end detail and air',
   },
   fr: {
+    'ph.red': "Rouge", 'ph.green': "Vert", 'ph.blue': "Bleu", 'ph.clarity': "Clarté",
     'ph.vibrance': "Vibrance", 'ph.sepia': "Sépia", 'ph.vignette': "Vignettage",
     'common.cancel': 'Annuler', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL du fichier audio', 'enhance.presetNamePromptTitle': 'Nom du préréglage',
@@ -1473,6 +1476,7 @@ const I18N = {
     'conv.warn.rateClamped': "Ce format prend en charge jusqu'à 48 kHz ; la fréquence a été réduite.",
   },
   de: {
+    'ph.red': "Rot", 'ph.green': "Grün", 'ph.blue': "Blau", 'ph.clarity': "Klarheit",
     'ph.vibrance': "Dynamik", 'ph.sepia': "Sepia", 'ph.vignette': "Vignette",
     'common.cancel': 'Abbrechen', 'common.ok': 'OK',
     'player.urlPromptTitle': 'Audiodatei-URL', 'enhance.presetNamePromptTitle': 'Presetname',
@@ -1911,6 +1915,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dieses Format unterstützt bis zu 48 kHz; die Rate wurde verringert.",
   },
   es: {
+    'ph.red': "Rojo", 'ph.green': "Verde", 'ph.blue': "Azul", 'ph.clarity': "Claridad",
     'ph.vibrance': "Intensidad", 'ph.sepia': "Sepia", 'ph.vignette': "Viñeta",
     'common.cancel': 'Cancelar', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL del archivo de audio', 'enhance.presetNamePromptTitle': 'Nombre del preajuste',
@@ -2349,6 +2354,7 @@ const I18N = {
     'conv.warn.rateClamped': "Este formato admite hasta 48 kHz; se redujo la frecuencia.",
   },
   it: {
+    'ph.red': "Rosso", 'ph.green': "Verde", 'ph.blue': "Blu", 'ph.clarity': "Chiarezza",
     'ph.vibrance': "Vividezza", 'ph.sepia': "Seppia", 'ph.vignette': "Vignettatura",
     'common.cancel': 'Annulla', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL del file audio', 'enhance.presetNamePromptTitle': 'Nome del preset',
@@ -2787,6 +2793,7 @@ const I18N = {
     'conv.warn.rateClamped': "Questo formato supporta fino a 48 kHz; la frequenza è stata ridotta.",
   },
   pt: {
+    'ph.red': "Vermelho", 'ph.green': "Verde", 'ph.blue': "Azul", 'ph.clarity': "Claridade",
     'ph.vibrance': "Vivacidade", 'ph.sepia': "Sépia", 'ph.vignette': "Vinheta",
     'common.cancel': 'Cancelar', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL do arquivo de áudio', 'enhance.presetNamePromptTitle': 'Nome do preset',
@@ -3225,6 +3232,7 @@ const I18N = {
     'conv.warn.rateClamped': "Este formato suporta até 48 kHz; a taxa foi reduzida.",
   },
   ru: {
+    'ph.red': "Красный", 'ph.green': "Зелёный", 'ph.blue': "Синий", 'ph.clarity': "Чёткость",
     'ph.vibrance': "Красочность", 'ph.sepia': "Сепия", 'ph.vignette': "Виньетка",
     'common.cancel': 'Отмена', 'common.ok': 'ОК',
     'player.urlPromptTitle': 'URL аудиофайла', 'enhance.presetNamePromptTitle': 'Название пресета',
@@ -3663,6 +3671,7 @@ const I18N = {
     'conv.warn.rateClamped': "Этот формат поддерживает до 48 кГц; частота снижена.",
   },
   tr: {
+    'ph.red': "Kırmızı", 'ph.green': "Yeşil", 'ph.blue': "Mavi", 'ph.clarity': "Netlik",
     'ph.vibrance': "Canlılık", 'ph.sepia': "Sepya", 'ph.vignette': "Vinyet",
     'common.cancel': 'İptal', 'common.ok': 'Tamam',
     'player.urlPromptTitle': 'Ses dosyası URL\'si', 'enhance.presetNamePromptTitle': 'Ön ayar adı',
@@ -4101,6 +4110,7 @@ const I18N = {
     'conv.warn.rateClamped': "Bu biçim en fazla 48 kHz destekler; hız düşürüldü.",
   },
   pl: {
+    'ph.red': "Czerwony", 'ph.green': "Zielony", 'ph.blue': "Niebieski", 'ph.clarity': "Przejrzystość",
     'ph.vibrance': "Żywość", 'ph.sepia': "Sepia", 'ph.vignette': "Winieta",
     'common.cancel': 'Anuluj', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL pliku audio', 'enhance.presetNamePromptTitle': 'Nazwa ustawienia',
@@ -4539,6 +4549,7 @@ const I18N = {
     'conv.warn.rateClamped': "Ten format obsługuje do 48 kHz; częstotliwość obniżono.",
   },
   nl: {
+    'ph.red': "Rood", 'ph.green': "Groen", 'ph.blue': "Blauw", 'ph.clarity': "Helderheid",
     'ph.vibrance': "Levendigheid", 'ph.sepia': "Sepia", 'ph.vignette': "Vignet",
     'common.cancel': 'Annuleren', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL van het audiobestand', 'enhance.presetNamePromptTitle': 'Naam van de voorinstelling',
@@ -4973,6 +4984,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dit formaat ondersteunt tot 48 kHz; de frequentie is verlaagd.",
   },
   sv: {
+    'ph.red': "Röd", 'ph.green': "Grön", 'ph.blue': "Blå", 'ph.clarity': "Klarhet",
     'ph.vibrance': "Lyster", 'ph.sepia': "Sepia", 'ph.vignette': "Vinjettering",
     'common.cancel': 'Avbryt', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL till ljudfil', 'enhance.presetNamePromptTitle': 'Förinställningens namn',
@@ -5407,6 +5419,7 @@ const I18N = {
     'conv.warn.rateClamped': "Det här formatet stöder upp till 48 kHz; frekvensen sänktes.",
   },
   da: {
+    'ph.red': "Rød", 'ph.green': "Grøn", 'ph.blue': "Blå", 'ph.clarity': "Klarhed",
     'ph.vibrance': "Livlighed", 'ph.sepia': "Sepia", 'ph.vignette': "Vignet",
     'common.cancel': 'Annuller', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL til lydfil', 'enhance.presetNamePromptTitle': 'Navn på forudindstilling',
@@ -5841,6 +5854,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dette format understøtter op til 48 kHz; frekvensen blev sænket.",
   },
   no: {
+    'ph.red': "Rød", 'ph.green': "Grønn", 'ph.blue': "Blå", 'ph.clarity': "Klarhet",
     'ph.vibrance': "Livlighet", 'ph.sepia': "Sepia", 'ph.vignette': "Vignettering",
     'common.cancel': 'Avbryt', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL til lydfil', 'enhance.presetNamePromptTitle': 'Navn på forhåndsinnstilling',
@@ -6275,6 +6289,7 @@ const I18N = {
     'conv.warn.rateClamped': "Dette formatet støtter opptil 48 kHz; frekvensen ble senket.",
   },
   fi: {
+    'ph.red': "Punainen", 'ph.green': "Vihreä", 'ph.blue': "Sininen", 'ph.clarity': "Selkeys",
     'ph.vibrance': "Värikkyys", 'ph.sepia': "Seepia", 'ph.vignette': "Vinjetointi",
     'common.cancel': 'Peruuta', 'common.ok': 'OK',
     'player.urlPromptTitle': 'Äänitiedoston URL-osoite', 'enhance.presetNamePromptTitle': 'Esiasetuksen nimi',
@@ -6709,6 +6724,7 @@ const I18N = {
     'conv.warn.rateClamped': "Tämä muoto tukee enintään 48 kHz:ä; taajuutta laskettiin.",
   },
   cs: {
+    'ph.red': "Červená", 'ph.green': "Zelená", 'ph.blue': "Modrá", 'ph.clarity': "Zřetelnost",
     'ph.vibrance': "Živost", 'ph.sepia': "Sépie", 'ph.vignette': "Vinětace",
     'common.cancel': 'Zrušit', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL zvukového souboru', 'enhance.presetNamePromptTitle': 'Název předvolby',
@@ -7143,6 +7159,7 @@ const I18N = {
     'conv.warn.rateClamped': "Tento formát podporuje až 48 kHz; frekvence byla snížena.",
   },
   sk: {
+    'ph.red': "Červená", 'ph.green': "Zelená", 'ph.blue': "Modrá", 'ph.clarity': "Zreteľnosť",
     'ph.vibrance': "Živosť", 'ph.sepia': "Sépia", 'ph.vignette': "Vinetácia",
     'common.cancel': 'Zrušiť', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL zvukového súboru', 'enhance.presetNamePromptTitle': 'Názov predvoľby',
@@ -7577,6 +7594,7 @@ const I18N = {
     'conv.warn.rateClamped': "Tento formát podporuje až 48 kHz; frekvencia bola znížená.",
   },
   hu: {
+    'ph.red': "Vörös", 'ph.green': "Zöld", 'ph.blue': "Kék", 'ph.clarity': "Tisztaság",
     'ph.vibrance': "Élénkség", 'ph.sepia': "Szépia", 'ph.vignette': "Vignettálás",
     'common.cancel': 'Mégse', 'common.ok': 'OK',
     'player.urlPromptTitle': 'Hangfájl URL-je', 'enhance.presetNamePromptTitle': 'Előbeállítás neve',
@@ -8011,6 +8029,7 @@ const I18N = {
     'conv.warn.rateClamped': "Ez a formátum legfeljebb 48 kHz-et támogat; a frekvenciát csökkentettük.",
   },
   ro: {
+    'ph.red': "Roșu", 'ph.green': "Verde", 'ph.blue': "Albastru", 'ph.clarity': "Claritate",
     'ph.vibrance': "Vibrație", 'ph.sepia': "Sepia", 'ph.vignette': "Vignetare",
     'common.cancel': 'Anulează', 'common.ok': 'OK',
     'player.urlPromptTitle': 'URL fișier audio', 'enhance.presetNamePromptTitle': 'Nume presetare',
@@ -8445,6 +8464,7 @@ const I18N = {
     'conv.warn.rateClamped': "Acest format acceptă până la 48 kHz; frecvența a fost redusă.",
   },
   uk: {
+    'ph.red': "Червоний", 'ph.green': "Зелений", 'ph.blue': "Синій", 'ph.clarity': "Чіткість",
     'ph.vibrance': "Барвистість", 'ph.sepia': "Сепія", 'ph.vignette': "Віньєтування",
     'common.cancel': 'Скасувати', 'common.ok': 'ОК',
     'player.urlPromptTitle': 'URL аудіофайлу', 'enhance.presetNamePromptTitle': 'Назва пресету',
