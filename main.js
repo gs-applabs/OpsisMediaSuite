@@ -462,10 +462,11 @@ function createWindow() {
     }
   });
 
-  let metadataBusy=false;
+  let metadataBusy=false, metadataCancelled=false;
+  ipcMain.handle('metadata:cancel',e=>{if(!fromMain(e)||!metadataBusy)return false;metadataCancelled=true;return true;});
   ipcMain.handle('metadata:complete',async(event,mode,values)=>{
     if(!fromMain(event)||metadataBusy||!['auto','manual','online'].includes(mode))return {error:'busy or denied'};
-    metadataBusy=true;
+    metadataBusy=true;metadataCancelled=false;
     try{
       const tags=require('./music-tags');
       const picked=await dialog.showOpenDialog(win,{title:'Select MP3 / FLAC files',properties:mode==='auto'?['openFile','multiSelections']:['openFile'],filters:[{name:'MP3 / FLAC',extensions:['mp3','flac']}]});
@@ -496,12 +497,20 @@ function createWindow() {
         if(ok.response!==1)return {cancelled:true};
         return {rows:[{file,...await tags.complete(file,selected)}]};
       }
-      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 / FLAC tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Automatic mode uses Artist - Title filenames only. Close any player using these files.'});
+      const planned=picked.filePaths.map(file=>({file,values:mode==='auto'?tags.clean(tags.infer(file)):tags.clean(values)}));
+      const usable=planned.filter(row=>Object.keys(row.values).length);
+      if(!usable.length)return {error:'No usable tag values / Δεν βρέθηκαν στοιχεία'};
+      const preview=usable.slice(0,12).map(row=>path.basename(row.file)+': '+Object.entries(row.values).map(([k,v])=>k+'='+v).join(', ')).join('\n');
+      const confirm=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Complete tags / Συμπλήρωση'],defaultId:0,cancelId:0,message:'Fill missing MP3 / FLAC tags only? / Συμπλήρωση μόνο κενών tags;',detail:'Original backups are retained beside the files. Existing tags are not replaced. Close players using these files.\n'+preview+(usable.length>12?'\n… '+(usable.length-12)+' more':'')});
       if(confirm.response!==1)return {cancelled:true};
       const rows=[];
-      for(const file of picked.filePaths){
-        try{rows.push({file,...await tags.complete(file,mode==='auto'?tags.infer(file):tags.clean(values))});}
+      for(const row of planned){
+        const {file,values}=row;
+        if(metadataCancelled){rows.push({file,status:'cancelled'});continue;}
+        if(!Object.keys(values).length)rows.push({file,status:'skipped'});
+        else try{rows.push({file,...await tags.complete(file,values)});}
         catch(err){rows.push({file,status:'failed',error:String(err.message).slice(0,250)});}
+        if(!win.isDestroyed())win.webContents.send('metadata:progress',{done:rows.length,total:planned.length});
       }
       return {rows};
     }catch(err){return {error:String(err.message).slice(0,250)};}
@@ -517,7 +526,7 @@ function createWindow() {
       let picture = null;
       if (common.picture && common.picture[0]) {
         const pic = common.picture[0];
-        picture = `data:${pic.format};base64,${Buffer.from(pic.data).toString('base64')}`;
+        if(['image/jpeg','image/png','image/webp'].includes(pic.format)&&pic.data?.length<=2*1024*1024)picture = `data:${pic.format};base64,${Buffer.from(pic.data).toString('base64')}`;
       }
       return {
         title: common.title || null,

@@ -94,6 +94,8 @@ contextBridge.exposeInMainWorld('waveframe', {
   exportSettings: (data) => ipcRenderer.invoke('settings:export', data),
   importSettings: () => ipcRenderer.invoke('settings:import'),
   onMediaKey: (cb) => ipcRenderer.on('media-key', (event, action) => cb(action)),
+  cancelMetadata: () => ipcRenderer.invoke('metadata:cancel'),
+  onMetadataProgress: cb => ipcRenderer.on('metadata:progress',(_e,p)=>cb(p)),
   completeMetadata: (mode,values) => ipcRenderer.invoke('metadata:complete',mode,values),
   readMetadata: (filePath) => ipcRenderer.invoke('metadata:read', filePath),
   setThumbbarIcons: (icons) => ipcRenderer.send('thumbbar:icons', icons),

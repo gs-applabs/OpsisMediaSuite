@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 18I (batch controls)
+- Batch preview, bounded progress and cooperative cancellation between files; prevent overlapping metadata dialogs; optional remembered filename suggestions for display only, no silent writes on import; cap displayed embedded cover images.
+
 ## Unreleased — Ultra Mega Pass 18H (format foundation)
 - Native lossless FLAC Vorbis comment completion, preserving STREAMINFO, pictures and encoded audio; MP3 and FLAC composer, lyricist and album artist fields; added fixture tests. No fingerprint recognition yet.
 

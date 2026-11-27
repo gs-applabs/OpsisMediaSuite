@@ -1498,7 +1498,20 @@ function addFilesToPlaylist(files) {
   void (async()=>{for(const item of added)await enrichTrackMetadata(item);})();
 }
 
+let metadataUiBusy=false;
+const metadataProgress=document.getElementById('metadataProgress');
+const metadataCancel=document.getElementById('metadataCancel');
+const inferDisplay=document.getElementById('metadataInferDisplay');
+inferDisplay.checked=localStorage.getItem('waveframe.metadata.inferDisplay')==='true';
+inferDisplay.addEventListener('change',()=>{localStorage.setItem('waveframe.metadata.inferDisplay',String(inferDisplay.checked));void (async()=>{for(const item of playlist.slice(0,500)){if(item.path)await enrichTrackMetadata(item);}})();});
+metadataCancel.addEventListener('click',async()=>{metadataCancel.disabled=true;await window.waveframe.cancelMetadata();});
+window.waveframe.onMetadataProgress(p=>{if(metadataUiBusy&&Number.isInteger(p.done)&&Number.isInteger(p.total))metadataProgress.textContent=p.done+' / '+p.total;});
 async function completeMusicTags(mode){
+  if(metadataUiBusy)return;
+  metadataUiBusy=true;
+  const buttons=['metadataAuto','metadataManual','metadataOnline'].map(id=>document.getElementById(id));
+  buttons.forEach(b=>b.disabled=true);
+  try{
   const values={};
   if(mode==='manual'){
     for(const [key,label] of Object.entries({title:'Title / Τίτλος',artist:'Artist / Καλλιτέχνης',album:'Album / Άλμπουμ',genre:'Genre / Είδος',year:'Year / Έτος',composer:'Composer / Συνθέτης',lyricist:'Lyricist / Στιχουργός',albumartist:'Album artist / Καλλιτέχνης άλμπουμ'})){
@@ -1507,9 +1520,8 @@ async function completeMusicTags(mode){
       if(value)values[key]=value;
     }
   }
-  const buttons=['metadataAuto','metadataManual','metadataOnline'].map(id=>document.getElementById(id));
-  buttons.forEach(b=>b.disabled=true);
-  try{
+  metadataProgress.textContent='';
+  metadataCancel.hidden=mode!=='auto';metadataCancel.disabled=false;
     const result=await window.waveframe.completeMetadata(mode,values);
     if(result.cancelled)return;
     if(result.error){await showAlertDialog('Metadata',result.error);return;}
@@ -1519,7 +1531,7 @@ async function completeMusicTags(mode){
     }
     await showAlertDialog('Metadata',rows.map(r=>r.file+' — '+r.status+(r.error?': '+r.error:'')+(r.backup?' | Backup: '+r.backup:'')).join('\n'));
   }catch(err){await showAlertDialog('Metadata',String(err.message||err));}
-  finally{buttons.forEach(b=>b.disabled=false);}
+  finally{metadataUiBusy=false;metadataCancel.hidden=true;buttons.forEach(b=>b.disabled=false);}
 }
 document.getElementById('metadataAuto').addEventListener('click',()=>completeMusicTags('auto'));
 document.getElementById('metadataManual').addEventListener('click',()=>completeMusicTags('manual'));
@@ -1529,8 +1541,13 @@ async function enrichTrackMetadata(item) {
   if (!item.path) return;
   const meta = await window.waveframe.readMetadata(item.path).catch(()=>null);
   if (!meta) return;
-  if (meta.title) item.name = meta.artist ? `${meta.artist} - ${meta.title}` : meta.title;
-  item.artist = meta.artist || null;
+  const base=item.path.split(/[\\/]/).pop().replace(/\.[^/.]+$/, '');
+  const parts=base.split(' - ');
+  const guess=inferDisplay.checked&&parts.length===2&&parts.every(x=>x.trim());
+  const title=meta.title||(guess?parts[1].trim():null);
+  const artist=meta.artist||(guess?parts[0].trim():null);
+  item.name=title?(artist?artist+' - '+title:title):base;
+  item.artist = artist || null;
   item.album = meta.album || null;
   item.picture = meta.picture || null;
   renderPlaylist();
