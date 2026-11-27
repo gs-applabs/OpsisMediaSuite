@@ -1,0 +1,26 @@
+name: Real subtitle RAR CI
+on:
+  pull_request:
+    paths: ['subtitle-rar.js','subtitle-archive.js','subtitle-sidecar.js','test/rar-fixture.js','.github/workflows/subtitle-rar-ci.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rar:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require 7-Zip 25.01 or newer
+        shell: pwsh
+        run: |
+          node -e "require('./subtitle-rar').resolve7Zip().then(x=>process.exitCode=x?0:1)"
+          if ($LASTEXITCODE) {
+            choco install 7zip --version=25.01 --no-progress -y
+            if ($LASTEXITCODE) { throw '7-Zip install failed' }
+          }
+      - name: Actual RAR listing and extraction
+        run: node test/rar-fixture.js

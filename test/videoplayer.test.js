@@ -639,3 +639,18 @@ test('concurrent sidecar saves never overwrite or leave staging files',async()=>
   assert.deepEqual((await fs.readdir(dir)).sort(),['Episode.el.srt','Episode.mkv']);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+
+test('generated RAR fixture has CRC-protected headers and expected member data',()=>{
+ const {storedRar}=require('./rar-fixture'),{signature}=require('../subtitle-rar'),{crc32}=require('../subtitle-archive');
+ const data=Buffer.from('hello'),archive=storedRar([{name:'a.srt',data}]);
+ assert.ok(signature(archive));
+ let offset=7;
+ for(const type of [0x73,0x74,0x7b]){
+  const size=archive.readUInt16LE(offset+5);
+  assert.equal(archive[offset+2],type);
+  assert.equal(archive.readUInt16LE(offset),crc32(archive.subarray(offset+2,offset+size))&65535);
+  offset+=size;if(type===0x74){assert.deepEqual(archive.subarray(offset,offset+data.length),data);offset+=data.length;}
+ }
+ assert.equal(offset,archive.length);
+});
