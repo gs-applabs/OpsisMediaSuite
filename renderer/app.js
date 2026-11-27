@@ -1436,6 +1436,7 @@ function playTrackAt(index) {
   window.WaveframeVideoPlayer?.pause();
   currentTrackIndex = index;
   const item = playlist[index];
+  if(item.path&&!musicArtCache.has(item)&&!item.picture)void enrichTrackMetadata(item,true);
   engine.switchTrack((slotIndex) => {
     const slot=engine.slots[slotIndex],old=slot.objectUrl;
     slot.el.pause();
@@ -1644,7 +1645,14 @@ document.getElementById('metadataManual').addEventListener('click',()=>completeM
 document.getElementById('metadataOnline').addEventListener('click',()=>completeMusicTags('online'));
 document.getElementById('metadataFingerprint').addEventListener('click',()=>completeMusicTags('fingerprint'));
 
-const metadataReads=new WeakMap();let metadataTail=Promise.resolve(),metadataRenderTimer=0,metadataSaveTimer=0;
+const metadataReads=new WeakMap(),musicArtCache=new Map();let metadataTail=Promise.resolve(),metadataRenderTimer=0,metadataSaveTimer=0;
+function retainMusicArt(item,picture){
+  for(const key of musicArtCache.keys())if(!playlist.includes(key))musicArtCache.delete(key);
+  if(picture)OpsisFeatureGuide.retainImage(musicArtCache,item,picture);
+  // Items and resolved metadata promises must not retain evicted cover bytes.
+  for(const track of playlist)if(track.picture&&!musicArtCache.has(track))track.picture=null;
+  return musicArtCache.get(item)||null;
+}
 function scheduleMetadataRefresh(){
   if(!metadataRenderTimer)metadataRenderTimer=setTimeout(()=>{metadataRenderTimer=0;renderPlaylist(false);},200);
   clearTimeout(metadataSaveTimer);metadataSaveTimer=setTimeout(()=>{metadataSaveTimer=0;savePlaylist();},1000);
@@ -1654,7 +1662,13 @@ async function enrichTrackMetadata(item,force=false) {
   if (!item.path||!playlist.includes(item)) return;
   let task=metadataReads.get(item);
   if(!task||force){
-    task=metadataTail.then(()=>playlist.includes(item)?window.waveframe.readMetadata(item.path):null).catch(()=>null);
+    task=metadataTail.then(async()=>{
+      if(!playlist.includes(item))return null;
+      const meta=await window.waveframe.readMetadata(item.path);
+      if(!meta||!playlist.includes(item))return null;
+      if(meta.picture)retainMusicArt(item,meta.picture);else musicArtCache.delete(item);
+      const {picture,...text}=meta;return text;
+    }).catch(()=>null);
     metadataTail=task.then(()=>{});
     metadataReads.set(item,task);
   }
@@ -1667,11 +1681,12 @@ async function enrichTrackMetadata(item,force=false) {
   const title=meta.title||(guess?parts[1].trim():null);
   const artist=meta.artist||(guess?parts[0].trim():null);
   const name=title?(artist?artist+' - '+title:title):base;
-  if(item.name===name&&item.artist===(artist||null)&&item.album===(meta.album||null)&&item.picture===(meta.picture||null))return;
+  const picture=musicArtCache.get(item)||null;
+  if(item.name===name&&item.artist===(artist||null)&&item.album===(meta.album||null)&&item.picture===picture)return;
   item.name=name;
   item.artist = artist || null;
   item.album = meta.album || null;
-  item.picture = meta.picture || null;
+  item.picture = picture;
   scheduleMetadataRefresh();
   if (playlist[currentTrackIndex] === item) updateTrackNameUi();
 }
@@ -1700,10 +1715,11 @@ function savePlaylist() {
 function restorePlaylist() {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(PLAYLIST_KEY)) || []; } catch { saved = []; }
-  if (saved.length === 0) return;
+  if (!Array.isArray(saved)||saved.length === 0) return;
   saved.forEach((entry) => {
-    if (entry.path) playlist.push({ path: entry.path, url: pathToFileUrl(entry.path), name: entry.name });
-    else if (entry.url) playlist.push({ url: entry.url, name: entry.name });
+    if (!entry||typeof entry!=='object')return;
+    if (typeof entry.path==='string'&&entry.path) playlist.push({ path: entry.path, url: pathToFileUrl(entry.path), name: entry.name });
+    else if (typeof entry.url==='string'&&entry.url) playlist.push({ url: entry.url, name: entry.name });
   });
   renderPlaylist();
   // Refresh tags on restored local files in sequence to avoid unbounded disk IO.
@@ -1763,6 +1779,7 @@ function renderPlaylist(persist=true) {
       const activeItem=engine.slots[engine.activeSlot].item;
       if(activeItem===removed)engine.pauseActive();
       playlist.splice(idx, 1);
+      musicArtCache.delete(removed);metadataReads.delete(removed);
       if(activeItem===removed)currentTrackIndex=-1;
       else if(activeItem&&playlist.includes(activeItem))currentTrackIndex=playlist.indexOf(activeItem);
       else if(wasSelected)currentTrackIndex=-1;

@@ -14,7 +14,7 @@
   const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let openGeneration = 0;
+  let openGeneration = 0,opening=false;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
   let history=P.createHistory({params,cropKey});
@@ -37,7 +37,7 @@
       row.append(label, input, out); box.append(row);
     }
     for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k; $('phCrop').append(o); }
-    $('phOpen').addEventListener('click', async () => { const p = await api.photoPick(); if (p) openPath(p); });
+    $('phOpen').addEventListener('click', async () => { if(opening||busy)return;const p = await api.photoPick(); if (p) openPath(p); });
     $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params={...P.applyLook(params,$('phLook').value,Number($('phLookStrength').value)),anchorX:params.anchorX,anchorY:params.anchorY};syncSliders();checkpoint();schedule();});
     $('phAuto').addEventListener('click', () => { if (!preview) return; params = P.applyAuto(preview,params); syncSliders(); checkpoint(); schedule(); });
     $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders(); checkpoint(); schedule(); });
@@ -78,16 +78,24 @@
   }
 
   async function openPath(p) {
-    if (busy) return;
+    if (busy||opening) return;
+    opening=true;$('phOpen').disabled=true;
     const generation = ++openGeneration;
-    info(t('ph.loading'));
-    const r = await api.photoRead(p).catch(() => null);
-    if (generation !== openGeneration || busy) return;
-    if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
-    await openBlob(new Blob([r.bytes]), r.name, generation);
+    try{
+      info(t('ph.loading'));
+      const r = await api.photoRead(p).catch(() => null);
+      if (generation !== openGeneration || busy) return;
+      if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
+      await decodeBlob(new Blob([r.bytes]),r.name,generation);
+    }finally{opening=false;$('phOpen').disabled=false;}
   }
 
-  async function openBlob(blob, nm, generation = ++openGeneration) {
+  async function openBlob(blob,nm){
+    if(busy||opening)return;
+    opening=true;$('phOpen').disabled=true;
+    try{await decodeBlob(blob,nm,++openGeneration);}finally{opening=false;$('phOpen').disabled=false;}
+  }
+  async function decodeBlob(blob, nm, generation) {
     if (busy) return;
     if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
     let candidate=null;
@@ -183,7 +191,7 @@
   }
   function exportSize(){if(!bmp)return;const s=P.outputSize(bmp.width,bmp.height,full()),o=P.resizeOutput(s.width,s.height,Number($('phResize').value));$('phDimensions').textContent=o.width+' × '+o.height+' px';}
   async function save() {
-    if (!bmp || busy) return;
+    if (!bmp || busy || opening) return;
     busy = true; ++openGeneration;
     const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value),matte=$('phMatte').value;
     if(!P.exportBudget(source.width,source.height,snapshot,maxEdge)){busy=false;info(t('ph.tooLarge'));return;}

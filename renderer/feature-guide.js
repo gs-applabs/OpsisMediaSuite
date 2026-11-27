@@ -13,5 +13,13 @@ const extraStrings={"el":["Η επιλογή ανοίγει το εργαλεί�
 function ui(lang){const [title,find,all,tab,helpSearch,helpTitle,empty]=uiStrings[lang]||uiStrings.en;const [hint,placeholder,results,loadFailed,availability,experimental,clear,welcome]=extraStrings[lang]||extraStrings.en;return {title,find,all,tab,helpSearch,helpTitle,empty,hint,placeholder,results,loadFailed,availability,experimental,clear,welcome};}
 function shortcutAllowed(e,active,owner){return active===owner&&!e.defaultPrevented&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.interactive&&!e.modal;}
 function loudnessEligibility({local,size,duration}){if(!local)return 'local-only';if(Number.isFinite(size)&&size>32*1024*1024)return 'size-limit';if(!Number.isFinite(duration)||duration<=0)return 'wait';if(duration>600)return 'duration-limit';return 'ok';}
-const api={list,tabs,ui,shortcutAllowed,loudnessEligibility};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
+// Bounded cache of transient images; never evict a user's source or queue entry.
+function retainImage(cache,key,value,maxBytes=16*1024*1024,maxItems=96){
+ if(typeof value!=='string'||value.length>maxBytes/2)return false;
+ cache.delete(key);cache.set(key,value);
+ let bytes=0;for(const image of cache.values())bytes+=image.length*2;
+ while(cache.size>maxItems||bytes>maxBytes){const oldest=cache.keys().next().value;bytes-=cache.get(oldest).length*2;cache.delete(oldest);}
+ return cache.has(key);
+}
+const api={list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
 })(typeof window!=='undefined'?window:globalThis);

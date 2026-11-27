@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.6 anti-pile-up
+- Serialize video preview probes and thumbnails, coalesce refreshes and discard removed-item results. Bound transient music artwork and converter thumbnails to 16 MiB estimated string storage each; evicted artwork is re-read when playing a track. Allow completed converter rows to be removed independently. Prevent concurrent photo decode/read/export. Preserve user files and playlists; no forced memory purge. New CI pending.
+
 ## Unreleased — Ultra Mega Pass 20B.5 / 20C.4
 - 20B.4 measured idle CPU 0.60% vs 8.56% on separate Windows runners; 275 unit/real-conversion tests passed, eight specialist workflows passed. Real soak playback time advanced 14/20 despite 20/20 source switches. Await direct play promise (including rejection and supersession), explicitly reload replacement media, and require confirmed current source in soak. Log per-cycle diagnostics for remaining stalls. Defer convolution impulse and exciter curve until first enable. New CI pending; do not treat playback failure as resolved.
 

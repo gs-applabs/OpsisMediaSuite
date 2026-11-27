@@ -11,6 +11,23 @@
   const KEY = 'waveframe.vid.opts';
   const $ = (id) => document.getElementById(id);
   let items = [];
+  const previewQueue=new Set(),previewCache=new Map();
+  let previewBusy=false,previewRender=0;
+  function refreshPreviews(){if(!previewRender)previewRender=setTimeout(()=>{previewRender=0;renderList();fillTracks();estimate();},200);}
+  async function drainPreviews(){
+    if(previewBusy)return;previewBusy=true;
+    try{while(previewQueue.size){
+      const it=previewQueue.values().next().value;previewQueue.delete(it);
+      if(!items.includes(it))continue;
+      try{const info=await api.vidProbe(it.path);if(items.includes(it)&&info)it.info=info;}catch{}
+      if(!items.includes(it))continue;
+      try{const th=await api.vidThumb(it.path,1);if(items.includes(it)&&th)OpsisFeatureGuide.retainImage(previewCache,it,th,16*1024*1024,64);}catch{}
+      refreshPreviews();
+    }}finally{previewBusy=false;}
+  }
+  function forgetPreview(it){previewQueue.delete(it);previewCache.delete(it);}
+  function clearPreviews(){previewQueue.clear();previewCache.clear();}
+
   let running = null;
   let current = null;
   let encInfo = null;      // result of vid:encoders (null until asked, { ffmpeg:false } when no ffmpeg)
@@ -236,10 +253,8 @@
       }
     }
     renderList();
-    for (const it of added) {
-      api.vidProbe(it.path).then((info) => { if (info) { it.info = info; renderList(); fillTracks(); estimate(); } }).catch(() => {});
-      api.vidThumb(it.path, 1).then((th) => { if (th) { it.thumb = th; renderList(); } }).catch(() => {});
-    }
+    for(const it of added)previewQueue.add(it);
+    void drainPreviews();
   }
 
   function renderList() {
@@ -250,7 +265,8 @@
     for (const f of items) {
       const status = f.state === 'failed' ? fmt(t('conv.st.failed'), { why: f.err || '' }) : t(`conv.st.${f.state}`);
       const meta = f.info ? [f.info.video ? `${f.info.video.width}×${f.info.video.height}` : '', f.info.video ? f.info.video.codec : '', clock(f.info.duration)].filter(Boolean).join(' · ') : '';
-      const thumb = f.thumb ? h('img', { class: 'vid-thumb', src: f.thumb, alt: '' }) : h('div', { class: 'vid-thumb vid-thumb-empty', 'aria-hidden': 'true', text: '🎞' });
+      const picture=previewCache.get(f);
+      const thumb = picture ? h('img', { class: 'vid-thumb', src: picture, alt: '', loading:'lazy' }) : h('div', { class: 'vid-thumb vid-thumb-empty', 'aria-hidden': 'true', text: '🎞' });
       const row = h('div', { class: `conv-row vid-row ${f.state}` }, [
         thumb,
         h('div', { class: 'vid-info' }, [h('div', { class: 'conv-name', title: f.path, text: f.name }), h('div', { class: 'vid-meta', text: meta })]),
@@ -258,7 +274,7 @@
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `vbar-${f.id}` })]),
       ]);
       if (f.state === 'done' && f.out) row.append(h('button', { class: 'small-btn', text: t('conv.reveal'), onclick: () => api.convReveal(f.out) }));
-      else if (!running) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { items = items.filter((x) => x !== f); renderList(); fillTracks(); estimate(); } }));
+      if (!running) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(running)return;forgetPreview(f);items = items.filter((x) => x !== f); renderList(); fillTracks(); estimate(); } }));
       list.append(row);
       const bar = $(`vbar-${f.id}`);
       if (bar) bar.style.width = `${Math.round((f.state === 'done' ? 1 : f.pct) * 100)}%`;
@@ -331,7 +347,7 @@
     for (const ev of ['dragenter', 'dragover']) $('vidDrop').addEventListener(ev, (e) => { e.preventDefault(); $('vidDrop').classList.add('over'); });
     $('vidDrop').addEventListener('dragleave', () => $('vidDrop').classList.remove('over'));
     $('vidDrop').addEventListener('drop', async (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[])); });
-    $('vidClear').addEventListener('click', () => { if (!running) { items = []; renderList(); fillTracks(); estimate(); } });
+    $('vidClear').addEventListener('click', () => { if (!running) { clearPreviews();items = []; renderList(); fillTracks(); estimate(); } });
     $('vidPresets').addEventListener('click', (e) => { const b = e.target.closest('button[data-preset]'); if (b) applyPreset(b.dataset.preset); });
     for (const id of ['vidCodec', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
       $(id).addEventListener('change', sync);
@@ -354,5 +370,5 @@
   document.addEventListener('waveframe:converter-built', () => { if (!running) build(); });
   build();
   // exposed for the layout self-test (every language x zoom) and the unit-level checks
-  window.WaveframeVideoUi = { addPaths, clearItems: () => { items = []; renderList(); }, showRunning: (on) => { $('vidStart').classList.toggle('dep-hidden', on); $('vidCancel').classList.toggle('dep-hidden', !on); $('vidTrack').classList.toggle('dep-hidden', !on); }, applyPreset, collect, getEncInfo: () => encInfo };
+  window.WaveframeVideoUi = { addPaths, clearItems: () => { clearPreviews();items = []; renderList(); }, showRunning: (on) => { $('vidStart').classList.toggle('dep-hidden', on); $('vidCancel').classList.toggle('dep-hidden', !on); $('vidTrack').classList.toggle('dep-hidden', !on); }, applyPreset, collect, getEncInfo: () => encInfo };
 })();

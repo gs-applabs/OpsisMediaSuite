@@ -325,7 +325,7 @@
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `bar-${f.id}` })]),
       ]);
       if (f.state === 'done' && f.out) row.append(h('button', { class: 'small-btn', text: t('conv.reveal'), onclick: () => api.convReveal(f.out) }));
-      else if (!running&&!starting) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(starting||running)return;files = files.filter((x) => x !== f); renderList(); } }));
+      if (!running&&!starting) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(starting||running)return;files = files.filter((x) => x !== f); renderList(); } }));
       list.append(row);
       const bar = $(`bar-${f.id}`);
       if (bar) bar.style.width = `${Math.round((f.state === 'done' ? 1 : f.pct) * 100)}%`;
