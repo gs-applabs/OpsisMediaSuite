@@ -6,6 +6,19 @@
 
 <p align="center"><a href="#at-a-glance--με-μια-ματιά">Overview / Επισκόπηση</a> · <a href="#full-documentation--αναλυτική-τεκμηρίωση">Full documentation / Τεκμηρίωση</a> · <a href="https://github.com/gs-applabs/OpsisMediaSuite/issues">Support / Υποστήριξη</a> · <a href="https://github.com/gs-applabs">GS App Labs</a></p>
 
+## Current screenshot gallery / Νέα στιγμιότυπα
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="docs/product-snapshots/0-midnight-enhance.png"><img src="docs/product-snapshots/0-midnight-enhance.png" width="100%" alt="Audio enhancement / Ενίσχυση ήχου"/></a><br/><sub>Audio enhancement / Ενίσχυση ήχου</sub></td>
+<td width="50%" valign="top"><a href="docs/product-snapshots/1-light-video.png"><img src="docs/product-snapshots/1-light-video.png" width="100%" alt="Video player / Αναπαραγωγή βίντεο"/></a><br/><sub>Video player / Αναπαραγωγή βίντεο</sub></td>
+</tr>
+</table>
+
+**[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)** · [Capture workflow / Μηχανισμός λήψης](../../actions/workflows/product-snapshots.yml)
+
+<sub>Actual application rendering on Windows CI. / Πραγματική απεικόνιση σε Windows CI.</sub>
+
 ## At a glance / Με μια ματιά
 
 | | What you can do / Τι μπορείς να κάνεις |
@@ -181,9 +194,3 @@ npm run dist        # produces a portable build + NSIS installer (Windows x64) i
 *Opsis Media Suite is distributed under the **MIT License** (see [LICENSE](LICENSE)). The full texts of the third-party licenses (Electron/Chromium, music-metadata, adm-zip: MIT; FFmpeg: LGPL v3, which incorporates the GPL v3 by reference) are in the [licenses](licenses) folder and in Help → License.*
 
 **Το λογισμικό παρέχεται "ΩΣ ΕΧΕΙ", χωρίς καμία εγγύηση. / Provided "AS IS", without warranty of any kind.**
-
-
-## Current screenshot gallery / Νέα στιγμιότυπα
-
-[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)
-
