@@ -63,6 +63,25 @@ jobs:
                 fs.writeFileSync(path.join(out, String(theme)+'-'+String(skin).replace(/[^a-z0-9-]/gi,'_')+'-'+tab+'.png'), img.toPNG());
               }
             }
+            await win.webContents.executeJavaScript("document.querySelector('.tab-btn[data-tab=player]').click(); document.getElementById('btnTestTone').click()", true);
+            await delay(800);
+            const modes = await win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.vis-picker-card[data-mode]')).map(b=>b.dataset.mode).filter(k=>k!=='none')");
+            if (modes.length < 2) throw new Error('Missing visualizer modes');
+            async function shot(name) {
+              await delay(750);
+              const img = await win.webContents.capturePage();
+              if (img.isEmpty() || img.getSize().width < 400) throw new Error('Empty capture: '+name);
+              fs.writeFileSync(path.join(out,name+'.png'),img.toPNG());
+            }
+            for (const mode of modes) {
+              if (!/^[a-z0-9_-]+$/i.test(mode)) throw new Error('Invalid visualizer identifier');
+              await win.webContents.executeJavaScript("document.querySelector('.vis-picker-card[data-mode="+mode+"]').click()");
+              await shot('demo-visualizer-'+mode);
+            }
+            await win.webContents.executeJavaScript("document.getElementById('btnVisPicker').click()");
+            await shot('demo-visualizer-picker');
+            await win.webContents.executeJavaScript("document.getElementById('btnVisPicker').click(); document.querySelector('.tab-btn[data-tab=enhance]').click()");
+            await shot('demo-audio-enhancement');
             app.exit(0);
           })().catch(err=>{ console.error(err); app.exit(1); });
           setTimeout(()=>app.exit(2),180000).unref();
@@ -80,7 +99,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $src = Join-Path $env:RUNNER_TEMP 'product-snapshots'
           $files = @(Get-ChildItem $src -File -Filter '*.png')
-          if ($files.Count -lt 12) { throw 'Missing tab or theme screenshots' }
+          if ($files.Count -lt 16) { throw 'Missing tab or theme screenshots' }
           Add-Type -AssemblyName System.Drawing
           foreach ($file in $files) {
             $image = [Drawing.Image]::FromFile($file.FullName)
@@ -89,7 +108,7 @@ jobs:
           $dest = 'docs/product-snapshots'
           if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
           New-Item -ItemType Directory -Force $dest | Out-Null
-          $lines = @('# Application screenshots / Στιγμιότυπα εφαρμογής', '', "Source commit: $env:GITHUB_SHA", '', 'Actual Electron UI started through its package entrypoint, isolated empty media library, two themes. Not a playback or conversion test.', '')
+          $lines = @('# Application screenshots / Στιγμιότυπα εφαρμογής', '', "Source commit: $env:GITHUB_SHA", '', 'Actual Electron UI started through its package entrypoint, isolated profile, two themes, built-in test tone and visualizer previews. Not a full playback or conversion test.', '')
           foreach ($file in ($files | Sort-Object Name)) {
             Copy-Item $file.FullName $dest
             $lines += @("### $($file.BaseName)", '', "![$($file.BaseName)]($($file.Name))", '')
