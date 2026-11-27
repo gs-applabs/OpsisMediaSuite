@@ -12,6 +12,7 @@ const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
+const AutoSync=require('./subtitle-autosync.js');
 
 const VIDEO_EXTS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif'];
@@ -160,6 +161,19 @@ function init({ getMainWin, resolveFfmpegPath }) {
   });
   ipcMain.handle('vp:sub-download',async(e,id)=>trusted(e)?subtitleProvider.download(id):{ok:false,code:'denied'});
   ipcMain.handle('vp:sub-disconnect',e=>trusted(e)?subtitleProvider.clear():false);
+  let autoSyncBusy=false;
+  ipcMain.handle('vp:sub-autosync',async(e,req)=>{
+    if(!trusted(e)||autoSyncBusy||!req||!Array.isArray(req.cues)||req.cues.length>20000)return {ok:false,code:'denied-or-busy'};
+    const p=allowedFile(req.path,PLAY_EXTS);
+    if(!p||!approved.has(p))return {ok:false,code:'denied'};
+    autoSyncBusy=true;
+    try{
+      const ff=await resolveFfmpegPath();
+      if(!ff||!trusted(e))return {ok:false,code:'no-ffmpeg'};
+      const activity=await AutoSync.extractActivity(ff,p);
+      return AutoSync.estimate(activity,req.cues);
+    }catch{return {ok:false,code:'audio-analysis-failed'};}finally{autoSyncBusy=false;}
+  });
   let subtitleSaveBusy=false;
   ipcMain.handle('vp:save-sub',async(e,req)=>{
     if(!trusted(e)||subtitleSaveBusy||!req||!['srt','vtt'].includes(req.format)||typeof req.text!=='string'||!req.text.trim()||Buffer.byteLength(req.text,'utf8')>MAX_SUB_BYTES)return {ok:false};

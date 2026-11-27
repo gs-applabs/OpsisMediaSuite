@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpSubSearch:req=>ipcRenderer.invoke('vp:sub-search',req),
   vpSubDownload:id=>ipcRenderer.invoke('vp:sub-download',id),
   vpSubDisconnect:()=>ipcRenderer.invoke('vp:sub-disconnect'),
+  vpSubAutoSync:req=>ipcRenderer.invoke('vp:sub-autosync',req),
   vpExists: (list) => ipcRenderer.invoke('vp:exists', list),
   photoPick: () => ipcRenderer.invoke('photo:pick'),
   photoRead: (p) => ipcRenderer.invoke('photo:read', p),

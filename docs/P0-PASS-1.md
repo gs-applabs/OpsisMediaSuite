@@ -99,3 +99,6 @@ Choose two original cue starts and corresponding paused video positions. Compute
 
 ## Pass 31 — optional OpenSubtitles moviehash matching
 Read only first/last 64KiB of an already authorized local media file, compute unsigned 64-bit hash plus size, check stat consistency. Explicit opt-in; send hash not path/file, try hash match then title fallback; show provider-reported hash match, 20 language choices. Exact release match improves odds but does not guarantee synchronized dialogue. Unit test for overflow and too-small input. Live authenticated provider still unverified.
+
+## Pass 32 — offline audio activity synchronization suggestions
+Added bounded FFmpeg mono PCM analysis (first 30 minutes, max 120s execution), 100ms energy/activity envelope, normalized correlation of subtitle intervals across offsets and common FPS ratios. Reject constant/weak/ambiguous signals; explicit preview and apply, no network, only previously approved local files. This is heuristic audio activity alignment, not speech recognition or guaranteed dialogue alignment; first audio stream only. Unit fixture and new CI pending.

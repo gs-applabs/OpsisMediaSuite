@@ -260,3 +260,13 @@ test('OpenSubtitles moviehash reads first and last 64KiB and matches unsigned 64
   fs.writeFileSync(p,Buffer.alloc(12));assert.equal(await movieHash(p),null);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('local audio activity sync detects known offset and rejects constant or ambiguous audio',()=>{
+ const A=require('../subtitle-autosync');
+ const cues=[{start:2,end:3.1},{start:6,end:7.7},{start:11,end:12.4},{start:18,end:20.3},{start:27,end:28.2},{start:36,end:38.5},{start:46,end:47.5},{start:53,end:55.1}];
+ const activity=new Uint8Array(650);
+ for(const c of cues)activity.fill(1,Math.round((c.start+1.7)*10),Math.round((c.end+1.7)*10));
+ const r=A.estimate(activity,cues);assert.equal(r.ok,true,JSON.stringify(r));assert.equal(r.scale,1);assert.equal(r.delay,1.7);
+ assert.equal(A.estimate(new Uint8Array(650).fill(1),cues).ok,false);
+ assert.equal(A.activityFromPcm(Buffer.alloc(16000*15)),null);
+});
