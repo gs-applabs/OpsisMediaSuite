@@ -13,4 +13,11 @@ function summarizeMetrics(metrics){
  }
  return {rows,workingSetKiB:rows.every(r=>r.workingSetKiB!==null)?rows.reduce((n,r)=>n+r.workingSetKiB,0):null};
 }
-module.exports={summarizeMetrics};
+function aggregateSamples(samples){
+ const good=samples.filter(s=>s&&Array.isArray(s.rows)&&s.rows.length);
+ const memory=good.map(s=>s.workingSetKiB).filter(Number.isFinite);
+ const cpu=good.map(s=>s.rows.every(r=>Number.isFinite(r.cpuPercent))?s.rows.reduce((sum,r)=>sum+r.cpuPercent,0):null).filter(Number.isFinite);
+ const average=a=>a.length?Math.round(a.reduce((n,x)=>n+x,0)/a.length*100)/100:null;
+ return {samples:good.length,workingSetKiBMean:average(memory),workingSetKiBMax:memory.length?Math.max(...memory):null,cpuPercentMean:average(cpu),cpuPercentMax:cpu.length?Math.max(...cpu):null};
+}
+module.exports={summarizeMetrics,aggregateSamples};

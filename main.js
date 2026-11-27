@@ -268,10 +268,14 @@ function createWindow() {
       setTimeout(async () => {
         let code = 1;
         try {
+          const profile=process.env.OPSIS_RESOURCE_PROFILE==='1';
+          const sample=async phase=>{if(!profile)return;const {summarizeMetrics,aggregateSamples}=require('./resource-diagnostics.js');const rows=[];app.getAppMetrics();for(let i=0;i<5;i++){await new Promise(r=>setTimeout(r,1000));rows.push(summarizeMetrics(app.getAppMetrics()));}console.log('RESOURCE_PROFILE '+JSON.stringify({phase,...aggregateSamples(rows),scope:'Electron processes only; summed working sets may double-count shared pages'}));};
+          await sample('startup-idle');
           const results = await win.webContents.executeJavaScript('window.__selfTest()');
           results.push(...await suiteApi.selfTest());
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
+          await sample('post-selftest');
           for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.extra ? ' — ' + r.extra : ''}`);
           code = results.every((r) => r.ok) ? 0 : 1;
         } catch (e) { console.log('FAIL self-test could not run: ' + e); }

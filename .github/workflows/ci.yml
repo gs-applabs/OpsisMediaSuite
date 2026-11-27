@@ -44,4 +44,15 @@ jobs:
       - name: Unit, localisation, security and real-conversion tests
         run: npm test
       - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
-        run: npm run selftest
+        env:
+          OPSIS_RESOURCE_PROFILE: '1'
+        run: |
+          npm run selftest 2>&1 | Tee-Object -FilePath selftest-resource.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload resource sampling and renderer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-resource-profile
+          path: selftest-resource.log
+          if-no-files-found: warn

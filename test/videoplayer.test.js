@@ -664,3 +664,5 @@ test('RAR technical listing preserves blank trailing field values and CRLF',()=>
  assert.equal(parseListing(row.replace('Encrypted = -','Encrypted = +')),null);
  assert.equal(parseListing(row.replace('Characteristics = ','Malformed')),null);
 });
+
+test('resource aggregates distinguish missing values and summarize measured samples',()=>{const {aggregateSamples}=require('../resource-diagnostics');assert.deepEqual(aggregateSamples([{rows:[{cpuPercent:2},{cpuPercent:3}],workingSetKiB:100},{rows:[{cpuPercent:7}],workingSetKiB:200}]),{samples:2,workingSetKiBMean:150,workingSetKiBMax:200,cpuPercentMean:6,cpuPercentMax:7});assert.equal(aggregateSamples([{rows:[{cpuPercent:null}],workingSetKiB:null}]).cpuPercentMean,null);});

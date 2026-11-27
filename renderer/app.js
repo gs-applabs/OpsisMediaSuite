@@ -1731,9 +1731,13 @@ function renderPlaylist(persist=true) {
     rm.textContent = '✕';
     rm.addEventListener('click', (e) => {
       e.stopPropagation();
+      const removed=playlist[idx];
       playlist.splice(idx, 1);
-      if (idx === currentTrackIndex) { engine.pauseActive(); currentTrackIndex = -1; updateTrackNameUi(); }
+      if (idx === currentTrackIndex) { engine.pauseActive(); currentTrackIndex = -1; }
       else if (idx < currentTrackIndex) currentTrackIndex--;
+      // Release a removed file even if a paused crossfade slot still holds it.
+      for(const slot of engine.slots)if(slot.item===removed){slot.el.pause();slot.el.removeAttribute('src');slot.el.load();if(slot.objectUrl)URL.revokeObjectURL(slot.objectUrl);slot.objectUrl=null;slot.item=null;slot.name='';}
+      if(currentTrackIndex===-1)updateTrackNameUi();
       renderPlaylist();
     });
     li.appendChild(rm);
@@ -2206,9 +2210,11 @@ function tickAutoHue(now) {
     lastHueTick = now;
     bgCanvasEl.style.filter = `hue-rotate(${autoHue}deg)`;
   }
-  requestAnimationFrame(tickAutoHue);
+  hueFrameId=document.hidden?0:requestAnimationFrame(tickAutoHue);
 }
-requestAnimationFrame(tickAutoHue);
+let hueFrameId=0;
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(hueFrameId)cancelAnimationFrame(hueFrameId);hueFrameId=0;}else if(!hueFrameId){lastHueTick=performance.now();hueFrameId=requestAnimationFrame(tickAutoHue);}});
+hueFrameId=requestAnimationFrame(tickAutoHue);
 
 function restorePreferences() {
   const lang = localStorage.getItem('waveframe.lang') || 'el';
@@ -2782,9 +2788,11 @@ function renderLoop(now=performance.now()) {
       engine.analyser.getByteFrequencyData(freqData);updateMiniMeter();
     }
   }
-  requestAnimationFrame(renderLoop);
+  if(!document.hidden)visualFrameId=requestAnimationFrame(renderLoop);else visualFrameId=0;
 }
-renderLoop();
+let visualFrameId=0;
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(visualFrameId)cancelAnimationFrame(visualFrameId);visualFrameId=0;}else if(!visualFrameId){lastVisualFrame=0;visualFrameId=requestAnimationFrame(renderLoop);}});
+visualFrameId=requestAnimationFrame(renderLoop);
 
 /* ------------------------------------------------------------------ */
 /* Dependencies (FFmpeg)                                              */

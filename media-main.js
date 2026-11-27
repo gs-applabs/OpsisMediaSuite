@@ -398,6 +398,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
     }catch{return {ok:false,code:'extract-failed'};}finally{embeddedBusy=false;}
   });
   let autoSyncBusy=false,autoSyncWorker=null,autoSyncCancelled=false;
+  app.once('before-quit',()=>{autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');if(batchState?.running)batchState.cancelled=true;});
   ipcMain.handle('vp:sub-autosync-cancel',e=>{if(!trusted(e)||!autoSyncBusy)return false;autoSyncCancelled=true;autoSyncWorker?.postMessage('cancel');return true;});
   ipcMain.handle('vp:sub-autosync',async(e,req)=>{
     if(!trusted(e)||autoSyncBusy||!req||!Array.isArray(req.cues)||req.cues.length>20000)return {ok:false,code:'denied-or-busy'};

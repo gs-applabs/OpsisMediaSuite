@@ -12,6 +12,8 @@ const {localDirectory}=require('./local-media-policy');
 const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'aif', 'alac', 'ape', 'wv', 'mka', 'mp2', 'ac3', 'amr'];
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mpg', 'mpeg', '3gp'];
 
+const activeRuns=new Set();
+function cancelActiveRuns(){for(const run of activeRuns)run.cancel();}
 function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 * 60 * 60 * 1000 } = {}) {
   let child = null, cancelled = false, timedOut = false;
   const promise = new Promise((resolve, reject) => {
@@ -35,7 +37,9 @@ function runFfmpeg(ffmpegPath, args, { duration = 0, onProgress, timeoutMs = 6 *
       resolve({ code, stderr: tail, stdout: outTail });
     });
   });
-  return { promise, cancel() { cancelled = true; if (child) try { child.kill(); } catch (_) { /* gone */ } } };
+  const run={promise,cancel(){cancelled=true;if(child)try{child.kill();}catch{}}};
+  activeRuns.add(run);promise.then(()=>activeRuns.delete(run),()=>activeRuns.delete(run));
+  return run;
 }
 
 async function probe(ffmpegPath, file) {
@@ -147,4 +151,4 @@ async function predecodeToWav({ ffmpegPath, input, sampleRate }) {
   } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
 }
 
-module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };
+module.exports = { AUDIO_EXTS, VIDEO_EXTS, runFfmpeg, cancelActiveRuns, probe, verifyDecodes, planOutput, publishOutput, convertDirect, convertFromWav, predecodeToWav };

@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.2
+- Cancel tracked converter jobs and shared FFmpeg runs on app shutdown; request subtitle worker/batch cancellation. Release removed playlist media from paused slots; cancel renderer animation scheduling while hidden. Add opt-in five-sample startup/post-selftest Electron resource reporting and CI artifact. External child processes, disk writes, GPU usage and long-duration soak testing still need dedicated measurements.
+
 ## Unreleased — Ultra Mega Pass 20A.1 / 20B.1
 - Serialized and cached metadata reads per playlist item, coalesced playlist renders and persisted changes after quiet time, bounded retained album art, deduplicated converter settings writes, skipped invisible meter and inactive seek updates. Live loudness analysis only when enabled, one active/latest pending, local files up to 32 MiB and 10 minutes; skips streams to avoid full download. Windows resource measurements and regression tests pending.
 

@@ -20,6 +20,8 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   const jobs = new Map(); // id -> { cancel }
   const cancelledEarly = new Set();
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
+  let closing=false;
+  app.once('before-quit',()=>{closing=true;for(const id of pending)cancelledEarly.add(id);for(const job of jobs.values())try{job.cancel();}catch{}E.cancelActiveRuns();});
   const sendProgress = (payload) => { const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
   const okFile = p => !!localPath(p);
   const sourceGrants=new Set(),subtitleGrants=new Set(),directoryGrants=new Set(),outputGrants=new Set();
@@ -102,13 +104,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.handle('conv:default-dir', (e) => (trusted(e) ? defaultOutDir() : null));
 
   async function track(id, make) {
-    if (pending.has(id) || pending.size >= 4) return {ok:false, code:'busy'};
+    if (closing || pending.has(id) || pending.size >= 4) return {ok:false, code:'busy'};
     pending.add(id);
     try {
-      const ensureActive=()=>{if(cancelledEarly.has(id))throw Object.assign(Error('cancelled'),{code:'cancelled'});};
+      const ensureActive=()=>{if(closing||cancelledEarly.has(id))throw Object.assign(Error('cancelled'),{code:'cancelled'});};
       ensureActive();const job = await make(ensureActive);
       jobs.set(id, job);
-      if (cancelledEarly.delete(id)) job.cancel();
+      if (closing||cancelledEarly.delete(id)) job.cancel();
       const r = await job.promise;
       const output=localPath(r.output);if(output)boundedAdd(outputGrants,output);
       return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
