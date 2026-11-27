@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 20B.4 / 20C.3
+- Event-driven audio visualizer and equalizer background: render a static idle frame, resume with audio; no recurring hue timer for idle equalizer, hidden or disabled backgrounds. Decorative backgrounds keep their animation. Cache theme colors, avoid unchanged canvas reallocations and duplicate now-playing IPC. Explicit audio resume on microphone/test tone. Add idle frame scheduling regression to resource soak. Measured improvement pending.
+
 ## Unreleased — Ultra Mega Pass 20C.2
 - Add isolated opt-in 60-second audio/tab soak (20 real local generated media switches, five removals, final resource cleanup) and post-soak metrics; six repeat conversions verify decoded outputs and staging cleanup. Cancel pending crossfade before removing loaded items, preserve active selection. General and installer CI are keyed by commit to avoid cancellation across development passes. Soak and CI results pending.
 

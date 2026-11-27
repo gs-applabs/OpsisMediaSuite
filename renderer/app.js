@@ -287,6 +287,7 @@ class AudioEngine {
     this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     if (this.testOsc) {
       try { this.testOsc.stop(); } catch { /* already stopped */ }
+      try{this.testOsc.disconnect();}catch{}
       this.testOsc = null;
     }
     if(this.micSource){try{this.micSource.disconnect();}catch{}}
@@ -295,6 +296,7 @@ class AudioEngine {
       this.micStream = null;
       this.micSource = null;
     }
+    window.dispatchEvent(new Event('waveframe:audio-activity'));
   }
 
   async startMic() {
@@ -303,22 +305,26 @@ class AudioEngine {
     const epoch=this.micEpoch;
     const stream=await navigator.mediaDevices.getUserMedia({ audio: true });
     if(epoch!==this.micEpoch){stream.getTracks().forEach(tr=>tr.stop());return false;}
+    this.resume();
     this.micStream=stream;
     this.micSource = this.ctx.createMediaStreamSource(this.micStream);
     this.micSource.connect(this.micGain);
     this.micGain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.05);
+    window.dispatchEvent(new Event('waveframe:audio-activity'));
     return true;
   }
 
   playTestTone() {
     this.stopAlternateSources();
     this.pauseActive();
+    this.resume();
     this.testOsc = this.ctx.createOscillator();
     this.testOsc.type = 'sine';
     this.testOsc.frequency.value = 440;
     this.testOsc.connect(this.toneGain);
     this.testOsc.start();
     this.toneGain.gain.setTargetAtTime(0.4, this.ctx.currentTime, 0.05);
+    window.dispatchEvent(new Event('waveframe:audio-activity'));
   }
 
   get activeEl() { return this.slots[this.activeSlot].el; }
@@ -896,6 +902,7 @@ document.getElementById('miniBarVis').addEventListener('click', () => {
   const i = modes.findIndex((m) => m.key === visMode);
   const next = modes[(i + 1) % modes.length];
   visMode = next.key;
+  window.dispatchEvent(new Event('waveframe:visual-changed'));
   localStorage.setItem('waveframe.visMode', visMode);
   [...visPickerGrid.children].forEach((c) => c.classList.toggle('active', c.dataset.mode === visMode));
   visualizerWrap.classList.toggle('mode-none', false);
@@ -1296,12 +1303,15 @@ function syncMediaSession() {
     navigator.mediaSession.metadata = null;
   }
 }
+let lastNowPlaying='';
 function syncOsNowPlaying() {
   const item = playlist[currentTrackIndex];
   const title = item ? item.name : null;
   const playing = !!(engine.activeEl && !engine.activeEl.paused);
-  window.waveframe?.updateNowPlaying?.({ title, playing });
+  const state=JSON.stringify([title,playing]);
+  if(state!==lastNowPlaying){lastNowPlaying=state;window.waveframe?.updateNowPlaying?.({ title, playing });}
 }
+function audioVisualActive(){return !!(engine.testOsc||engine.micStream||engine.slots.some(s=>!s.el.paused&&!s.el.ended));}
 function fmtTime(s) {
   if (!isFinite(s)) return '0:00';
   const m = Math.floor(s / 60);
@@ -1324,6 +1334,7 @@ els.btnPlay.addEventListener('click', async () => {
   syncPlayButton();
 });
 function syncPlayButton() {
+  window.dispatchEvent(new Event('waveframe:audio-activity'));
   els.btnPlay.textContent = engine.activeEl.paused ? '▶' : '⏸';
   syncOsNowPlaying();
   const miniPlay = document.getElementById('miniBarPlay');
@@ -2195,6 +2206,7 @@ function applyHueMode(mode) {
   [...hueModeSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.hueMode === mode));
   hueSliderRow.classList.toggle('dep-hidden', mode !== 'manual');
   if (mode === 'manual') bgCanvasEl.style.filter = `hue-rotate(${hueSlider.value}deg)`;
+  syncHueSchedule();
 }
 hueModeSeg.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-hue-mode]');
@@ -2212,18 +2224,21 @@ hueSlider.addEventListener('blur',commitHue);
 window.addEventListener('beforeunload',commitHue);
 // Re-filtering a full-window canvas is GPU work on every change: update at ~15 fps (same visible speed: bigger step) and
 // not at all while the window is hidden/minimized.
-let lastHueTick = 0;
-function tickAutoHue(now) {
-  if (hueMode === 'auto' && !document.hidden && !document.body.classList.contains('mini-mode') && localStorage.getItem('waveframe.bg')!=='none' && now - lastHueTick >= 66) {
-    autoHue = (autoHue + 0.06 * ((now - lastHueTick) / 16.7)) % 360;
-    lastHueTick = now;
-    bgCanvasEl.style.filter = `hue-rotate(${autoHue}deg)`;
-  }
-  hueFrameId=document.hidden?0:requestAnimationFrame(tickAutoHue);
+let lastHueTick=0,hueTimer=0;
+function hueWanted(){const mode=Backgrounds.getMode();return hueMode==='auto'&&!document.hidden&&!document.body.classList.contains('mini-mode')&&mode!=='none'&&(mode!=='equalizer'||audioVisualActive())&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches;}
+function syncHueSchedule(){
+  if(!hueWanted()){clearTimeout(hueTimer);hueTimer=0;return;}
+  if(!hueTimer){lastHueTick=performance.now();hueTimer=setTimeout(tickAutoHue,66);}
 }
-let hueFrameId=0;
-document.addEventListener('visibilitychange',()=>{if(document.hidden){if(hueFrameId)cancelAnimationFrame(hueFrameId);hueFrameId=0;}else if(!hueFrameId){lastHueTick=performance.now();hueFrameId=requestAnimationFrame(tickAutoHue);}});
-hueFrameId=requestAnimationFrame(tickAutoHue);
+function tickAutoHue(){
+  hueTimer=0;if(!hueWanted())return;
+  const now=performance.now();autoHue=(autoHue+.06*Math.min(100,now-lastHueTick)/16.7)%360;lastHueTick=now;
+  bgCanvasEl.style.filter='hue-rotate('+autoHue+'deg)';
+  hueTimer=setTimeout(tickAutoHue,66);
+}
+for(const ev of ['waveframe:audio-activity','waveframe:background-mode'])window.addEventListener(ev,syncHueSchedule);
+document.addEventListener('visibilitychange',syncHueSchedule);
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',syncHueSchedule);
 
 function restorePreferences() {
   const lang = localStorage.getItem('waveframe.lang') || 'el';
@@ -2395,6 +2410,7 @@ visPickerGrid.addEventListener('click', (e) => {
   const card = e.target.closest('.vis-picker-card');
   if (!card) return;
   visMode = card.dataset.mode;
+  window.dispatchEvent(new Event('waveframe:visual-changed'));
   localStorage.setItem('waveframe.visMode', visMode);
   [...visPickerGrid.children].forEach((c) => c.classList.toggle('active', c === card));
   visualizerWrap.classList.toggle('mode-none', visMode === 'none');
@@ -2404,8 +2420,9 @@ btnVisPicker.addEventListener('click', () => visPickerGrid.classList.toggle('dep
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0) return;
-  canvas.width = rect.width * devicePixelRatio;
-  canvas.height = rect.height * devicePixelRatio;
+  const width=Math.round(rect.width*devicePixelRatio),height=Math.round(rect.height*devicePixelRatio);
+  if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}
+  window.dispatchEvent(new Event('waveframe:visual-changed'));
 }
 setTimeout(resizeCanvas, 0);
 window.addEventListener('resize', resizeCanvas);
@@ -2777,31 +2794,35 @@ function updateMiniMeter() {
   });
 }
 const tabPlayerEl = document.getElementById('tab-player');
-let lastVisualFrame=0;
-function renderLoop(now=performance.now()) {
-  if (!document.hidden&&now-lastVisualFrame>=32) {
-    lastVisualFrame=now;
-    // Skip the (potentially expensive, especially the particle-based) canvas
-    // drawing when the Player tab isn't even visible — real CPU/battery win,
-    // since a hidden `.tab-pane { display: none }` doesn't stop rAF on its own.
-    if (tabPlayerEl.classList.contains('active') || document.body.classList.contains('mini-mode')) {
-      if (visMode !== prevVisMode) { particles = []; prevVisMode = visMode; }
-      if (visMode !== 'none') {
-        engine.analyser.getByteFrequencyData(freqData);
-        engine.analyser.getByteTimeDomainData(timeData);
-        const draw = VIS_DRAW[visMode] || drawBars;
-        draw();
-      }
-    }
-    if(meterBars.length&&document.getElementById('tab-enhance').classList.contains('active')){
-      engine.analyser.getByteFrequencyData(freqData);updateMiniMeter();
-    }
-  }
-  if(!document.hidden)visualFrameId=requestAnimationFrame(renderLoop);else visualFrameId=0;
+let lastVisualFrame=0,visualFrameId=0,visualDirty=true;
+const enhanceTabEl=document.getElementById('tab-enhance');
+function visibleVisualizer(){return (tabPlayerEl.classList.contains('active')||document.body.classList.contains('mini-mode'))&&visMode!=='none';}
+function visibleMeter(){return meterBars.length>0&&enhanceTabEl.classList.contains('active')&&!document.body.classList.contains('mini-mode');}
+function scheduleVisual(){if(!visualFrameId&&!document.hidden&&(visibleVisualizer()||visibleMeter()))visualFrameId=requestAnimationFrame(renderLoop);}
+function invalidateVisual(){
+  visualDirty=true;
+  const active=audioVisualActive();Backgrounds.setAudioActive(active);
+  if(document.hidden||!(visibleVisualizer()||visibleMeter())){if(visualFrameId)cancelAnimationFrame(visualFrameId);visualFrameId=0;return;}
+  scheduleVisual();
 }
-let visualFrameId=0;
-document.addEventListener('visibilitychange',()=>{if(document.hidden){if(visualFrameId)cancelAnimationFrame(visualFrameId);visualFrameId=0;}else if(!visualFrameId){lastVisualFrame=0;visualFrameId=requestAnimationFrame(renderLoop);}});
-visualFrameId=requestAnimationFrame(renderLoop);
+function renderLoop(now=performance.now()){
+  visualFrameId=0;if(document.hidden)return;
+  const active=audioVisualActive(),vis=visibleVisualizer(),meter=visibleMeter();
+  if(!vis&&!meter)return;
+  if(visualDirty||(active&&now-lastVisualFrame>=32)){
+    lastVisualFrame=now;visualDirty=false;
+    if(active){engine.analyser.getByteFrequencyData(freqData);if(vis)engine.analyser.getByteTimeDomainData(timeData);}
+    else{freqData.fill(0);timeData.fill(128);}
+    if(vis){if(visMode!==prevVisMode||!active){particles=[];prevVisMode=visMode;}(VIS_DRAW[visMode]||drawBars)();}
+    if(meter)updateMiniMeter();
+  }
+  if(active)scheduleVisual();
+}
+for(const ev of ['waveframe:audio-activity','waveframe:visual-changed'])window.addEventListener(ev,invalidateVisual);
+document.addEventListener('visibilitychange',invalidateVisual);
+const visualObserver=new MutationObserver(invalidateVisual);
+for(const node of [tabPlayerEl,enhanceTabEl,document.body])visualObserver.observe(node,{attributes:true,attributeFilter:['class']});
+invalidateVisual();
 
 /* ------------------------------------------------------------------ */
 /* Dependencies (FFmpeg)                                              */
@@ -3020,6 +3041,10 @@ window.__resourceSoak=async function(){
     for(const slot of engine.slots){slot.el.removeAttribute('src');slot.el.load();if(slot.objectUrl)URL.revokeObjectURL(slot.objectUrl);slot.objectUrl=null;slot.item=null;slot.name='';}
     check('audio soak final cleanup',engine.transitionTimer===null&&engine.slots.every(s=>s.el.paused&&!s.objectUrl&&!s.item));
     playlist=old.list;currentTrackIndex=old.index;engine.crossfadeSeconds=old.crossfade;engine.setNormalizationEnabled(old.normalize);engine.setMuted(old.muted);engine.slots.forEach((s,i)=>s.el.muted=old.mediaMuted[i]);renderPlaylist();updateTrackNameUi();syncPlayButton();
+    const previousBg=Backgrounds.getMode();Backgrounds.setMode('equalizer');showTab('player');invalidateVisual();syncHueSchedule();
+    await wait(350);
+    check('idle equalizer, hue and visualizer stop scheduling frames',!audioVisualActive()&&!visualFrameId&&!hueTimer&&!Backgrounds.diagnostics().framePending);
+    Backgrounds.setMode(previousBg);syncHueSchedule();
   }
   return out;
 };

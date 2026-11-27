@@ -18,11 +18,12 @@ const Backgrounds = (() => {
   let mode = 'equalizer';
   let t = 0;
   let analyserRef = null;
-  let freqDataRef = null;
+  let freqDataRef = null,audioActive=false,cachedColors=null;
 
   function accentColors() {
+    if(cachedColors)return cachedColors;
     const styles = getComputedStyle(document.documentElement);
-    return {
+    return cachedColors={
       a: styles.getPropertyValue('--accent-2').trim() || '#6366f1',
       b: styles.getPropertyValue('--accent-3').trim() || '#7c3aed',
       bg: styles.getPropertyValue('--bg').trim() || '#0b0b14',
@@ -37,7 +38,7 @@ const Backgrounds = (() => {
     let bars = 48;
     let data = null;
     if (analyserRef && freqDataRef) {
-      analyserRef.getByteFrequencyData(freqDataRef);
+      if(audioActive)analyserRef.getByteFrequencyData(freqDataRef);else freqDataRef.fill(0);
       data = freqDataRef;
     }
     const barW = W / bars;
@@ -282,7 +283,7 @@ const Backgrounds = (() => {
     if(document.hidden)return;
     if(W!==lastWidth||H!==lastHeight){dirty=true;lastWidth=W;lastHeight=H;}
     // 30 fps maximum, static backgrounds draw once unless resized/changed.
-    const staticMode=reduceMotion||mode==='none';
+    const staticMode=reduceMotion||mode==='none'||(mode==='equalizer'&&!audioActive);
     if(!dirty&&(staticMode||now-lastFrame<32)){if(!staticMode)scheduleFrame();return;}
     if(!reduceMotion)t+=Math.min(.1,lastFrame?(now-lastFrame)/1000:.016);
     lastFrame=now;dirty=false;
@@ -299,7 +300,7 @@ const Backgrounds = (() => {
     else drawNone();
     if(!staticMode)scheduleFrame();
   }
-  const styleObserver=new MutationObserver(invalidate);
+  const styleObserver=new MutationObserver(()=>{cachedColors=null;invalidate();});
   styleObserver.observe(document.documentElement,{attributes:true,attributeFilter:['style','class','data-theme','data-skin']});
   if(document.body)styleObserver.observe(document.body,{attributes:true,attributeFilter:['class','style','data-theme','data-skin']});
   window.addEventListener('resize',invalidate);
@@ -311,7 +312,10 @@ const Backgrounds = (() => {
   scheduleFrame();
 
   return {
-    setMode(m) { mode = m;invalidate(); },
-    setAnalyser(analyser, freqData) { analyserRef = analyser; freqDataRef = freqData; },
+    setMode(m) { if(mode!==m){mode=m;invalidate();window.dispatchEvent(new Event('waveframe:background-mode'));} },
+    setAudioActive(active){active=!!active;if(audioActive===active)return;audioActive=active;if(mode==='equalizer'){lastFrame=0;invalidate();}},
+    getMode(){return mode;},
+    setAnalyser(analyser, freqData) { analyserRef = analyser; freqDataRef = freqData;invalidate(); },
+    diagnostics(){return {mode,audioActive,framePending:!!frameId};},
   };
 })();
