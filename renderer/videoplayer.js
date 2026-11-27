@@ -99,6 +99,7 @@
     if(handoff!==marker||g!==generation)return false;
     if(!r?.ok){handoff=null;$('vpNativeStop').hidden=true;say(engine+' — '+(r?.code||'unavailable'));if(wasPlaying)video.play().catch(()=>{});return false;}
     marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;
+    window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     if(marker.embedded)startViewport(marker);marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
     say(engine+' — native playback ready'+(engine==='libvlc'?' · decoder requested: '+decode:'')+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine!=='libvlc'&&sub?' · subtitle handoff unavailable':''));
     const poll=async()=>{
@@ -799,7 +800,8 @@
       else if (sub && current()) say(t('vp.dropSubUseButton'));
     });
     document.addEventListener('keydown', (e) => {
-      if (!$('tab-video').classList.contains('active') || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.ctrlKey || e.altKey || e.metaKey) return;
+      const interactive=!!e.target?.closest?.('input,textarea,select,button,a,[contenteditable="true"],[role="button"],[role="switch"],[role="slider"],summary');
+      if(!window.OpsisFeatureGuide.shortcutAllowed({defaultPrevented:e.defaultPrevented,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey,interactive,modal:!!document.querySelector('.tutorial-overlay.open')},document.querySelector('.tab-btn.active')?.dataset.tab,'video'))return;
       const k = e.key; let used = true;
       if(handoff){if(k===' '){nativeCommand('toggle');e.preventDefault();}else if(k==='m'||k==='M'){nativeCommand('mute');e.preventDefault();}return;}
       if (k === ' ') { if (video.paused) video.play().catch(() => {}); else video.pause(); }

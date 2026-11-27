@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased — Ultra Mega Pass 19C–19D.1
+- Expanded guide to 90 routes and recorded source control inventory. Scoped shortcuts to owning playback tab; preserve native keyboard activation in controls and dialogs. Cancel stale microphone permission results and stop alternate sound sources when video begins, including successful native handoff. Full native/HTML source arbitration still pending.
+
 ## Unreleased — Ultra Mega Pass 19B.1
 - Localized seven core finder labels in all 20 existing languages; grouped Help results, keyboard-accessible file chooser and wrapped metadata toolbar. Added two unit tests and three real-renderer finder checks. Full feature descriptions still Greek/English; CI pending.
 

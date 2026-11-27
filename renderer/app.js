@@ -282,6 +282,7 @@ class AudioEngine {
   }
 
   stopAlternateSources() {
+    this.micEpoch=(this.micEpoch||0)+1;
     this.micGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     if (this.testOsc) {
@@ -298,10 +299,14 @@ class AudioEngine {
   async startMic() {
     this.stopAlternateSources();
     this.pauseActive();
-    this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const epoch=this.micEpoch;
+    const stream=await navigator.mediaDevices.getUserMedia({ audio: true });
+    if(epoch!==this.micEpoch){stream.getTracks().forEach(tr=>tr.stop());return false;}
+    this.micStream=stream;
     this.micSource = this.ctx.createMediaStreamSource(this.micStream);
     this.micSource.connect(this.micGain);
     this.micGain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.05);
+    return true;
   }
 
   playTestTone() {
@@ -968,7 +973,7 @@ document.getElementById('fileInputLabel').addEventListener('keydown',e=>{if(e.ta
 // "Open with" a video file (installer option / command line) or a video dropped on the window: show the video tab and play it
 window.waveframe.onOpenVideo((filePath) => { showTab('video'); loadVideoPlayer().then(() => window.WaveframeVideoPlayer.open(filePath)); });
 // only one thing plays at a time
-window.addEventListener('waveframe:video-playing', () => { try { engine.pauseActive(); syncPlayButton(); } catch (_) { /* nothing playing */ } });
+window.addEventListener('waveframe:video-playing', () => { try { engine.pauseActive();engine.stopAlternateSources();syncPlayButton(); } catch (_) { /* nothing playing */ } });
 
 /* The converter (UI + helpers) is only fetched and run the first time its tab is opened. */
 let converterLoading = null;
@@ -1484,8 +1489,9 @@ document.getElementById('btnExportApo').addEventListener('click', () => {
 
 /* ---- in-app keyboard shortcuts ---- */
 window.addEventListener('keydown', (e) => {
-  const tag = document.activeElement?.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return; // never hijack typing
+  const interactive=!!e.target?.closest?.('input,textarea,select,button,a,[contenteditable="true"],[role="button"],[role="switch"],[role="slider"],summary');
+  const modal=!!document.querySelector('.tutorial-overlay.open');
+  if(!OpsisFeatureGuide.shortcutAllowed({defaultPrevented:e.defaultPrevented,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey,interactive,modal},document.querySelector('.tab-btn.active')?.dataset.tab,'player'))return;
   switch (e.key) {
     case ' ':
       e.preventDefault();
@@ -1646,7 +1652,7 @@ els.btnUrl.addEventListener('click', async () => {
   if (wasEmpty) playTrackAt(playlist.length - 1);
 });
 els.btnMic.addEventListener('click', async () => {
-  try { await engine.startMic(); els.trackName.textContent = t('player.micLabel'); }
+  try { if(await engine.startMic())els.trackName.textContent = t('player.micLabel'); }
   catch (err) { await showAlertDialog(t('player.micErrorTitle'), err.message); }
 });
 els.btnTestTone.addEventListener('click', () => {
