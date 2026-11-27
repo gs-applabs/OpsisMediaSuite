@@ -12,7 +12,7 @@ const { serveFile } = require('./media-stream.js');
 const { inventory } = require('./codec-inventory.js');
 const { createNativeHost } = require('./native-host.js');
 const { createProvider,movieHash }=require('./subtitle-provider.js');
-const {saveBesideVideo,website}=require('./subtitle-sidecar.js');
+const {saveBesideVideo,website,auditSubtitles,sidecarStem}=require('./subtitle-sidecar.js');
 const {zipSubtitles,MAX_ARCHIVE}=require('./subtitle-archive.js');
 const VP=require('./renderer/vplib');
 
@@ -51,7 +51,7 @@ function readSubtitle(file){
   return {name:path.basename(file),ext,text};
 }
 function siblingSubtitles(video) {
-  const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase();
+  const dir = path.dirname(video), base = path.basename(video, path.extname(video)).toLowerCase(), shortBase=sidecarStem(video).toLowerCase();
   let names = [];
   try { names = fs.readdirSync(dir).sort((a,b) => a.localeCompare(b)); } catch (_) { return []; }
   const out = [];
@@ -59,7 +59,7 @@ function siblingSubtitles(video) {
     const e = extOf(n);
     if (!SUB_EXTS.includes(e)) continue;
     const stem = path.basename(n, path.extname(n)).toLowerCase();
-    if (stem !== base && !stem.startsWith(base + '.')) continue; // "movie.srt", "movie.el.srt"
+    if (stem !== base && !stem.startsWith(base + '.') && stem!==shortBase && !stem.startsWith(shortBase+'.')) continue; // "movie.srt", "movie.el.srt"
     const f = path.join(dir, n);
     try { const safe=allowedFile(f,new Set(SUB_EXTS));if(safe){const sub=readSubtitle(safe);if(sub)out.push(sub);} } catch (_) { /* skip */ }
     if (out.length >= 8) break;
@@ -165,13 +165,21 @@ function init({ getMainWin, resolveFfmpegPath }) {
     return subtitleProvider.search({query:req.query,language:req.language,apiKey:req.apiKey,username:req.username,password:req.password,moviehash:hash});
   });
   let sidecarBusy=false;
-  async function saveDownloaded(e,video,subtitle,language){
+  async function saveDownloaded(e,video,subtitle,language,synced=false){
     if(!trusted(e))return {ok:false,code:'denied'};
     if(sidecarBusy)return {ok:false,code:'busy'};
     sidecarBusy=true;
-    try{return await saveBesideVideo({video,subtitle,language,extensions:new Set(VIDEO_EXTS),approved:p=>trusted(e)&&approved.has(p)});}
+    try{return await saveBesideVideo({video,subtitle,language,extensions:new Set(VIDEO_EXTS),approved:p=>trusted(e)&&approved.has(p),synced});}
     finally{sidecarBusy=false;}
   }
+  let subtitleAuditBusy=false;
+  ipcMain.handle('vp:sub-audit',async(e,videos)=>{
+    if(!trusted(e)||subtitleAuditBusy||!Array.isArray(videos)||videos.length>2000||videos.some(x=>typeof x!=='string'||x.length>32767))return {ok:false,code:'denied-or-busy'};
+    subtitleAuditBusy=true;
+    try{return {ok:true,...await auditSubtitles({videos,extensions:new Set(VIDEO_EXTS),approved:p=>trusted(e)&&approved.has(p)})};}
+    catch{return {ok:false,code:'audit-failed'};}finally{subtitleAuditBusy=false;}
+  });
+  ipcMain.handle('vp:sub-save-synced',(e,video,text,language)=>saveDownloaded(e,video,{ext:'srt',text},language,true));
   ipcMain.handle('vp:sub-website',async(e,id)=>{
     const url=trusted(e)&&website(id);if(!url)return false;
     try{await shell.openExternal(url);return true;}catch{return false;}

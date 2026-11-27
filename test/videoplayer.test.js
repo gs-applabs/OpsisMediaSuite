@@ -409,3 +409,33 @@ test('OpenSubtitles sends explicit episode parameters and ranks matching release
  assert.equal(params.get('query'),'Show');assert.equal(params.get('season_number'),'2');assert.equal(params.get('episode_number'),'3');
  assert.deepEqual(result.items.map(x=>x.id),[13,12]);
 });
+
+
+test('duplicate sidecars are reused and synced variants do not overwrite originals',async()=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const {saveBesideVideo}=require('../subtitle-sidecar'),{localPath}=require('../local-media-policy');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-dedup-'));
+ try{
+  const video=path.join(dir,'Episode.mkv');await fs.writeFile(video,'fixture');const real=localPath(video);
+  const req={video,subtitle:{ext:'srt',text:'1\n00:00:01,000 --> 00:00:02,000\nΓεια'},language:'el',extensions:new Set(['mkv']),approved:p=>p===real};
+  const first=await saveBesideVideo(req);assert.equal(first.name,'Episode.el.srt');
+  const again=await saveBesideVideo(req);assert.equal(again.reused,true);assert.equal(again.name,first.name);
+  const synced=await saveBesideVideo({...req,synced:true});assert.equal(synced.name,'Episode.el.synced.srt');
+  assert.equal((await saveBesideVideo({...req,synced:true})).reused,true);
+  assert.equal((await fs.readdir(dir)).length,3);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('playlist subtitle audit distinguishes Greek filename tags, unknown, missing and unapproved',async()=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const {auditSubtitles}=require('../subtitle-sidecar'),{localPath}=require('../local-media-policy');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'opsis-audit-'));
+ try{
+  const videos=['A','B','C','D','E'].map(n=>path.join(dir,n+'.mkv'));
+  for(const file of videos)await fs.writeFile(file,'fixture');
+  for(const n of ['A.el.srt','B.srt','C.en.srt','D.el.srt'])await fs.writeFile(path.join(dir,n),n.startsWith('D')?'':'fixture');
+  const result=await auditSubtitles({videos,extensions:new Set(['mkv']),approved:p=>p!==localPath(videos[4])});
+  assert.deepEqual(result.rows.map(r=>r.status),['greek','unknown','other-language','missing','not-approved']);
+  assert.equal(result.truncated,false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});

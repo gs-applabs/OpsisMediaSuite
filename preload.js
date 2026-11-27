@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpSaveSub: req=>ipcRenderer.invoke('vp:save-sub',req),
   vpSubSearch:req=>ipcRenderer.invoke('vp:sub-search',req),
   vpSubDownload:(id,video,save)=>ipcRenderer.invoke('vp:sub-download',id,video,save),
+  vpSubAudit:videos=>ipcRenderer.invoke('vp:sub-audit',videos),
+  vpSubSaveSynced:(video,text,language)=>ipcRenderer.invoke('vp:sub-save-synced',video,text,language),
   vpSubWebsite:id=>ipcRenderer.invoke('vp:sub-website',id),
   vpSubImportBeside:(video,language)=>ipcRenderer.invoke('vp:sub-import-beside',video,language),
   vpSubDisconnect:()=>ipcRenderer.invoke('vp:sub-disconnect'),

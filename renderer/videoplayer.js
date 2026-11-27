@@ -484,6 +484,29 @@
     $('vpSubLoad').addEventListener('click', loadSubFile);
     let searchGeneration=0;
     const onlineStatus=t=>{$('vpSubOnlineStatus').textContent=t;};
+    $('vpSubAudit').addEventListener('click',async()=>{
+      const snapshot=list.filter(p=>!VP.isUrl(p)&&VP.kindOf(p)==='video'),results=$('vpSubAuditResults'),status=$('vpSubAuditStatus');
+      results.textContent='';$('vpSubAuditOpen').disabled=true;$('vpSubAudit').disabled=true;
+      status.textContent='Checking approved videos / Έλεγχος…';
+      try{
+        const result=await api.vpSubAudit(snapshot);
+        if(!result?.ok){status.textContent='Audit unavailable';return;}
+        const counts={greek:0,missing:0,'other-language':0,unknown:0,'not-approved':0,incomplete:0};
+        const labels={missing:'Missing / Λείπουν','other-language':'Other language / Άλλη γλώσσα',unknown:'Unlabeled / Άγνωστη γλώσσα','not-approved':'Not approved / Χωρίς έγκριση',incomplete:'Incomplete / Μερικός έλεγχος'};
+        for(const row of result.rows){
+          counts[row.status]=(counts[row.status]||0)+1;
+          if(row.status==='greek')continue;
+          const o=document.createElement('option');o.value=row.path;o.textContent=(labels[row.status]||row.status)+' — '+VP.titleOf(row.path);results.append(o);
+        }
+        $('vpSubAuditOpen').disabled=!results.options.length;
+        status.textContent='Greek-labeled / Με ένδειξη EL: '+counts.greek+' · Missing/other: '+(counts.missing+counts['other-language'])+' · Unknown: '+counts.unknown+' · Unchecked: '+(counts['not-approved']+counts.incomplete)+(result.truncated?' · First 200 only':'')+' — filenames only / βάσει ονόματος';
+      }catch{status.textContent='Audit failed';}finally{$('vpSubAudit').disabled=false;}
+    });
+    $('vpSubAuditOpen').addEventListener('click',()=>{
+      const p=$('vpSubAuditResults').value,i=list.indexOf(p);
+      if(i<0){$('vpSubAuditStatus').textContent='Playlist changed — scan again';return;}
+      playAt(i);
+    });
     $('vpSubSaveBeside').checked=get('waveframe.video.subSaveBeside',true)!==false;
     $('vpSubSaveBeside').addEventListener('change',()=>put('waveframe.video.subSaveBeside',$('vpSubSaveBeside').checked));
     function providerStatus(result){const code=result?.code||'unavailable';return ['provider-blocked','provider-cooldown','quota','rate-limited'].includes(code)?'Provider paused / Περιορισμός παρόχου'+(result?.retryAfter?(' · '+result.retryAfter+' s'):'')+' — use browser or try later':code;}
@@ -517,7 +540,7 @@
       $('vpSubDownload').disabled=true;onlineStatus('Downloading…');
       try{const r=await api.vpSubDownload(id,current(),$('vpSubSaveBeside').checked&&!VP.isUrl(current()));if(g!==generation||n!==searchGeneration||revision!==subRevision)return;
         if(!r?.ok){onlineStatus(providerStatus(r));return;}
-        attachSubtitle(r.subtitle);onlineStatus('Downloaded and selected / Λήψη και επιλογή'+(r.saved?.ok?' · Saved / Αποθηκεύτηκε: '+r.saved.name:r.saved?' · Not saved / Δεν αποθηκεύτηκε: '+r.saved.code:'')+(r.remaining===null?'':' · remaining '+r.remaining));
+        attachSubtitle(r.subtitle);onlineStatus('Downloaded and selected / Λήψη και επιλογή'+(r.saved?.ok?(r.saved.reused?' · Already saved / Υπάρχει ήδη: ':' · Saved / Αποθηκεύτηκε: ')+r.saved.name:r.saved?' · Not saved / Δεν αποθηκεύτηκε: '+r.saved.code:'')+(r.remaining===null?'':' · remaining '+r.remaining));
       }catch{onlineStatus('Download failed');}finally{if(g===generation&&n===searchGeneration)$('vpSubDownload').disabled=!$('vpSubResults').options.length;}
     });
     $('vpSubDisconnect').addEventListener('click',async()=>{if(await api.vpSubDisconnect()){++searchGeneration;$('vpSubResults').textContent='';$('vpSubDownload').disabled=true;onlineStatus('Disconnected');}});
@@ -567,6 +590,17 @@
       const result=await api.vpSaveSub({format,text,name:s.name}).catch(()=>null);
       if(!result?.canceled)say(result?.ok?'Synced subtitles saved / Αποθηκεύτηκαν οι υπότιτλοι':'Subtitle save failed (choose a new filename) / Αποτυχία αποθήκευσης');
     }
+    $('vpSubSaveSyncedBeside').addEventListener('click',async()=>{
+      const p=current(),s=subSrc[subSel],g=generation;
+      if(!p||VP.isUrl(p)||!s){say('Choose local video and subtitle');return;}
+      const text=VP.exportSubtitles(VP.subtitleToVtt(s.text,s.ext,subDelay*1000,subScale,subFps).entries,'srt');
+      if(!text){say(t('vp.subEmpty'));return;}
+      const button=$('vpSubSaveSyncedBeside');button.disabled=true;
+      try{
+        const result=await api.vpSubSaveSynced(p,text,$('vpSubLanguage').value);
+        if(g===generation)say(result?.ok?(result.reused?'Already saved / Υπάρχει ήδη: ':'Saved / Αποθηκεύτηκε: ')+result.name:'Save failed: '+(result?.code||'unavailable'));
+      }catch{if(g===generation)say('Save failed');}finally{button.disabled=false;}
+    });
     $('vpSubSaveSrt').addEventListener('click',()=>saveSubtitle('srt'));
     $('vpSubSaveVtt').addEventListener('click',()=>saveSubtitle('vtt'));
     $('vpSubReset').addEventListener('click',()=>setDelay(0));
