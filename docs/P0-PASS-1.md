@@ -132,3 +132,6 @@ Separate process Node-to-LibVLC stdin/stdout test: real ready, pause/seek, corre
 
 ## Pass 42 — photo crop positioning/RGB analysis and adjustable audio effects
 Public Sintel CI 45953965247 confirmed both original and artificially shifted captions abstain (weak match), correcting known false positive; no successful automatic dialogue alignment claimed. Add original-coordinate X/Y crop anchor controls, shared preview/export ratio from original dimensions, RGB histogram and near-black/near-channel-saturation percentages excluding transparent pixels; auto levels ignore transparent pixels. Adjustable reverb/exciter wet levels in live/offline DSP, legacy default unchanged, presets/reset. New tests; latest UI and CI pending. Bilingual labels pending full localization.
+
+## Pass 43 — exact crop geometry and renderer verification
+Pass 41 native pipe CI 45954049506/45954043622 passed actual redirected process acknowledgments and seek. Shared crop bounds for output dimensions and pixel processing (odd-size edge rounding), avoid redundant allocation for crop-only geometry, reject unexpected canvas encoder MIME instead of silently saving wrong file type. Add actual Electron checks for RGB histogram/clipping, square crop/export size, crop position undo, reverb/exciter sliders. Public subtitle CI triggers on relevant parser/provider changes. Latest CI pending.

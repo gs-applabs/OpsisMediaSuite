@@ -436,7 +436,14 @@ function init({ getMainWin, resolveFfmpegPath }) {
       check('photo redo restores rotation',await until("document.getElementById('phCanvas').width===48",3000));
       await js("document.getElementById('phLook').value='monochrome';document.getElementById('phLookStrength').value='50';document.getElementById('phLookApply').click();1");
       check('photo look applies adjustable intensity',await js("document.getElementById('ph_saturation').value==='-50'&&document.getElementById('phCanvas').width===48"));
+      await js("document.getElementById('phUndo').click();document.getElementById('phCrop').value='1:1';document.getElementById('phCrop').dispatchEvent(new Event('change'));1");
+      check('photo square crop actual preview matches export dimensions',await until("document.getElementById('phCanvas').width===48&&document.getElementById('phCanvas').height===48&&document.getElementById('phDimensions').textContent==='48 × 48 px'",3000));
+      await js("document.getElementById('phCropX').value='100';document.getElementById('phCropX').dispatchEvent(new Event('input'));document.getElementById('phCropX').dispatchEvent(new Event('change'));1");
       await js("document.getElementById('phUndo').click();1");
+      check('photo crop position undo restores center',await js("document.getElementById('phCropX').value==='50'"));
+      await js("document.getElementById('phHistMode').value='rgb';document.getElementById('phHistMode').dispatchEvent(new Event('change'));1");
+      check('photo RGB histogram and clipping statistics render',await until("document.getElementById('phClipping').textContent.includes('%')&&document.getElementById('phHistMode').value==='rgb'",3000));
+      await js("document.getElementById('phReset').click();1");
     } catch (e) { check('media self-test threw', false, e && e.stack || e); }
     try {
       /* layout of the three new areas in all 20 languages, at 100 % and 150 % zoom: no overlapping controls, no clipped button text, no sideways scroll */

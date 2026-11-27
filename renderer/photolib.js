@@ -106,16 +106,22 @@
   }
 
   // Crop (normalised rectangle of the ORIGINAL orientation), then flip, then rotate by multiples of 90 degrees.
+  function cropBounds(w,h,c){
+    if(!c)return {x:0,y:0,width:w,height:h};
+    const x=Math.min(w-1,Math.round(c.x*w)),y=Math.min(h-1,Math.round(c.y*h));
+    return {x,y,width:Math.max(1,Math.min(w-x,Math.round(c.w*w))),height:Math.max(1,Math.min(h-y,Math.round(c.h*h)))};
+  }
   function geometry(img, params) {
     const p = clampParams(params);
     if (!p.crop && !p.flipH && !p.flipV && !p.rotate) return img;
     let { data, width: w, height: h } = img;
     if (p.crop) {
-      const cx = Math.min(w - 1, Math.round(p.crop.x * w)), cy = Math.min(h - 1, Math.round(p.crop.y * h)), cw = Math.max(1, Math.min(w - cx, Math.round(p.crop.w * w))), ch = Math.max(1, Math.min(h - cy, Math.round(p.crop.h * h)));
+      const {x:cx,y:cy,width:cw,height:ch}=cropBounds(w,h,p.crop);
       const o = new Uint8ClampedArray(cw * ch * 4);
       for (let y = 0; y < ch; y++) o.set(data.subarray(((cy + y) * w + cx) * 4, ((cy + y) * w + cx + cw) * 4), y * cw * 4);
       data = o; w = cw; h = ch;
     }
+    if(!p.rotate&&!p.flipH&&!p.flipV)return {data,width:w,height:h};
     const nw = p.rotate === 90 || p.rotate === 270 ? h : w, nh = p.rotate === 90 || p.rotate === 270 ? w : h;
     const out = new Uint8ClampedArray(nw * nh * 4);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -243,7 +249,7 @@
   }
   function outputSize(w, h, params) {
     const p = clampParams(params);
-    const cw = p.crop ? Math.max(1, Math.min(w, Math.round(p.crop.w * w))) : w, ch = p.crop ? Math.max(1, Math.min(h, Math.round(p.crop.h * h))) : h;
+    const {width:cw,height:ch}=cropBounds(w,h,p.crop);
     return p.rotate === 90 || p.rotate === 270 ? { width: ch, height: cw } : { width: cw, height: ch };
   }
   function resizeOutput(w,h,maxEdge=0) {

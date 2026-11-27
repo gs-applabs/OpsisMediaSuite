@@ -2584,6 +2584,10 @@ window.__selfTest = async function () {
     check('presence filter boosts 2.8kHz by 6dB',Math.abs(20*Math.log10(response[0])-6)<.1);
     check('stereo balance setting reaches engine',engine.state.balance===-50);
     engine.setCompressorMode('night');syncProfessionalFx();check('night compressor profile selected',engine.state.compressorMode==='night'&&document.getElementById('fxCompressorMode').value==='night');engine.setCompressorMode('standard');syncProfessionalFx();
+    const rv=document.getElementById('fx_reverbAmount'),ex=document.getElementById('fx_exciterAmount');
+    rv.value='35';rv.dispatchEvent(new Event('input'));ex.value='60';ex.dispatchEvent(new Event('input'));
+    check('adjustable reverb/exciter mix controls update DSP state',engine.state.reverbAmount===35&&engine.state.exciterAmount===60&&document.getElementById('fx_reverbValue').textContent==='35%');
+    engine.setEffectAmount('reverb',100);engine.setEffectAmount('exciter',100);
     engine.setPresence(0);engine.setBalance(0);syncProfessionalFx();
     check('sleep button present', !!document.getElementById('btnSleep'));
     check('export button present', !!document.getElementById('btnExportApo'));

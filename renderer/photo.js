@@ -170,7 +170,7 @@
       if(size.width!==out.width||size.height!==out.height){target=document.createElement('canvas');target.width=size.width;target.height=size.height;const ctx=target.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(oc,0,0,size.width,size.height);oc.width=0;oc.height=0;}
       const blob = await new Promise((res) => target.toBlob(res, P.OUT_FORMATS[f].mime, q));
       target.width=0;target.height=0;
-      if (!blob) { info(t('ph.saveFailed')); return; }
+      if (!blob || blob.type!==P.OUT_FORMATS[f].mime) { info(t('ph.saveFailed')); return; }
       const r = await api.photoSave({ format: f, name: sourceName, bytes: await blob.arrayBuffer() });
       info(r && r.ok ? fmt(t('ph.saved'), { w: size.width, h: size.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
     } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
