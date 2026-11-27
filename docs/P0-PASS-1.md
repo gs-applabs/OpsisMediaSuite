@@ -120,3 +120,6 @@ Bounded fixed JSON command protocol with session and request IDs, one outstandin
 
 ## Pass 38 — real soundtrack autosync evidence and worker packaging
 Public Sintel CI evaluates genuine soundtrack against original captions and artificially +2s shifted captions. Reports suggestion or abstention, original offset, scale and relative correction consistency; no false pass claim for dialogue accuracy. Test evidence JSON included alongside captured captions. Worker and dependency explicitly unpacked from ASAR for packaged runtime; packaging smoke test pending. Clear native engine state on explicit close. CI pending.
+
+## Pass 39 — fix native rate return and fail-closed FFmpeg provisioning
+Pass 35 completed 188/188 and real worker sync recovered +1.7s. Pass 37 native build failed CS0019 because LibVLC SetRate returns int (0 success); corrected. One general CI run received Chocolatey feed HTTP 504, installed no FFmpeg and then skipped real conversion tests (140 instead of full suite); selftest correctly failed. Shared provisioning now checks actual ffmpeg -version, retries failed package installs and stops before test if unavailable. Latest build pending; no claim that Pass 36–39 are certified yet.

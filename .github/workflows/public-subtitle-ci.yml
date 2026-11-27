@@ -19,7 +19,8 @@ jobs:
       - run: npm ci
       - name: Fetch and verify public MDN Sintel video and WebVTT over HTTPS
         run: node test/public-subtitle-fixture.js
-      - run: choco install ffmpeg --no-progress -y
+      - shell: pwsh
+        run: ./.github/scripts/ensure-ffmpeg.ps1
       - name: Real Electron playback, public subtitle timing and screenshot
         shell: pwsh
         env:

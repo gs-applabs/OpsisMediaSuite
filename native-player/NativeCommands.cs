@@ -27,7 +27,7 @@ internal static class NativeCommands
                 case "mute":player.Mute=!player.Mute;return true;
                 case "seek":if(c.Value<0||c.Value>360000000||!player.IsSeekable||player.Length<=0)return false;player.Time=(long)Math.Min(c.Value,player.Length);return true;
                 case "volume":if(c.Value<0||c.Value>100)return false;player.Volume=(int)c.Value;return true;
-                case "rate":return c.Value>=.5&&c.Value<=4&&player.SetRate((float)c.Value);
+                case "rate":return c.Value>=.5&&c.Value<=4&&player.SetRate((float)c.Value)==0;
                 default:return false;
             }
         }catch{return false;}

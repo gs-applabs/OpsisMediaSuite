@@ -26,7 +26,8 @@ jobs:
       - name: Dependency audit (production and development)
         run: npm audit --audit-level=high
       - name: FFmpeg for the real-conversion tests and the converter self-test
-        run: choco install ffmpeg --no-progress -y
+        shell: pwsh
+        run: ./.github/scripts/ensure-ffmpeg.ps1
       - name: Unit, localisation, security and real-conversion tests
         run: npm test
       - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)

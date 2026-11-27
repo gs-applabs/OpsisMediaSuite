@@ -22,8 +22,7 @@ jobs:
         run: |
           choco install k-litecodecpackmega --version=20.1.0 --no-progress -y
           if ($LASTEXITCODE) { throw 'K-Lite install failed' }
-          choco install ffmpeg --no-progress -y
-          if ($LASTEXITCODE) { throw 'FFmpeg install failed' }
+          ./.github/scripts/ensure-ffmpeg.ps1
       - name: Record actual registry inventory
         shell: pwsh
         run: |

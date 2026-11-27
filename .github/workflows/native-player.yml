@@ -27,8 +27,7 @@ jobs:
       - name: Generate real multitrack MKV
         shell: pwsh
         run: |
-          choco install ffmpeg --no-progress -y
-          if ($LASTEXITCODE) { throw 'ffmpeg install failed' }
+          ./.github/scripts/ensure-ffmpeg.ps1
           Set-Content -Encoding utf8 -Path fixture.srt -Value @('1','00:00:00,200 --> 00:00:04,000','Καλημέρα')
           ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=5 -f lavfi -i sine=frequency=440:duration=5 -f lavfi -i sine=frequency=880:duration=5 -i fixture.srt -map 0:v -map 1:a -map 2:a -map 3:s -c:v libx264 -pix_fmt yuv420p -c:a aac -c:s srt fixture.mkv
           if ($LASTEXITCODE) { throw 'fixture failed' }
