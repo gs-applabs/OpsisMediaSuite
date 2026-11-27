@@ -19,14 +19,14 @@ class OpsisTestProcessor extends AudioWorkletProcessor{
     if(!out||out.length!==2)return false;
     const n=out[0].length,d=this.dsp;
     if(this.failed||n>2048||out[1].length!==n){out[0].fill(0);out[1].fill(0);return false;}
-    if(this.pending){
-      d.settings.set(this.pending);
-      // A prior 10ms transition may still be in progress. Coalesce to latest.
-      if(d.e.opsis_wasm_configure()===1)this.pending=null;
-    }
-    const l=input?.[0],r=input?.[1]||l;
-    for(let i=0;i<n;i++){d.left[i]=l?.[i]??0;d.right[i]=r?.[i]??0;}
     try{
+      if(this.pending){
+        d.settings.set(this.pending);
+        // A prior 10ms transition may still be in progress. Coalesce to latest.
+        if(d.e.opsis_wasm_configure()===1)this.pending=null;
+      }
+      const l=input?.[0],r=input?.[1]||l;
+      for(let i=0;i<n;i++){d.left[i]=l?.[i]??0;d.right[i]=r?.[i]??0;}
       if(d.e.opsis_wasm_process(n)!==1)throw Error('DSP processing rejected');
       for(let i=0;i<n;i++){out[0][i]=d.left[i];out[1][i]=d.right[i];}
       return true;

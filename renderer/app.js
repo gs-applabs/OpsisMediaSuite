@@ -235,6 +235,8 @@ class AudioEngine {
     this.masterBypassSum = ctx.createGain();
     this.masterBypassDry.connect(this.masterBypassSum);
     this.masterBypassWet.connect(this.masterBypassSum);
+    // One routing authority. The worklet is not registered in production yet.
+    this.dspRouteGate=new OpsisDspRouting.RouteGate(ctx,{web:this.masterBypassWet,dry:this.masterBypassDry});
 
     this.masterGain = ctx.createGain();
     this.masterGain.gain.value = this.state.volume;
@@ -358,10 +360,7 @@ class AudioEngine {
   }
 
   applyLiveBypass() {
-    const on=this.state.masterEnabled&&!this.state.routeBypass;
-    const tt=this.ctx.currentTime;
-    this.masterBypassWet.gain.setTargetAtTime(on?1:0,tt,0.05);
-    this.masterBypassDry.gain.setTargetAtTime(on?0:1,tt,0.05);
+    this.dspRouteGate.select(OpsisDspRouting.selectRoute({masterEnabled:this.state.masterEnabled,externalBypass:this.state.routeBypass,preferWorklet:false,workletReady:false}));
     window.dispatchEvent(new CustomEvent('waveframe:dsp-route-changed'));
   }
 

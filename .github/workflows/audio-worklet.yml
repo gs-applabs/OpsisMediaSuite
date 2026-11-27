@@ -1,7 +1,7 @@
 name: Experimental AudioWorklet DSP CI
 on:
   pull_request:
-    paths: ['native-dsp/**', 'test/audio-worklet/**', '.github/workflows/audio-worklet.yml']
+    paths: ['native-dsp/**', 'test/audio-worklet/**', 'renderer/dsp-routing.js', '.github/workflows/audio-worklet.yml']
   workflow_dispatch:
 permissions:
   contents: read
