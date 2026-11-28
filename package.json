@@ -10,7 +10,7 @@
     "start": "electron .",
     "dist": "electron-builder --win",
     "smoke-test": "node smoke-test.js",
-    "test": "node --test --test-concurrency=1 test/video.test.js test/video.real.test.js test/audiolib.test.js test/dsp-routing.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/photosave.test.js test/music-tags.test.js test/music-lookup.test.js test/feature-guide.test.js test/online-media.test.js test/online-media-download.test.js test/provider-compatibility.test.js test/provider-update-source.test.js test/youtube-metadata.test.js test/spotify-metadata.test.js test/provider-oembed.test.js test/provider-json.test.js",
+    "test": "node --test --test-concurrency=1 test/video.test.js test/video.real.test.js test/audiolib.test.js test/dsp-routing.test.js test/suite.test.js test/convert.test.js test/convert.real.test.js test/i18n.test.js test/security.test.js test/update-helper.test.js test/m3u.test.js test/photo.test.js test/videoplayer.test.js test/photosave.test.js test/music-tags.test.js test/music-lookup.test.js test/feature-guide.test.js test/online-media.test.js test/online-media-download.test.js test/provider-compatibility.test.js test/provider-update-source.test.js test/youtube-metadata.test.js test/spotify-metadata.test.js test/provider-oembed.test.js test/provider-json.test.js test/trace-scan.test.js",
     "selftest": "node selftest.js"
   },
   "devDependencies": {

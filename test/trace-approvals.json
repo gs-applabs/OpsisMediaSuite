@@ -1,0 +1,112 @@
+{
+  "approvals": [
+    {
+      "file": "Opsis Media Suite.exe",
+      "pattern": 5,
+      "contexts": [
+        {
+          "encoding": "8bit",
+          "sha256": "f236f60799a94134a5f52ae123345c914253bf9582f4d0f4c9434dcc7438e468",
+          "count": 1
+        }
+      ],
+      "provenance": "The matched string is part of a Google API URL already present, with the same count, in electron.exe of electron-v45.5.0-win32-x64.zip (zip sha256 checked against the release SHASUMS256.txt: 20155c8b8aa5b1f575f3757bdf21490e0bac2f19a65a26ce9ba99bcf9f2c69bd). Comparing PE sections, only .rsrc differs between the two executables. Not a file-system path."
+    },
+    {
+      "file": "resources/native-player/clretwrc.dll",
+      "pattern": 6,
+      "sha256": "f25a11d20b069b3bab1279cfef14d46c058bc2dfe8d2fe8fe8d74fefe52448a0",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/clrgc.dll",
+      "pattern": 6,
+      "sha256": "20a907670cdf3162d9b300914991d10ba28fc3c6b704377b58322c2886d9b8b3",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/clrgcexp.dll",
+      "pattern": 6,
+      "sha256": "b574745f1cebab1a7479b184a0299a5e284508f4095c7c0af72651de80461c53",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/clrjit.dll",
+      "pattern": 6,
+      "sha256": "22231ec740134103c575c7869b060b4ba2250b4ab9b5f964b93e94298b53a1e1",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/coreclr.dll",
+      "pattern": 6,
+      "sha256": "a6988fc77326c245873986446de4f15218df929664750d333cb2d42486c071da",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/createdump.exe",
+      "pattern": 6,
+      "sha256": "5161f24ccbe3af9ff224cab8d667f87920a58136dd045b054999e19ac29004f3",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/hostfxr.dll",
+      "pattern": 6,
+      "sha256": "2c14e9b4a540d98971b60cbaffcdde4f22328bd24bf75b68aa9e6bee13c2ca25",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/hostpolicy.dll",
+      "pattern": 6,
+      "sha256": "20405152b719ccb8d4e0361f3259db8875d8d4f3c97d1fbea4e1ca6cc6d21902",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/LibVLCSharp.dll",
+      "pattern": 0,
+      "sha256": "d85fb86f27f5af7d0cae7fcbe155c01ac9d4f69ca85152fed480db969c00b619",
+      "provenance": "Byte-identical to lib/net10.0 of NuGet LibVLCSharp 3.10.2 (repository-signed package, sha256 a7473e6d7c3595c74d3fb42bb0791053224d07b797adcee8c16f00e6f99bb8f9). The match is the upstream build path of its PDB."
+    },
+    {
+      "file": "resources/native-player/mscordaccore_amd64_amd64_10.0.1526.53008.dll",
+      "pattern": 6,
+      "sha256": "3eb536b8bd054c0b4a19332d25ffc90787f307b0367bae4dc222417d8107d247",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/mscordaccore.dll",
+      "pattern": 6,
+      "sha256": "3eb536b8bd054c0b4a19332d25ffc90787f307b0367bae4dc222417d8107d247",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/mscordbi.dll",
+      "pattern": 6,
+      "sha256": "d3c09b90b6599b15c37c6172cdc6f2e61d63c7c72922a49e4703a0668f8f9af9",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/mscorrc.dll",
+      "pattern": 6,
+      "sha256": "41ee8d8da7be90058ac9cf3be848871a9b78f60fe6caf82777ea9776ac85f75c",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    },
+    {
+      "file": "resources/native-player/Opsis.NativePlayer.exe",
+      "pattern": 6,
+      "contexts": [
+        {
+          "encoding": "8bit",
+          "sha256": "fed8267010385db424a04f39dfb7dcf22c34a000dcfde21d05e19f2c6fa17598",
+          "count": 1
+        }
+      ],
+      "provenance": "The matched string is the apphost PDB path already present, with the same count, in apphost.exe of Microsoft.NETCore.App.Host.win-x64 10.0.15 (sha256 3d231148f2d1453f35b746c000d875c0938118a94482a19abd2e9ccb88b881c1), the template this launcher is generated from."
+    },
+    {
+      "file": "resources/native-player/System.IO.Compression.Native.dll",
+      "pattern": 6,
+      "sha256": "68d68e5aad37470310f2b723afeda6447cf53746ad8e3ffabf44cda8cdcda6bd",
+      "provenance": "Byte-identical to runtimes/win-x64/native of NuGet microsoft.netcore.app.runtime.win-x64 10.0.15. The match is the Microsoft .NET build path (D:\\a\\_work\\1\\s), not a path of this repository."
+    }
+  ]
+}

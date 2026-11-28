@@ -40,3 +40,8 @@ Base source 7ac8b2129b5c2efba52f0dde68121a247aba0a90: all nine existing workflow
 - docs/CLAUDE-CODE-RC1-HANDOFF-EL.md
 - docs/RC1-FUNCTIONAL-ACCEPTANCE.md
 - docs/RC1-CONTROL-AUDIT.csv (inventory only, each row requires individual evidence)
+
+## Trace scan (RC1 correction)
+- `test/trace-scan.js` replaces the inline workflow step. A match passes only through an exact entry of `test/trace-approvals.json` (file, pattern, and SHA-256 or the exact matched strings). All 16 matches of the 51b9da1 portable zip were checked against the official packages named in each entry. Personal identifiers (patterns 2-4) cannot be approved.
+- A new .NET runtime patch, LibVLCSharp or Electron version changes hashes or strings and fails the scan until it is reviewed again.
+- Not covered: files compressed inside the Inno Setup installer (the portable zip comes from the same win-unpacked folder). Not yet run in CI.

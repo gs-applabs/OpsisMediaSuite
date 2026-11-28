@@ -1,7 +1,7 @@
 name: Installer lifecycle CI (test only)
 on:
   pull_request:
-    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js','installer/**','music-tags.js','music-library.js','m3u.js','decode-text.js','photo-metadata.js','local-media-policy.js','atomic-write.js','.github/scripts/ensure-ffmpeg.ps1']
+    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','test/trace-scan.js','test/trace-approvals.json','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js','installer/**','music-tags.js','music-library.js','m3u.js','decode-text.js','photo-metadata.js','local-media-policy.js','atomic-write.js','.github/scripts/ensure-ffmpeg.ps1']
   workflow_dispatch:
 permissions:
   contents: read
@@ -167,29 +167,21 @@ jobs:
           }
           if ($detected) { throw 'Defender reported a detection in the release files' }
           'Defender: no detection reported'
+      - uses: actions/setup-node@v4
+        if: always() && steps.rc.outputs.enabled == 'true'
+        with:
+          node-version: 22
       - name: Trace scan inside the portable zips (personal data and build paths)
         if: always() && steps.rc.outputs.enabled == 'true'
         shell: pwsh
         run: |
-          $patterns = @('C:\Users\','C:\w\','gstrj','LOGISTIRIO','giorstergiopoulos@gmail','/Users/','D:\a\')
-          # D:\a\ is the runner build path of THIS repository's CI; the owner login in a public GitHub URL is not personal data
+          # Strict: a match passes only through an exact entry of test/trace-approvals.json (file, pattern, SHA-256 or matched strings).
           $work = Join-Path $env:RUNNER_TEMP 'trace'; New-Item -ItemType Directory -Force $work | Out-Null
-          $hits = @()
-          Get-ChildItem assets -Filter '*Portable-*.zip' | ForEach-Object {
-            $d = Join-Path $work $_.BaseName; Expand-Archive $_.FullName $d -Force
-            Get-ChildItem $d -Recurse -File -Include *.exe,*.dll,*.pdb,*.json,*.config,*.js,*.html | ForEach-Object {
-              $relative=$_.FullName.Substring($d.Length+1)
-              $b = [IO.File]::ReadAllBytes($_.FullName)
-              $u8 = [Text.Encoding]::Latin1.GetString($b); $u16 = [Text.Encoding]::Unicode.GetString($b)
-              foreach ($p in $patterns) {
-                if ($u8.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $u16.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $hits += "$relative : pattern index $([Array]::IndexOf($patterns,$p)) : sha256 $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" }
-              }
-            }
-          }
-          $hits | Sort-Object -Unique | Set-Content -Encoding utf8 trace-findings.txt
-          $hits | Sort-Object -Unique | ForEach-Object { "TRACE: $_" }
-          if ($hits.Count -gt 0) { throw "$($hits.Count) trace(s) of personal data or build paths inside the release files" }
-          'trace scan: clean'
+          $zips = @(Get-ChildItem assets -Filter '*Portable-*.zip')
+          if($zips.Count -ne 1){throw "Expected one portable zip, found $($zips.Count)"}
+          Expand-Archive $zips[0].FullName $work -Force
+          node test/trace-scan.js $work trace-findings.txt
+          if($LASTEXITCODE){throw 'trace scan failed'}
 
       - name: Secrets scan of the repository (gitleaks)
         if: always() && steps.rc.outputs.enabled == 'true'
