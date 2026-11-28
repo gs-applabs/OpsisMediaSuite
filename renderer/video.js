@@ -437,36 +437,31 @@
       addPaths(plan.paths);selectionStatus.textContent=plan.paths.length+' files queued / αρχεία στην ουρά';
     });
     $('vidSpotifyOpen').addEventListener('click',()=>{const sel=selected();const link=sel.length===1&&previewRows[sel[0]]?.link||spotifyLink;if(link)void api.vidSpotifyOpen(link).catch(()=>{});});
-    $('vidSpotifyPreview').addEventListener('click',async()=>{
-      const btn=$('vidSpotifyPreview'),other=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidSpotifyToken');
-      if(previewBusy||matching)return;
-      const token=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();previewBusy=true;btn.disabled=other.disabled=$('vidOtherPreview').disabled=true;cancel.disabled=false;
-      try{const result=await api.vidSpotifyPreview(url,token);if(!choice.isConnected)return;
-        if(result?.ok){spotifyLink=result.link;previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(row.position+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
-        out.value=result?.ok?'Spotify — '+result.items.length+' tracks'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel+' · '+x.link).join('\n'):'Spotify preview: '+(result?.code||'failed');
-      }catch{out.value='Spotify preview failed';}finally{previewBusy=false;btn.disabled=other.disabled=$('vidOtherPreview').disabled=false;cancel.disabled=true;}
-    });
-    $('vidOtherPreview').addEventListener('click',async()=>{
-      const btn=$('vidOtherPreview'),yt=$('vidYoutubePreview'),sp=$('vidSpotifyPreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults');
-      if(previewBusy||matching)return;
-      const url=$('vidOnlineUrl').value;out.value='';resetSelection();previewBusy=true;btn.disabled=yt.disabled=sp.disabled=true;cancel.disabled=false;
-      try{const result=await api.vidProviderPreview(url);if(!choice.isConnected)return;
-        if(result?.ok&&!result.collectionOnly){previewRows=result.items.slice(0,1);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:row.title+' — '+row.channel}));refreshSelection();}
-        out.value=result?.ok?result.source+' — '+result.items.map(x=>x.title+' — '+x.channel+'\n'+x.link).join('\n')+(result.collectionOnly?'\nCollection metadata only / Μόνο στοιχεία συλλογής':''):'Preview: '+(result?.code||'failed');
-      }catch{out.value='Provider preview failed';}finally{previewBusy=false;btn.disabled=yt.disabled=sp.disabled=false;cancel.disabled=true;}
-    });
-    $('vidYoutubeCancel').addEventListener('click',()=>api.vidYoutubeCancel());
-    $('vidYoutubePreview').addEventListener('click',async()=>{
-      const btn=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidYoutubeKey');
-      if(btn.disabled||matching||previewBusy)return;
-      const other=$('vidSpotifyPreview');previewBusy=true;other.disabled=$('vidOtherPreview').disabled=true;
-      const key=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();btn.disabled=true;cancel.disabled=false;
-      try{const result=await api.vidYoutubePreview(url,key);
-        if(!choice.isConnected)return;
-        if(result?.ok){previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(i+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
-        out.value=result?.ok?'YouTube — '+result.items.length+' items'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel).join('\n'):'YouTube preview: '+(result?.code||'failed');
-      }catch{out.value='YouTube preview failed';}finally{previewBusy=false;other.disabled=$('vidOtherPreview').disabled=false;btn.disabled=false;cancel.disabled=true;}
-    });
+    const previewButtons=['vidYoutubePreview','vidSpotifyPreview','vidOtherPreview'].map(id=>$(id));
+    const cancelPreview=$('vidYoutubeCancel'),previewOutput=$('vidYoutubeResults'),urlField=$('vidOnlineUrl');
+    async function runPreview(request,field=null){
+      if(previewBusy||matching||!choice.isConnected)return;
+      const credential=field?.value,url=urlField.value;if(field)field.value='';
+      previewOutput.value='';resetSelection();previewBusy=true;
+      for(const b of previewButtons)b.disabled=true;cancelPreview.disabled=false;
+      try{
+        const result=await request(url,credential);if(!choice.isConnected)return;
+        if(!result?.ok){previewOutput.value='Preview: '+(result?.code||'failed');return;}
+        const rows=Array.isArray(result.items)?result.items.slice(0,200):[];
+        spotifyLink=result.source==='Spotify'?result.link:null;
+        if(!result.collectionOnly){
+          previewRows=rows;
+          for(const [i,row] of rows.entries())choice.append(h('option',{value:String(i),text:(row.position+1)+'. '+row.title+' — '+row.channel}));
+        }
+        refreshSelection();
+        previewOutput.value=result.source+' — '+rows.length+' items'+(result.truncated?' (limit reached)':'')+'\n'+rows.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel+(x.link?' · '+x.link:'')).join('\n')+(result.collectionOnly?'\nCollection metadata only / Μόνο στοιχεία συλλογής':'');
+      }catch{if(choice.isConnected)previewOutput.value='Provider preview failed / Αποτυχία προεπισκόπησης';}
+      finally{previewBusy=false;for(const b of previewButtons)b.disabled=false;cancelPreview.disabled=true;}
+    }
+    previewButtons[0].addEventListener('click',()=>runPreview((url,key)=>api.vidYoutubePreview(url,key),$('vidYoutubeKey')));
+    previewButtons[1].addEventListener('click',()=>runPreview((url,token)=>api.vidSpotifyPreview(url,token),$('vidSpotifyToken')));
+    previewButtons[2].addEventListener('click',()=>runPreview(url=>api.vidProviderPreview(url)));
+    cancelPreview.addEventListener('click',()=>api.vidYoutubeCancel());
     $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
     if(!onlineListening){onlineListening=true;api.onVidOnlineProgress(data=>{
       if(!$('vidOnlineDownload')?.disabled||!data||!Number.isFinite(data.received))return;

@@ -1,6 +1,6 @@
 'use strict';
 // Official Spotify Web API. Metadata only, never playback, preview audio or download URLs.
-const https=require('node:https');
+const JSONTransport=require('./provider-json');
 const ID=/^[A-Za-z0-9]{22}$/,MAX_ITEMS=200,MAX_BYTES=2*1024*1024,PAGE=50;
 function identify(value){
  if(typeof value!=='string'||value.length>2048||/[\x00-\x1f\x7f]/.test(value.trim()))return null;
@@ -18,17 +18,8 @@ function requestUrl(source,offset){
  if(source.kind==='playlist')u.searchParams.set('fields','next,total,items(is_local,item(id,type,name,artists(name),album(name),duration_ms,is_local),track(id,type,name,artists(name),album(name),duration_ms,is_local))');
  return u;
 }
-async function requestJson(url,token,signal){
- const response=await new Promise((resolve,reject)=>{
-  const req=https.get(url,{agent:false,signal,headers:{accept:'application/json',authorization:'Bearer '+token}},resolve);
-  req.on('error',reject);req.setTimeout(8000,()=>req.destroy(Error('timeout')));
- });
- try{
-  if(response.statusCode!==200)throw Error(({401:'token-expired',403:'access-denied',404:'not-found',429:'rate-limit'})[response.statusCode]||'api-error');
-  if(!/^application\/json\b/i.test(String(response.headers['content-type']||'')))throw Error('invalid-response');
-  const chunks=[];let size=0;for await(const chunk of response){size+=chunk.length;if(size>MAX_BYTES)throw Error('response-limit');chunks.push(chunk);}
-  return JSON.parse(Buffer.concat(chunks,size).toString('utf8'));
- }finally{response.destroy();}
+function requestJson(url,token,signal){
+ return JSONTransport.requestJson(url,{origins:['https://api.spotify.com'],maxBytes:MAX_BYTES,headers:{authorization:'Bearer '+token},signal,statusError:code=>({401:'token-expired',403:'access-denied',404:'not-found',429:'rate-limit'})[code]||'api-error'});
 }
 const clean=x=>typeof x==='string'?x.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,500):'';
 function row(track,position){

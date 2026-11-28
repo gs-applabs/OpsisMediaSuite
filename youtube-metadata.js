@@ -1,6 +1,6 @@
 'use strict';
 // YouTube Data API metadata only; never returns media URLs or downloads audio/video.
-const https=require('node:https');
+const JSONTransport=require('./provider-json');
 const VIDEO=/^[A-Za-z0-9_-]{11}$/,PLAYLIST=/^[A-Za-z0-9_-]{2,160}$/;
 const MAX_PAGE=50,MAX_ITEMS=200,MAX_BYTES=1024*1024;
 function identify(value){
@@ -19,17 +19,8 @@ function requestUrl(source,page){
  else{u.searchParams.set('id',source.id);u.searchParams.set('fields','items(id,snippet(title,channelTitle))');}
  return u;
 }
-async function requestJson(url,key,signal){
- const res=await new Promise((resolve,reject)=>{
-  const req=https.get(url,{agent:false,signal,headers:{accept:'application/json','x-goog-api-key':key}},resolve);
-  req.on('error',reject);req.setTimeout(8000,()=>req.destroy(Error('timeout')));
- });
- try{
-  if(res.statusCode!==200)throw Error(res.statusCode===403?'api-denied':res.statusCode===429?'rate-limit':'api-error');
-  if(!/^application\/json\b/i.test(String(res.headers['content-type']||'')))throw Error('invalid-response');
-  const chunks=[];let size=0;for await(const chunk of res){size+=chunk.length;if(size>MAX_BYTES)throw Error('response-limit');chunks.push(chunk);}
-  return JSON.parse(Buffer.concat(chunks,size).toString('utf8'));
- }finally{res.destroy();}
+function requestJson(url,key,signal){
+ return JSONTransport.requestJson(url,{origins:['https://www.googleapis.com'],maxBytes:MAX_BYTES,headers:{'x-goog-api-key':key},signal,statusError:code=>code===403?'api-denied':code===429?'rate-limit':'api-error'});
 }
 const clean=x=>typeof x==='string'?x.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,500):'';
 async function preview(value,key,{signal,transport=requestJson}={}){

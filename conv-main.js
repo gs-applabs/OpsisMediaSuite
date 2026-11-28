@@ -22,13 +22,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
   let closing=false,quitAllowed=false;
   const progressGate=require('./resource-diagnostics').createProgressGate();
-  let probeBusy=false,thumbBusy=false,onlineDownload=null,youtubePreview=null;
-  const busy=()=>!!onlineDownload||!!youtubePreview||pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
+  let probeBusy=false,thumbBusy=false,onlineDownload=null,providerPreview=null;
+  const busy=()=>!!onlineDownload||!!providerPreview||pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
   app.on('before-quit',event=>{
     if(quitAllowed)return;
     event.preventDefault();
     if(closing)return;
-    closing=true;onlineDownload?.abort();youtubePreview?.abort();
+    closing=true;onlineDownload?.abort();providerPreview?.abort();
     for(const id of pending)cancelledEarly.add(id);
     for(const job of jobs.values())try{job.cancel();}catch{}
     E.beginShutdown();EV.beginShutdown();
@@ -171,39 +171,36 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.handle('vid:default-dir', (e) => (trusted(e) ? defaultVideoOutDir() : null));
 
+  // One metadata preview lifecycle, with provider-specific validation and consent.
+  async function runProviderPreview(e,config){
+    if(!trusted(e)||providerPreview||consentBusy)return {ok:false,code:'busy-or-denied'};
+    const controller=new AbortController();providerPreview=controller;
+    try{
+      let answer;consentBusy=true;
+      try{answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Preview / Προεπισκόπηση'],defaultId:0,cancelId:0,message:config.message,detail:config.detail});}
+      finally{consentBusy=false;}
+      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
+      const result=await config.run(controller.signal);
+      if(!trusted(e)||controller.signal.aborted)return {ok:false,code:'cancelled'};
+      return {ok:true,...result};
+    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':config.errors.includes(err.message)?err.message:'preview-failed'};}
+    finally{if(providerPreview===controller)providerPreview=null;}
+  }
   ipcMain.handle('vid:youtube-preview',async(e,url,key)=>{
-    if(!trusted(e)||youtubePreview||consentBusy)return {ok:false,code:'busy-or-denied'};
+    if(!trusted(e)||providerPreview||consentBusy)return {ok:false,code:'busy-or-denied'};
     const Y=require('./youtube-metadata');if(!Y.identify(url)||typeof key!=='string'||!/^[A-Za-z0-9_-]{20,128}$/.test(key))return {ok:false,code:'invalid-source-or-key'};
-    const controller=new AbortController();youtubePreview=controller;
-    try{
-      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Preview / Προεπισκόπηση'],defaultId:0,cancelId:0,message:'Fetch YouTube metadata from Google?',detail:'The supplied API key and video or playlist ID will be sent to Google. No media is downloaded. Google privacy policy: https://policies.google.com/privacy'});
-      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
-      return {ok:true,...await Y.preview(url,key,{signal:controller.signal})};
-    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':['api-denied','rate-limit'].includes(err.message)?err.message:'preview-failed'};}
-    finally{youtubePreview=null;}
+    return runProviderPreview(e,{message:'Fetch YouTube metadata from Google?',detail:'The supplied API key and video or playlist ID will be sent to Google. No media is downloaded. Google privacy policy: https://policies.google.com/privacy',errors:['api-denied','rate-limit'],run:signal=>Y.preview(url,key,{signal})});
   });
-  ipcMain.on('vid:youtube-cancel',e=>{if(trusted(e))youtubePreview?.abort();});
+  ipcMain.on('vid:youtube-cancel',e=>{if(trusted(e))providerPreview?.abort();});
   ipcMain.handle('vid:spotify-preview',async(e,url,token)=>{
-    if(!trusted(e)||youtubePreview||consentBusy)return {ok:false,code:'busy-or-denied'};
+    if(!trusted(e)||providerPreview||consentBusy)return {ok:false,code:'busy-or-denied'};
     const S=require('./spotify-metadata');if(!S.identify(url)||!S.validToken(token))return {ok:false,code:'invalid-source-or-token'};
-    const controller=new AbortController();youtubePreview=controller;
-    try{
-      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Preview / Προεπισκόπηση'],defaultId:0,cancelId:0,message:'Fetch metadata from Spotify?',detail:'The supplied temporary access token and selected item ID will be sent only to Spotify. No audio is downloaded. https://www.spotify.com/legal/privacy-policy/'});
-      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
-      return {ok:true,...await S.preview(url,token,{signal:controller.signal})};
-    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':['token-expired','access-denied','not-found','rate-limit'].includes(err.message)?err.message:'preview-failed'};}
-    finally{youtubePreview=null;}
+    return runProviderPreview(e,{message:'Fetch metadata from Spotify?',detail:'The supplied temporary access token and selected item ID will be sent only to Spotify. No audio is downloaded. https://www.spotify.com/legal/privacy-policy/',errors:['token-expired','access-denied','not-found','rate-limit'],run:signal=>S.preview(url,token,{signal})});
   });
   ipcMain.handle('vid:provider-preview',async(e,url)=>{
-    if(!trusted(e)||youtubePreview||consentBusy)return {ok:false,code:'busy-or-denied'};
+    if(!trusted(e)||providerPreview||consentBusy)return {ok:false,code:'busy-or-denied'};
     const P=require('./provider-oembed'),source=P.identify(url);if(!source)return {ok:false,code:'unsupported-source'};
-    const controller=new AbortController();youtubePreview=controller;
-    try{
-      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Preview / Προεπισκόπηση'],defaultId:0,cancelId:0,message:'Fetch public metadata from '+source.provider+'?',detail:source.link+'\nNo media is downloaded.'});
-      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
-      return {ok:true,...await P.preview(url,{signal:controller.signal})};
-    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':['access-denied','not-found','rate-limit'].includes(err.message)?err.message:'preview-failed'};}
-    finally{youtubePreview=null;}
+    return runProviderPreview(e,{message:'Fetch public metadata from '+source.provider+'?',detail:source.link+'\nNo media is downloaded.',errors:['access-denied','not-found','rate-limit'],run:signal=>P.preview(url,{signal})});
   });
   ipcMain.handle('vid:spotify-open',async(e,url)=>{
     if(!trusted(e)||!require('./spotify-metadata').identify(url))return false;

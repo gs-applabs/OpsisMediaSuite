@@ -1,6 +1,6 @@
 'use strict';
 // Official public oEmbed metadata. No returned markup, images or media URLs are loaded.
-const https=require('node:https');
+const JSONTransport=require('./provider-json');
 const MAX_BYTES=256*1024;
 const endpoints=Object.freeze({Vimeo:'https://vimeo.com/api/oembed.json',Dailymotion:'https://www.dailymotion.com/services/oembed',SoundCloud:'https://soundcloud.com/oembed'});
 function identify(value){
@@ -20,17 +20,8 @@ function identify(value){
  }else return null;
  return {provider,kind,id,link:u.href};
 }
-async function requestJson(url,signal){
- const res=await new Promise((resolve,reject)=>{
-  const req=https.get(url,{agent:false,signal,headers:{accept:'application/json','accept-encoding':'identity'}},resolve);
-  req.on('error',reject);req.setTimeout(8000,()=>req.destroy(Error('timeout')));
- });
- try{
-  if(res.statusCode!==200)throw Error(res.statusCode===429?'rate-limit':res.statusCode===401||res.statusCode===403?'access-denied':res.statusCode===404?'not-found':'provider-response');
-  if(!/^application\/json\b/i.test(String(res.headers['content-type']||'')))throw Error('invalid-response');
-  const chunks=[];let size=0;for await(const chunk of res){size+=chunk.length;if(size>MAX_BYTES)throw Error('response-limit');chunks.push(chunk);}
-  return JSON.parse(Buffer.concat(chunks,size).toString('utf8'));
- }finally{res.destroy();}
+function requestJson(url,signal){
+ return JSONTransport.requestJson(url,{origins:['https://vimeo.com','https://www.dailymotion.com','https://soundcloud.com'],maxBytes:MAX_BYTES,signal,statusError:code=>code===429?'rate-limit':code===401||code===403?'access-denied':code===404?'not-found':'provider-response'});
 }
 const clean=x=>typeof x==='string'?x.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,500):'';
 async function preview(value,{signal,transport=requestJson}={}){
