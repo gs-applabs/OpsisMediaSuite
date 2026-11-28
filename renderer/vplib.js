@@ -36,6 +36,24 @@
     try{const u=new URL(value.trim());return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password?u.href:null;}catch{return null;}
   }
   function streamRetryDelay(attempt){return Number.isInteger(attempt)&&attempt>=0&&attempt<3?[2000,5000,10000][attempt]:null;}
+  // Translate only supported native commands, without starting a second player.
+  function nativeShortcut(key,status={},shift=false){
+    if(key===' ')return {name:'toggle'};
+    if(typeof key!=='string')return null;
+    if(key.toLowerCase()==='m')return {name:'mute'};
+    if(['ArrowUp','ArrowDown'].includes(key)){
+      if(!Number.isFinite(status.volume))return null;
+      return {name:'volume',value:Math.round(Math.max(0,Math.min(100,status.volume+(key==='ArrowUp'?5:-5))))};
+    }
+    const duration=Math.min(360000000,status.durationMs),position=status.positionMs;
+    if(!Number.isFinite(duration)||duration<=0)return null;
+    let target;
+    if(key==='Home')target=0;
+    else if(key==='End')target=Math.max(0,duration-100);
+    else if(['ArrowLeft','ArrowRight'].includes(key)&&Number.isFinite(position))target=position+(key==='ArrowRight'?1:-1)*(shift?30000:5000);
+    else return null;
+    return {name:'seek',value:Math.round(Math.max(0,Math.min(duration,target)))};
+  }
   function parseSeekTime(value){
     const s=typeof value==='string'?value.trim():'';
     if(!/^\d{1,6}(?::[0-5]\d){0,2}(?:[.,]\d{1,3})?$/.test(s))return null;
@@ -304,5 +322,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, exportAB, videoSleepMinutes, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, streamRetryDelay, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { nativeShortcut,releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, exportAB, videoSleepMinutes, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, streamRetryDelay, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

@@ -31,6 +31,11 @@ R6 υπερισχύει στη σειρά εργασιών, R5-AUDIT στην π
 
 **Αναφορά κάθε pass:** κατάσταση κάθε ομάδας 01–16 (ή σύνδεση προς τον ενημερωμένο πλήρη πίνακα αν δεν ζητήθηκε αναλυτικά), ακριβείς αλλαγές/OV-IDs, πραγματικό CI, επόμενο εύκολο μη ολοκληρωμένο βήμα, blockers (credentials, provider policy, hardware, connector limits). Μην παρουσιάζεις ως πλήρες το σύνολο των εκκρεμοτήτων αν υπάρχει μόνο μερική απογραφή. Δεν χρειάζεται νέο plugin για τις τρέχουσες GitHub αλλαγές· αν απαιτηθεί συγκεκριμένη μη διαθέσιμη δυνατότητα, αναζήτησε κατάλληλο connector και ζήτησε μόνο την αναγκαία σύνδεση. Μη δημιουργείς δεύτερο roadmap.
 
+### R6-07.2 / 05.2 — native χειρισμοί και πολιτική metadata μετατροπής (base b1f50af)
+- OV-17 EXTEND existing nativeCommand queue: native keyboard arrows seek/volume, shift 30 s, Home/End, existing play/mute; only supported commands and finite status, no native engine duplication. Real native window focus/key routing, physical backend and acceptance pending.
+- OV-10/09 EXTEND existing FFmpeg video/audio extraction/MKV remux options with explicit sourceMetadata boolean; default historical tag/chapter copying unchanged. Opt-out disables global/stream/chapter automatic mapping (not anonymization, attachments/codec-generated data may remain). No duplicate writer, no source modification, no auto online tag injection. GIF/images unaffected. Existing output writer linkage/cover and format-level real tests still open.
+- One guide entry (126 total), targeted fixtures added; final CI/physical validation pending. All R6 groups remain tracked. No merge/release.
+
 ### R6-07.1 / 10.2 — ελεύθερη περικοπή και πρόσθετοι χειρισμοί βίντεο (base 30c60e6)
 - EXTEND group 10: existing photo crop mode adds independent width/height percent and existing X/Y anchor sliders, same normalized crop, history, preview and full-resolution export path. Preset crops retained, no second geometry pipeline; preview zoom independent. Free crop source-relative before edit rotation, not perspective/straighten.
 - EXTEND group 07: inspected existing keyboard shortcuts and media event lifecycle; add Chromium middle-click mute and Home/End seeking for loaded non-parked media using existing handlers and shortcut guard. Existing native controls unchanged; native parity pending. No new listeners outside existing lifecycle.

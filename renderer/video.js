@@ -149,6 +149,7 @@
     ]));
     panel.append(
       h('label', { class: 'conv-check' }, [h('input', { id: 'vidRemoveAudio', type: 'checkbox', checked: !!s.removeAudio }), h('span', { text: t('vid.removeAudio') })]),
+      h('label',{class:'conv-check'},[h('input',{id:'vidSourceMetadata',type:'checkbox',checked:s.sourceMetadata!==false}),h('span',{text:'Keep source tags and chapters / Διατήρηση tags και κεφαλαίων (not anonymization / όχι ανωνυμοποίηση)'})]),
       h('div', { class: 'conv-check vid-sub-row', id: 'vidSubFileRow' }, [h('button', { class: 'small-btn', id: 'vidSubFile', text: t('vid.subFile') }), h('span', { class: 'dest-path', id: 'vidSubFileName', text: subFile ? subFile.split(/[\\/]/).pop() : t('vid.subFileNone') })]),
       h('div', { class: 'dest-row', id: 'vidOutRow' }, [h('span', { class: 'dest-path', id: 'vidOutPath', text: customDir }), h('button', { class: 'small-btn', id: 'vidOutPick', text: t('conv.out.choose') })]),
       h('p', { class: 'hint vid-estimate', id: 'vidEstimate', role: 'status' }),
@@ -171,7 +172,7 @@
   function collect() {
     const ts = parseTime($('vidTrimStart').value), te = parseTime($('vidTrimEnd').value);
     const raw = {
-      operation:$('vidOperation').value,frameInterval:+$('vidFrameInterval').value,frameCount:+$('vidFrameCount').value,
+      operation:$('vidOperation').value,frameInterval:+$('vidFrameInterval').value,frameCount:+$('vidFrameCount').value,sourceMetadata:$('vidSourceMetadata').checked,
       codec: $('vidCodec').value, container: $('vidContainer').value, height: +$('vidHeight').value, fps: +$('vidFps').value,
       rateMode: $('vidRateMode').value, crf: +$('vidCrf').value, bitrate: +$('vidBitrate').value, passes: +$('vidPasses').value, speed: $('vidSpeed').value,encoderPolicy:$('vidEncoderPolicy').value,gamma:+$('vidGamma').value,sharpen:+$('vidSharpen').value,deinterlace:$('vidDeinterlace').checked,
       audioCodec: $('vidAudioCodec').value, audioBitrate: +$('vidAudioBitrate').value, audioTrack: +$('vidAudioTrack').value,
@@ -220,6 +221,7 @@
     show('vidAudioTrack', vid || aud); show('vidAudioOnlyFormat', aud);
     show('vidSubtitleTrack', vid && $('vidSubtitle').value !== 'none' && !subFile);
     $('vidRemoveAudio').closest('label').classList.toggle('dep-hidden', !vid);
+    $('vidSourceMetadata').closest('label').classList.toggle('dep-hidden', !(vid||aud||operation==='remux'));
     $('vidSubFileRow').classList.toggle('dep-hidden', !(vid && $('vidSubtitle').value === 'burn'));
     $('vidOutRow').classList.toggle('dep-hidden', $('vidOut').value !== 'custom');
     for (const b of document.querySelectorAll('#vidPresets button')) { /* aria-pressed is set by applyPreset */ }
@@ -488,7 +490,7 @@
     $('vidDrop').addEventListener('drop', async (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[])); });
     $('vidClear').addEventListener('click', () => { if (!running&&!starting) { clearPreviews();items = []; renderList(); fillTracks(); estimate(); } });
     $('vidPresets').addEventListener('click', (e) => { const b = e.target.closest('button[data-preset]'); if (b) applyPreset(b.dataset.preset); });
-    for (const id of ['vidOperation','vidFrameInterval','vidFrameCount','vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
+    for (const id of ['vidOperation','vidFrameInterval','vidFrameCount','vidSourceMetadata','vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
       $(id).addEventListener('change', sync);
       if ($(id).tagName === 'INPUT') $(id).addEventListener('input', estimate);
     }

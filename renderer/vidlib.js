@@ -21,7 +21,7 @@
 
   const OPERATIONS=['encode','remux','poster','contact','sequence'];
   const DEFAULTS = {
-    operation:'encode',frameInterval:5,frameCount:30,
+    operation:'encode',frameInterval:5,frameCount:30,sourceMetadata:true,
     preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',encoderPolicy:'auto',gamma:1,sharpen:0,deinterlace:false,
     audioCodec: 'aac', audioBitrate: 192, audioTrack: 0, removeAudio: false, subtitle: 'none', subtitleFile: '', subtitleTrack: 0,
     trimStart: 0, trimEnd: 0, audioOnly: false, audioOnlyFormat: 'm4a', gif: false, suffix: '-video',
@@ -57,6 +57,7 @@
     const base = { ...DEFAULTS, ...(PRESETS[r.preset] || {}) };
     const o = { ...base, ...r };
     const errors = [], warnings = [];
+    if(typeof o.sourceMetadata!=='boolean')errors.push('sourceMetadata');
     if(!OPERATIONS.includes(o.operation))return {ok:false,options:o,errors:['operation'],warnings};
     if(o.operation!=='encode'){
       o.trimStart=num(o.trimStart);o.trimEnd=num(o.trimEnd);
@@ -196,6 +197,12 @@
   // Builds the argument ARRAY for one ffmpeg run. info = { duration } is optional.
   // pass: 0 = single pass, 1 = first pass of two (null output), 2 = second pass. passLog: base path for -passlogfile (a temp file, never user input).
   function needsVideoEncoder(o){return (!o.operation||o.operation==='encode')&&!o.audioOnly&&!o.gif;}
+  // Keep the historical default; explicit stripping disables automatic global,
+  // stream and chapter metadata mapping. Not an anonymizer: media content,
+  // attachments, codec data and muxer-generated fields may still identify it.
+  function metadataArgs(o){
+    return o.sourceMetadata===false?['-map_metadata','-1','-map_metadata:s','-1','-map_chapters','-1']:['-map_metadata','0','-map_chapters','0'];
+  }
   function specialArgs({input,output,options:o,info}){
     const duration=Number(info?.duration),start=o.trimStart,end=o.trimEnd>0?Math.min(o.trimEnd,duration):duration;
     if(!Number.isFinite(duration)||duration<=0||start>=duration||end<=start)throw Object.assign(Error('Invalid media range'),{code:'bad-range'});
@@ -205,7 +212,7 @@
     a.push('-i',input);
     if(o.operation==='remux'){
       if(o.trimEnd>0)a.push('-t',String(span));
-      return a.concat(['-map','0','-c','copy','-map_metadata','0','-map_chapters','0','-avoid_negative_ts','make_zero','-f','matroska',output]);
+      return a.concat(['-map','0','-c','copy',...metadataArgs(o),'-avoid_negative_ts','make_zero','-f','matroska',output]);
     }
     a.push('-map','0:V:0','-an','-sn','-dn');
     const scale='scale=640:360:force_original_aspect_ratio=decrease:force_divisible_by=2';
@@ -226,7 +233,7 @@
     if (o.trimEnd > 0) a.push('-t', String(o.trimEnd - o.trimStart));
     if (o.audioOnly) {
       const f = AUDIO_ONLY[o.audioOnlyFormat];
-      a.push('-vn', '-map', `0:a:${o.audioTrack}?`, '-c:a', f.codec, ...(o.audioOnlyFormat === 'flac' ? [] : ['-b:a', `${o.audioBitrate}k`]), '-f', f.muxer, output);
+      a.push('-vn', '-map', `0:a:${o.audioTrack}?`, '-c:a', f.codec, ...(o.audioOnlyFormat === 'flac' ? [] : ['-b:a', `${o.audioBitrate}k`]), ...(o.sourceMetadata===false?metadataArgs(o):[]), '-f', f.muxer, output);
       return a;
     }
     if (o.gif) {
@@ -246,6 +253,7 @@
       a.push('-map', `0:s:${o.subtitleTrack}?`, '-c:s', o.container === 'mp4' ? 'mov_text' : o.container === 'webm' ? 'webvtt' : 'copy');
     }
     if (o.container === 'mp4') a.push('-movflags', '+faststart');
+    if(o.sourceMetadata===false)a.push(...metadataArgs(o));
     a.push('-f', MUXERS[o.container], output);
     return a;
   }

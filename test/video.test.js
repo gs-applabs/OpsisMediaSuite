@@ -204,3 +204,17 @@ test('video filter options are bounded, neutral by default and ordered',()=>{con
 
 
 test('special video tasks use explicit bounded stream copy or image output without encoder selection',()=>{const info={duration:30};const remux=opts({operation:'remux',trimStart:2,trimEnd:9});assert.equal(V.needsVideoEncoder(remux),false);const a=V.buildArgs({input:'in.mp4',output:'out.mkv',options:remux,info});assert.deepEqual(a.slice(a.indexOf('-map'),a.indexOf('-map')+4),['-map','0','-c','copy']);assert.equal(V.outputExt(remux),'mkv');for(const operation of ['poster','contact','sequence']){const o=opts({operation});assert.equal(V.outputExt(o),'png');const a=V.buildArgs({input:'in.mp4',output:'out.png',options:o,info});assert.ok(a.includes('png'));assert.ok(a.includes('0:V:0'));}assert.equal(V.validateOptions({operation:'sequence',frameCount:61}).ok,false);assert.equal(V.validateOptions({operation:'sequence',frameInterval:0}).ok,false);assert.throws(()=>V.buildArgs({input:'in',output:'out',options:opts({operation:'poster',trimStart:40}),info}),{code:'bad-range'});});
+
+test('source metadata option is validated and disables copy in supported output routes',()=>{
+ assert.equal(V.validateOptions({sourceMetadata:'false'}).ok,false);
+ assert.equal(V.validateOptions({}).options.sourceMetadata,true);
+ for(const [options,encoder] of [[{sourceMetadata:false},'libx264'],[{sourceMetadata:false,audioOnly:true},null],[{sourceMetadata:false,operation:'remux'},null]]){
+  const a=args(options,encoder,{info:{duration:30}});
+  assert.equal(a[a.indexOf('-map_metadata')+1],'-1');
+  assert.equal(a[a.indexOf('-map_metadata:s')+1],'-1');
+  assert.equal(a[a.indexOf('-map_chapters')+1],'-1');
+ }
+ const kept=args({operation:'remux'},null,{info:{duration:30}});
+ assert.equal(kept[kept.indexOf('-map_metadata')+1],'0');
+ assert.equal(kept[kept.indexOf('-map_chapters')+1],'0');
+});

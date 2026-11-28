@@ -740,3 +740,15 @@ test('video sleep accepts whole minutes including cancel, rejects invalid and ov
 
 
 test('stream retry is finite and rejects invalid URL admission',()=>{assert.deepEqual([0,1,2,3,-1,1.5].map(V.streamRetryDelay),[2000,5000,10000,null,null,null]);assert.equal(V.playable('https://example.test/clip.mp4'),true);for(const p of ['https://user:pass@example.test/a.mp4','http://','https://x.test/a\n.mp4'])assert.equal(V.playable(p),false);});
+
+test('native keyboard commands use existing bounded command contract',()=>{
+ const status={positionMs:20000,durationMs:60000,volume:98};
+ assert.deepEqual(V.nativeShortcut('ArrowRight',status,true),{name:'seek',value:50000});
+ assert.deepEqual(V.nativeShortcut('ArrowLeft',status,true),{name:'seek',value:0});
+ assert.deepEqual(V.nativeShortcut('End',status),{name:'seek',value:59900});
+ assert.deepEqual(V.nativeShortcut('Home',status),{name:'seek',value:0});
+ assert.deepEqual(V.nativeShortcut('ArrowUp',status),{name:'volume',value:100});
+ assert.deepEqual(V.nativeShortcut('m',{}),{name:'mute'});
+ assert.equal(V.nativeShortcut('End',{durationMs:0}),null);
+ assert.equal(V.nativeShortcut('f',status),null);
+});

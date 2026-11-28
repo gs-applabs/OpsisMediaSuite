@@ -1038,7 +1038,11 @@
       const interactive=!!e.target?.closest?.('input,textarea,select,button,a,[contenteditable="true"],[role="button"],[role="switch"],[role="slider"],summary');
       if(!window.OpsisFeatureGuide.shortcutAllowed({defaultPrevented:e.defaultPrevented,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey,interactive,modal:!!document.querySelector('.tutorial-overlay.open')},document.querySelector('.tab-btn.active')?.dataset.tab,'video'))return;
       const k = e.key; let used = true;
-      if(handoff){if(k===' '){nativeCommand('toggle');e.preventDefault();}else if(k==='m'||k==='M'){nativeCommand('mute');e.preventDefault();}return;}
+      if(handoff){
+        const command=VP.nativeShortcut(k,handoff.status,e.shiftKey);
+        if(command){nativeCommand(command.name,command.value);e.preventDefault();}
+        return;
+      }
       if (k === ' ') { if(parked){playAt(idx);}else if (video.paused) void resumeChromium(); else video.pause(); }
       else if (k === 'ArrowRight') seekTo(video.currentTime + (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowLeft') seekTo(video.currentTime - (e.shiftKey ? 30 : 5));
