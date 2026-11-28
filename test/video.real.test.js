@@ -191,12 +191,16 @@ test('audio extraction can add a local cover before publication without source o
  const before=fs.readFileSync(SRC);
  const dir=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'opsis-export-cover-'));
  try{
-  const validated=V.validateOptions({audioOnly:true,audioOnlyFormat:'flac',suffix:'-cover'});
-  const job=await EV.encodeVideo({ffmpegPath:FFMPEG,input:SRC,options:validated.options,available:new Set(),outDir:dir,outputCover:{data}});
-  const result=await job.promise;assert.equal(result.coverStatus,'added');
-  const mm=await import('music-metadata'),meta=await mm.parseFile(result.output);
-  assert.ok(meta.common.picture.some(p=>Buffer.from(p.data).equals(data)));
+  const mm=await import('music-metadata'),outputs=[];
+  for(const format of ['mp3','flac','m4a','opus']){
+   const validated=V.validateOptions({audioOnly:true,audioOnlyFormat:format,suffix:'-cover'});
+   const job=await EV.encodeVideo({ffmpegPath:FFMPEG,input:SRC,options:validated.options,available:new Set(),outDir:dir,outputCover:{data}});
+   const result=await job.promise;assert.equal(result.coverStatus,'added',format);
+   const meta=await mm.parseFile(result.output);
+   assert.ok(meta.common.picture.some(p=>Buffer.from(p.data).equals(data)),format);
+   outputs.push(path.basename(result.output));
+  }
   assert.deepEqual(fs.readFileSync(SRC),before);
-  assert.deepEqual(fs.readdirSync(dir),[path.basename(result.output)]);
+  assert.deepEqual(fs.readdirSync(dir).sort(),outputs.sort());
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

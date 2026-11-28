@@ -78,7 +78,7 @@ const lastLines = (text) => String(text).split(/\r?\n/).filter(Boolean).slice(-3
 // software): a failing hardware encoder (no GPU, missing driver) falls through to the next one. Two passes run only for encoders that
 // support -pass. Returns { promise -> { output, encoder, fellBackFrom }, cancel() }; a half-written file is removed on error and on cancel.
 async function encodeVideo({ ffmpegPath, input, options, outputCover=null, available, onProgress, outDir, ensureActive=()=>{} }) {
-  if(outputCover&&(!options.audioOnly||options.operation!=='encode'||!['mp3','flac'].includes(options.audioOnlyFormat)))throw Object.assign(Error('Unsupported cover output format'),{code:'invalid-cover'});
+  if(outputCover&&(!V.supportsOutputCover(options)||!Buffer.isBuffer(outputCover.data)||outputCover.data.length>V.outputCoverLimit(options.audioOnlyFormat)))throw Object.assign(Error('Unsupported cover output format'),{code:'invalid-cover'});
   ensureRunning();ensureActive();const info = await probeVideo(ffmpegPath, input);ensureRunning();ensureActive();
   if (!info.video && !options.audioOnly&&options.operation!=='remux') throw Object.assign(new Error('no-video'), { code: 'no-video' });
   if (options.audioOnly && !info.audio.length) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });

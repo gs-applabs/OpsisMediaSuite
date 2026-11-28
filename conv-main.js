@@ -231,7 +231,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       filters: cover?[{name:'JPEG / PNG cover',extensions:[...COVER_TYPES]}]:subs ? [{ name: 'Subtitles', extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'] }] : [{ name: 'Video', extensions: oneMedia?[...MEDIA_TYPES]:E.VIDEO_EXTS }, { name: 'All files', extensions: ['*'] }],
     });
     if (r.canceled||!trusted(e)) return [];
-    if(cover){const f=allowedFile(r.filePaths[0],COVER_TYPES);return f?[boundedAdd(coverGrants,f,16)]:[];}
+    if(cover){const f=allowedFile(r.filePaths[0],COVER_TYPES);return f?[boundedAdd(coverGrants,f,V.LIMITS.maxFiles*2+1)]:[];}
     return r.filePaths.slice(0,V.LIMITS.maxFiles).map(p=>subs?(V.validSubtitlePath(p)?approveSubtitle(p):null):approveSource(p)).filter(Boolean);
   });
 
@@ -261,7 +261,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
     let coverPath=null;
     if(req.outputCover!==undefined){
-      if(!v.options.audioOnly||v.options.operation!=='encode'||!['mp3','flac'].includes(v.options.audioOnlyFormat))return {ok:false,code:'bad-options',error:'outputCover'};
+      if(!V.supportsOutputCover(v.options))return {ok:false,code:'bad-options',error:'outputCover'};
       coverPath=allowedFile(req.outputCover,COVER_TYPES);if(!coverPath||!coverGrants.has(coverPath))return {ok:false,code:'denied',error:'outputCover'};
     }
     if(req.outputTags!==undefined){
@@ -278,7 +278,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       const outDir=resolveOutDir(req,true,defaultVideoOutDir);
       if(v.options.subtitleFile){const sub=allowedFile(v.options.subtitleFile,SUB_TYPES);if(!sub||!subtitleGrants.has(sub))throw Object.assign(Error('subtitle not approved'),{code:'denied'});v.options.subtitleFile=sub;}
       let outputCover=null;
-      if(coverPath){try{outputCover=await require('./music-tags').readLocalCover(coverPath);if(!outputCover||nativeImage.createFromBuffer(outputCover.data).isEmpty())throw Error('invalid cover');}catch{throw Object.assign(Error('Invalid or unavailable JPEG/PNG cover'),{code:'invalid-cover'});}}
+      if(coverPath){try{outputCover=await require('./music-tags').readLocalCover(coverPath);if(!outputCover||outputCover.data.length>V.outputCoverLimit(v.options.audioOnlyFormat)||nativeImage.createFromBuffer(outputCover.data).isEmpty())throw Error('invalid cover');}catch{throw Object.assign(Error('Invalid, unavailable or oversized JPEG/PNG cover for selected format'),{code:'invalid-cover'});}}
       ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,outputCover,available:d.encoders,outDir,ensureActive,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
     });
   });

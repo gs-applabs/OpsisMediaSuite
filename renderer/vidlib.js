@@ -214,6 +214,15 @@
       const value=tags?.[key];if(typeof value==='string'&&value.trim()&&value.length<=250&&!/[\x00-\x1f\x7f]/.test(value))args.push('-metadata',key+'='+value);
     }return args;
   }
+  // Covers use the existing lossless tag writer; Opus comments must fit one page.
+  function supportsOutputCover(options){
+    return options?.operation==='encode'&&options.audioOnly===true&&Object.hasOwn(AUDIO_ONLY,options.audioOnlyFormat);
+  }
+  function outputCoverLimit(format){return format==='opus'?40*1024:2*1024*1024;}
+  function coverForItem(item,batch){
+    const value=item?.outputCover===undefined?batch:item.outputCover;
+    return typeof value==='string'&&value?value:undefined;
+  }
   function metadataArgs(o){
     return o.sourceMetadata===false?['-map_metadata','-1','-map_metadata:s','-1','-map_chapters','-1']:['-map_metadata','0','-map_chapters','0'];
   }
@@ -366,5 +375,5 @@
     if(paths.length>capacity)return {ok:false,code:'queue-full'};
     return {ok:true,paths};
   }
-  return { matchedAudioTags,playlistQueuePlan, onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
+  return { supportsOutputCover,outputCoverLimit,coverForItem,matchedAudioTags,playlistQueuePlan, onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
 });

@@ -229,3 +229,15 @@ test('matched tags are explicit audio-output-only metadata, not arbitrary FFmpeg
  assert.equal(a.filter(x=>x==='-metadata').length,3);
  assert.ok(!V.buildArgs({input:'in.mp4',output:'out.mp4',options:{...opts({}),outputTags:o.outputTags},encoder:'libx264'}).includes('title=-y'));
 });
+
+test('individual output cover can inherit, override or opt out; format limits shared',()=>{
+ const batch='C:/cover.png';
+ assert.equal(V.coverForItem({},batch),batch);
+ assert.equal(V.coverForItem({outputCover:'C:/track.jpg'},batch),'C:/track.jpg');
+ assert.equal(V.coverForItem({outputCover:null},batch),undefined);
+ assert.equal(V.coverForItem({},''),undefined);
+ for(const format of ['mp3','flac','m4a','opus'])assert.equal(V.supportsOutputCover(opts({audioOnly:true,audioOnlyFormat:format})),true);
+ assert.equal(V.supportsOutputCover(opts({})),false);
+ assert.equal(V.outputCoverLimit('opus'),40*1024);
+ assert.equal(V.outputCoverLimit('m4a'),2*1024*1024);
+});

@@ -151,7 +151,7 @@
       h('label', { class: 'conv-check' }, [h('input', { id: 'vidRemoveAudio', type: 'checkbox', checked: !!s.removeAudio }), h('span', { text: t('vid.removeAudio') })]),
       h('label',{class:'conv-check'},[h('input',{id:'vidSourceMetadata',type:'checkbox',checked:s.sourceMetadata!==false}),h('span',{text:'Keep source tags and chapters / Διατήρηση tags και κεφαλαίων (not anonymization / όχι ανωνυμοποίηση)'})]),
       h('label',{class:'conv-check'},[h('input',{id:'vidUseOnlineTags',type:'checkbox',checked:false}),h('span',{text:'Apply matched title/artist/album to new audio output (may replace copied fields) / Εφαρμογή αντιστοιχισμένων tags μόνο στο νέο αρχείο ήχου'})]),
-      h('div',{class:'conv-check vid-sub-row dep-hidden',id:'vidCoverRow'},[h('button',{class:'small-btn',id:'vidCoverPick',text:'Επιλογή εξωφύλλου / Choose cover (MP3/FLAC)'}),h('button',{class:'small-btn',id:'vidCoverClear',text:'Αφαίρεση / Clear'}),h('span',{class:'dest-path',id:'vidCoverName',text:outputCover?outputCover.split(/[\\/]/).pop():'Χωρίς εξώφυλλο / No cover'})]),
+      h('div',{class:'conv-check vid-sub-row dep-hidden',id:'vidCoverRow'},[h('button',{class:'small-btn',id:'vidCoverPick',text:'Κοινό εξώφυλλο / Batch cover (MP3/FLAC/M4A/Opus)'}),h('button',{class:'small-btn',id:'vidCoverClear',text:'Αφαίρεση / Clear'}),h('span',{class:'dest-path',id:'vidCoverName',text:outputCover?outputCover.split(/[\\/]/).pop():'Χωρίς εξώφυλλο / No cover'})]),
       h('div', { class: 'conv-check vid-sub-row', id: 'vidSubFileRow' }, [h('button', { class: 'small-btn', id: 'vidSubFile', text: t('vid.subFile') }), h('span', { class: 'dest-path', id: 'vidSubFileName', text: subFile ? subFile.split(/[\\/]/).pop() : t('vid.subFileNone') })]),
       h('div', { class: 'dest-row', id: 'vidOutRow' }, [h('span', { class: 'dest-path', id: 'vidOutPath', text: customDir }), h('button', { class: 'small-btn', id: 'vidOutPick', text: t('conv.out.choose') })]),
       h('p', { class: 'hint vid-estimate', id: 'vidEstimate', role: 'status' }),
@@ -225,7 +225,9 @@
     $('vidRemoveAudio').closest('label').classList.toggle('dep-hidden', !vid);
     $('vidSourceMetadata').closest('label').classList.toggle('dep-hidden', !(vid||aud||operation==='remux'));
     $('vidUseOnlineTags').closest('label').classList.toggle('dep-hidden', !aud);
-    $('vidCoverRow').classList.toggle('dep-hidden',!(aud&&['mp3','flac'].includes($('vidAudioOnlyFormat').value)));
+    const coverEnabled=V.supportsOutputCover({operation,audioOnly:aud,audioOnlyFormat:$('vidAudioOnlyFormat').value});
+    $('vidCoverRow').classList.toggle('dep-hidden',!coverEnabled);$('vidList').classList.toggle('cover-enabled',coverEnabled);
+    $('vidCoverPick').title=$('vidAudioOnlyFormat').value==='opus'?'Opus: έως 40 KiB / up to 40 KiB':'JPEG/PNG ≤ 2 MiB';
     $('vidSubFileRow').classList.toggle('dep-hidden', !(vid && $('vidSubtitle').value === 'burn'));
     $('vidOutRow').classList.toggle('dep-hidden', $('vidOut').value !== 'custom');
     for (const b of document.querySelectorAll('#vidPresets button')) { /* aria-pressed is set by applyPreset */ }
@@ -319,6 +321,28 @@
     addPaths([path]);if(items.length!==1||pathKey(items[0].path)!==pathKey(path))return false;
     mode='video';$('vidOperation').value='remux';$('vidTrimStart').value=String(range.start);$('vidTrimEnd').value=String(range.end);sync();return true;
   }
+  async function pickOutputCover(item=null){
+    if(running||starting||coverPickBusy)return;
+    coverPickBusy=true;
+    const batchButton=$('vidCoverPick');if(batchButton)batchButton.disabled=true;
+    try{
+      const picked=await api.vidPick('cover');
+      if(!picked?.[0]||running||starting)return;
+      if(item){if(items.includes(item))item.outputCover=picked[0];}
+      else{outputCover=picked[0];$('vidCoverName').textContent=outputCover.split(/[\\/]/).pop();}
+    }catch{const status=$('vidStatus');if(status)status.textContent='Μη διαθέσιμο εξώφυλλο / Cover unavailable';}
+    finally{coverPickBusy=false;const button=$('vidCoverPick');if(button)button.disabled=false;renderList();}
+  }
+  function coverControls(item){
+    const filename=typeof item.outputCover==='string'&&item.outputCover?item.outputCover.split(/[\\/]/).pop():item.outputCover===null?'Χωρίς εξώφυλλο / None':'Κοινό / Batch';
+    const wrap=h('div',{class:'vid-item-cover'},[h('span',{class:'vid-meta',text:filename,title:filename})]);
+    if(!running&&!starting){
+      wrap.append(h('button',{class:'small-btn',text:'Εξώφυλλο / Cover',disabled:coverPickBusy,onclick:()=>pickOutputCover(item)}),
+        h('button',{class:'small-btn',text:'Κοινό / Batch',disabled:coverPickBusy,onclick:()=>{if(running||starting||coverPickBusy)return;delete item.outputCover;renderList();}}),
+        h('button',{class:'small-btn',text:'Χωρίς / None',disabled:coverPickBusy,onclick:()=>{if(running||starting||coverPickBusy)return;item.outputCover=null;renderList();}}));
+    }
+    return wrap;
+  }
   function renderList() {
     const list = $('vidList');
     if (!list) return;
@@ -331,7 +355,7 @@
       const thumb = picture ? h('img', { class: 'vid-thumb', src: picture, alt: '', loading:'lazy' }) : h('div', { class: 'vid-thumb vid-thumb-empty', 'aria-hidden': 'true', text: '🎞' });
       const row = h('div', { class: `conv-row vid-row ${f.state}` }, [
         thumb,
-        h('div', { class: 'vid-info' }, [h('div', { class: 'conv-name', title: f.path, text: f.name }), h('div', { class: 'vid-meta', text: meta }),...(f.onlineTags?[h('div',{class:'vid-meta',text:'Matched / Αντιστοίχιση: '+[f.onlineTags.title,f.onlineTags.artist,f.onlineTags.album].filter(Boolean).join(' · ')})]:[])]),
+        h('div', { class: 'vid-info' }, [h('div', { class: 'conv-name', title: f.path, text: f.name }), h('div', { class: 'vid-meta', text: meta }),...(f.onlineTags?[h('div',{class:'vid-meta',text:'Matched / Αντιστοίχιση: '+[f.onlineTags.title,f.onlineTags.artist,f.onlineTags.album].filter(Boolean).join(' · ')})]:[]),coverControls(f)]),
         h('div', { class: 'conv-state', text: status + (f.note ? ` · ${f.note}` : '') }),
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `vbar-${f.id}` })]),
       ]);
@@ -371,7 +395,7 @@
     if ($('vidOut').value === 'custom' && !localStorage.getItem('waveframe.vidDestFolder')) { status.textContent = t('conv.out.needFolder'); return; }
     const outMode=$('vidOut').value,outDir=localStorage.getItem('waveframe.vidDestFolder')||'';
     const applyOnlineTags=v.options.audioOnly&&v.options.operation==='encode'&&$('vidUseOnlineTags').checked;
-    const coverForBatch=v.options.audioOnly&&v.options.operation==='encode'&&['mp3','flac'].includes(v.options.audioOnlyFormat)?outputCover:undefined;
+    const coverEnabled=V.supportsOutputCover(v.options),coverForBatch=coverEnabled?outputCover:undefined;
     const st = await api.convStatus();
     if (!st.ffmpeg) {
       const r = await api.convEnsureFfmpeg();
@@ -386,7 +410,7 @@
     const queue = C.createQueue(items, async (item) => {
       current = item; item.state = 'work'; renderList();
       try {
-        const r = await api.vidEncode({ id: item.id, path: item.path, options: v.options, outMode, outDir, outputTags:applyOnlineTags?item.onlineTags:undefined,outputCover:coverForBatch||undefined });
+        const r = await api.vidEncode({ id: item.id, path: item.path, options: v.options, outMode, outDir, outputTags:applyOnlineTags?item.onlineTags:undefined,outputCover:coverEnabled?V.coverForItem(item,coverForBatch):undefined });
         if (!r.ok) throw Object.assign(new Error(r.error || r.code), { code: r.code });
         item.state = 'done'; item.out = r.output;
         if(r.outputCount)item.note=r.outputCount+' PNG frames';else if(r.keyframeCut)item.note='Keyframe cut / Κοπή καρέ-κλειδί';
@@ -512,14 +536,8 @@
       const r = await api.vidPick('subtitle');
       if (r && r[0]) { subFile = r[0]; $('vidSubFileName').textContent = subFile.split(/[\\/]/).pop(); sync(); }
     });
-    $('vidCoverPick').addEventListener('click',async()=>{
-      if(running||starting||coverPickBusy)return;coverPickBusy=true;
-      const button=$('vidCoverPick');button.disabled=true;
-      try{const picked=await api.vidPick('cover');if(picked?.[0]){outputCover=picked[0];$('vidCoverName').textContent=outputCover.split(/[\\/]/).pop();}}
-      catch{$('vidStatus').textContent='Μη διαθέσιμο εξώφυλλο / Cover unavailable';}
-      finally{coverPickBusy=false;button.disabled=false;}
-    });
-    $('vidCoverClear').addEventListener('click',()=>{if(running||starting||coverPickBusy)return;outputCover='';$('vidCoverName').textContent='Χωρίς εξώφυλλο / No cover';});
+    $('vidCoverPick').addEventListener('click',()=>pickOutputCover());
+    $('vidCoverClear').addEventListener('click',()=>{if(running||starting||coverPickBusy)return;outputCover='';$('vidCoverName').textContent='Χωρίς εξώφυλλο / No cover';renderList();});
     $('vidStart').addEventListener('click', start);
     $('vidCancel').addEventListener('click', cancel);
     if (!listening) { listening = true; api.onConvProgress(onProgress); }
