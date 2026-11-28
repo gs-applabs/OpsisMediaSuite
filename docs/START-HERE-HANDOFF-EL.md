@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R6-02.2 / 05.1 — PROVIDER CONSOLIDATION
+28 Νοεμβρίου 2026 • R6-04.1 — PHOTO CAPTURE DATE
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R6 (όλες οι εκκρεμότητες, 01–16) και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι R6-02.2 / 05.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι R6-04.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R6-04.1: OV-12 recovered existing old date-only EXIF helper, wired picked source read token to opt-in JPEG/PNG export checkbox and existing no-overwrite photo save; no GPS/other tags copied, no new editor. Drag/drop and WebP date unsupported, real image/UI/CI tests pending. Previous provider consolidation retained. All 16 groups tracked in R6. Next easiest open IPC/store/control tasks, then remaining groups.
+
 R6-02.2/05.1: OV-06 three metadata clients share provider-json transport; OV-07 one main and renderer preview lifecycle, old duplicate bodies removed, same API/UI and provider-specific contracts. Added tests but exhaustive certification stays at end per user. Prior 4 PASS, 5 running; new CI pending. All R6 groups remain active. Next simplest open tasks: photo EXIF opt-in, IPC/backup/store reconciliation, then other R6 groups. No one-hour completion guarantee, no release.
 
 R6: user requires ALL pending work (fixes, features, partials, integration, audit, tests, releases, blockers and conditional scope), not just current category. Single ordered index 01–16 easy-to-hard in main roadmap; preserve dependencies and repair failures first. R6-02.1 OV-08 shared path identity, OV-22 seven new guide entries; prior 8/9 PASS, Inno pending, new CI pending. Next simplest open tasks in group 02, then 03 onward; no merge/release. Report all categories on every pending-work question.

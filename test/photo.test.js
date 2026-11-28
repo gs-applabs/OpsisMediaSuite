@@ -173,3 +173,18 @@ test('export readback crop preserves exact full-resolution pixels and geometry',
  assert.equal(P.exportBudget(8000,10000,{...P.defaults(),crop:{x:0,y:0,w:.2,h:.2}},2048),true);
  assert.equal(P.exportBudget(8000,10000,P.defaults(),0),false);
 });
+
+test('recovered capture date helper writes a single minimal EXIF date in JPEG and PNG',()=>{
+ const assert=require('node:assert/strict'),M=require('../photo-metadata');
+ const date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const png=Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000049454e44ae426082','hex');
+ for(const [format,bytes] of [['jpeg',jpeg],['png',png]]){
+  assert.equal(M.captureDate(bytes),null);
+  const out=M.attachCaptureDate(bytes,format,date);
+  assert.notEqual(out,bytes);assert.equal(M.captureDate(out),date);
+  assert.equal(M.attachCaptureDate(out,format,date),out);
+  assert.equal(M.attachCaptureDate(bytes,format,'bad'),bytes);
+ }
+ assert.equal(M.captureDate(Buffer.alloc(2)),null);
+ assert.equal(M.captureDate(null),null);
+});

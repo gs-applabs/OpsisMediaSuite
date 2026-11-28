@@ -474,6 +474,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   const imageTypes=new Set(IMG_EXTS);
   function approveImage(p){const f=allowedFile(p,imageTypes);if(!f)return null;if(imageGrants.size>=128)imageGrants.delete(imageGrants.values().next().value);imageGrants.add(f);return f;}
   let imageReadBusy=false,imageSaveBusy=false;
+  const captureDates=new Map(); // tiny per-read grants, never source images or paths
   ipcMain.handle('photo:pick', async (e) => {
     if (!trusted(e)) return null;
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Images', extensions: IMG_EXTS }] });
@@ -496,11 +497,16 @@ function init({ getMainWin, resolveFfmpegPath }) {
       let offset=0;
       while(offset<b.length){const r=await handle.read(b,offset,b.length-offset,offset);if(!r.bytesRead)return null;offset+=r.bytesRead;}
       const after=await handle.stat();if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)return null;
-      return {name:path.basename(f),bytes};
+      const captureDate=require('./photo-metadata').captureDate(header.subarray(0,n));
+      let captureToken=null;
+      if(captureDate){captureToken=randomBytes(16).toString('hex');if(captureDates.size>=8)captureDates.delete(captureDates.keys().next().value);captureDates.set(captureToken,captureDate);}
+      return {name:path.basename(f),bytes,captureDate,captureToken};
     }catch(_){return null;}finally{try{if(handle)await handle.close();}catch{}imageReadBusy=false;}
   });
   ipcMain.handle('photo:save', async (e, req) => {
     if(!trusted(e)||imageSaveBusy||!req||!Object.hasOwn(SAVE_FORMATS,req.format)||!(req.bytes instanceof ArrayBuffer||ArrayBuffer.isView(req.bytes))||!req.bytes.byteLength||req.bytes.byteLength>MAX_SAVE_BYTES)return {ok:false};
+    const captureDate=req.captureToken==null?null:typeof req.captureToken==='string'&&req.captureToken.length===32?captureDates.get(req.captureToken):undefined;
+    if(req.captureToken!=null&&(!captureDate||!['jpeg','png'].includes(req.format)))return {ok:false,code:'capture-date-unavailable'};
     imageSaveBusy=true;let tmp=null;
     try{
       const base=String(req.name||'photo').replace(/[\\/:*?"<>|\0]/g,'_').replace(/\.[A-Za-z0-9]{1,5}$/,'').slice(0,120)||'photo';
@@ -514,7 +520,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
       // Export is new-file-only. Never replace the original, an existing
       // image, a hardlink or an existing symlink, even after dialog consent.
       try{await fs.promises.lstat(output);return {ok:false,code:'exists'};}catch(err){if(err.code!=='ENOENT')throw err;}
-      const bytes=req.bytes instanceof ArrayBuffer?Buffer.from(req.bytes):Buffer.from(req.bytes.buffer,req.bytes.byteOffset,req.bytes.byteLength);
+      let bytes=req.bytes instanceof ArrayBuffer?Buffer.from(req.bytes):Buffer.from(req.bytes.buffer,req.bytes.byteOffset,req.bytes.byteLength);
+      if(captureDate){
+        const M=require('./photo-metadata');
+        const tagged=M.attachCaptureDate(bytes,req.format,captureDate);
+        if(tagged===bytes||tagged.length>MAX_SAVE_BYTES||M.captureDate(tagged)!==captureDate)return {ok:false,code:'capture-date-unavailable'};
+        bytes=tagged;
+      }
       const scratch=path.join(parent,'.opsis-photo-'+randomBytes(16).toString('hex')+'.'+ext);
       const handle=await fs.promises.open(scratch,'wx',0o600);tmp=scratch;
       try{await handle.writeFile(bytes);}finally{await handle.close();}

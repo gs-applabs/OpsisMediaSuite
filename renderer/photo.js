@@ -14,7 +14,7 @@
   const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let openGeneration = 0,opening=false,exportController=null,exportPhase='idle';
+  let openGeneration = 0,opening=false,exportController=null,exportPhase='idle',captureToken=null,captureDate=null;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
   let history=P.createHistory({params,cropKey});
@@ -54,6 +54,7 @@
     cmp.addEventListener('pointerdown', down); cmp.addEventListener('pointerup', up); cmp.addEventListener('pointerleave', up); cmp.addEventListener('pointercancel',up);cmp.addEventListener('blur',up);window.addEventListener('blur',up);
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
     $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png');$('phMatteField').hidden=$('phFormat').value!=='jpeg'; });
+    $('phFormat').addEventListener('change',syncCaptureDate);
     $('phSave').addEventListener('click', save);
     $('phCancelExport').addEventListener('click',()=>{if(exportPhase==='processing')exportController?.abort();});
     $('phCloseMedia').addEventListener('click',async()=>{
@@ -77,9 +78,11 @@
     document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone');if(orig)schedule(); });
   }
 
+  function syncCaptureDate(){const field=$('phKeepDate');field.disabled=!captureToken||!['jpeg','png'].includes($('phFormat').value);if(field.disabled)field.checked=false;$('phCaptureDate').textContent=captureDate||'';}
   function releasePhoto(){
     ++openGeneration;if(raf)cancelAnimationFrame(raf);raf=0;
     bmp?.close();bmp=null;orig=null;preview=null;comparing=false;
+    captureToken=null;captureDate=null;$('phKeepDate').checked=false;syncCaptureDate();
     name='photo';params=P.defaults();cropKey='none';history=P.createHistory({params,cropKey});
     $('phCanvas').width=0;$('phCanvas').height=0;
     const hist=$('phHist');hist.getContext('2d').clearRect(0,0,hist.width,hist.height);
@@ -104,7 +107,7 @@
       const r = await api.photoRead(p).catch(() => null);
       if (generation !== openGeneration || busy) return;
       if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
-      await decodeBlob(new Blob([r.bytes]),r.name,generation);
+      await decodeBlob(new Blob([r.bytes]),r.name,generation,r.captureToken,r.captureDate);
     }finally{opening=false;$('phOpen').disabled=false;}
   }
 
@@ -113,7 +116,7 @@
     opening=true;$('phOpen').disabled=true;
     try{await decodeBlob(blob,nm,++openGeneration);}finally{opening=false;$('phOpen').disabled=false;}
   }
-  async function decodeBlob(blob, nm, generation) {
+  async function decodeBlob(blob, nm, generation, token=null,date=null) {
     if (busy) return;
     if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
     let candidate=null;
@@ -131,6 +134,7 @@
       const d = g.getImageData(0, 0, sz.width, sz.height);
       c.width=0;c.height=0;
       const previous=bmp;bmp=b;candidate=null;previous?.close();
+      captureToken=typeof token==='string'?token:null;captureDate=typeof date==='string'?date:null;$('phKeepDate').checked=false;syncCaptureDate();
       name=nm||'photo';params=P.defaults();cropKey='none';$('phCrop').value='none';syncCrop();syncSliders();
       orig = { data: d.data, width: d.width, height: d.height };
       preview = orig; history=P.createHistory({params,cropKey});comparing=false;updateHistory();
@@ -227,6 +231,7 @@
     if (!bmp || busy || opening) return;
     busy = true; ++openGeneration;
     const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value),matte=$('phMatte').value;
+    const keepDate=$('phKeepDate').checked&&!$('phKeepDate').disabled?captureToken:null;
     if(!P.exportBudget(source.width,source.height,snapshot,maxEdge)){busy=false;info(t('ph.tooLarge'));return;}
     const controller=exportController=new AbortController();exportPhase='processing';
     const check=()=>{if(controller.signal.aborted)throw Error('cancelled');};
@@ -245,8 +250,8 @@
       check();const {blob,size}=await encodeExport(out,f,q,maxEdge,matte);
       check();const bytes=await blob.arrayBuffer();check();
       exportPhase='saving';$('phCancelExport').disabled=true;
-      const r=await api.photoSave({format:f,name:sourceName,bytes});
-      info(r?.ok?fmt(t('ph.saved'),{w:size.width,h:size.height}):r?.canceled?'':r?.code==='exists'?'Choose a new filename / Επιλέξτε νέο όνομα αρχείου':t('ph.saveFailed'));
+      const r=await api.photoSave({format:f,name:sourceName,bytes,captureToken:keepDate});
+      info(r?.ok?fmt(t('ph.saved'),{w:size.width,h:size.height}):r?.canceled?'':r?.code==='exists'?'Choose a new filename / Επιλέξτε νέο όνομα αρχείου':r?.code==='capture-date-unavailable'?'Capture date unavailable / Μη διαθέσιμη ημερομηνία λήψης':t('ph.saveFailed'));
     }catch(error){info(controller.signal.aborted?'Export cancelled / Ακυρώθηκε η εξαγωγή':t('ph.saveFailed'));}
     finally{busy=false;exportController=null;exportPhase='idle';$('phSave').disabled=false;$('phCancelExport').hidden=true;$('phCancelExport').disabled=false;}
   }

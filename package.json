@@ -45,6 +45,7 @@
       "provider-oembed.js",
       "provider-json.js",
       "media-main.js",
+      "photo-metadata.js",
       "local-media-policy.js",
       "media-stream.js",
       "playback-core.js",
