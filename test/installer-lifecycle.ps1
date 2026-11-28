@@ -27,7 +27,8 @@ try{
   New-Item -ItemType Directory -Force (Split-Path $marker) | Out-Null
   Set-Content $marker 'preserve settings'
   $candidate=(Get-Content package.json -Raw | ConvertFrom-Json).version
-  if($candidate -notmatch '^3\.0\.0-rc\.[1-9][0-9]{0,3}
+  if($candidate -notmatch '^3\.0\.0-rc\.[1-9][0-9]{0,3}$'){$candidate='3.0.0'}
+  Run-Setup $candidate
   if((Get-Content $marker -Raw).Trim() -ne 'preserve settings'){throw 'upgrade removed profile marker'}
   npm run selftest 2>&1 | Tee-Object installer-upgrade.log
   if($LASTEXITCODE){throw 'upgrade selftest failed'}
@@ -51,24 +52,6 @@ try{
   if((Get-Content $marker -Raw).Trim() -ne 'preserve settings'){throw 'reinstall uninstall removed profile marker'}
   Remove-Item $marker
   Write-Host 'PASS install / synthetic base upgrade / uninstall / reinstall / repair / profile preservation'
-}finally{
-  # Self-test uses separate disposable profiles. Do not remove normal app data.
-  Remove-Item Env:OPSIS_PACKAGED_SELFTEST_EXE -ErrorAction SilentlyContinue
-}
-){$candidate='3.0.0'}
-  Run-Setup $candidate
-  if((Get-Content $marker -Raw).Trim() -ne 'preserve settings'){throw 'upgrade removed profile marker'}
-  npm run selftest 2>&1 | Tee-Object installer-upgrade.log
-  if($LASTEXITCODE){throw 'upgrade selftest failed'}
-  $u=Get-ChildItem $root -File -Filter 'unins*.exe'
-  if(@($u).Count -ne 1){throw 'expected one uninstaller'}
-  $p=Start-Process -FilePath $u.FullName -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
-  if($p.ExitCode -ne 0){throw "uninstall exited $($p.ExitCode)"}
-  for($i=0;$i -lt 30 -and (Test-Path $exe);$i++){Start-Sleep -Seconds 1}
-  if((Test-Path $exe) -or (Test-Path (Join-Path $root 'resources/app.asar'))){throw 'uninstall left application executable/resources'}
-  if((Get-Content $marker -Raw).Trim() -ne 'preserve settings'){throw 'uninstall removed profile marker'}
-  Remove-Item $marker
-  Write-Host 'PASS install / synthetic version upgrade / uninstall / profile preservation'
 }finally{
   # Self-test uses separate disposable profiles. Do not remove normal app data.
   Remove-Item Env:OPSIS_PACKAGED_SELFTEST_EXE -ErrorAction SilentlyContinue

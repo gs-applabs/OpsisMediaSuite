@@ -31,6 +31,11 @@ R6 υπερισχύει στη σειρά εργασιών, R5-AUDIT στην π
 
 **Αναφορά κάθε pass:** κατάσταση κάθε ομάδας 01–16 (ή σύνδεση προς τον ενημερωμένο πλήρη πίνακα αν δεν ζητήθηκε αναλυτικά), ακριβείς αλλαγές/OV-IDs, πραγματικό CI, επόμενο εύκολο μη ολοκληρωμένο βήμα, blockers (credentials, provider policy, hardware, connector limits). Μην παρουσιάζεις ως πλήρες το σύνολο των εκκρεμοτήτων αν υπάρχει μόνο μερική απογραφή. Δεν χρειάζεται νέο plugin για τις τρέχουσες GitHub αλλαγές· αν απαιτηθεί συγκεκριμένη μη διαθέσιμη δυνατότητα, αναζήτησε κατάλληλο connector και ζήτησε μόνο την αναγκαία σύνδεση. Μη δημιουργείς δεύτερο roadmap.
 
+
+### R7.1 — RC1 acceptance gate
+- Exact head checkouts for eleven workflow definitions; public subtitle and extended 120/1200-cycle tests triggered by RC marker. Installer workflow includes independent Windows Server 2022 security job on same artifact (hash, exact source, Defender, trace, secrets, NuGet native/player/plugin). Existing published-release scan unchanged. No claim of completed tests or genuine Windows 10/11 desktop.
+- Corrected malformed PowerShell substitutions in intermediate preparation commits before final RC freeze. No intermediate build is accepted as RC1 evidence. Freeze via separate release/3.0.0-rc.1 branch; subsequent changes must be tested separately.
+
 ### R7 — RC1 preparation (base 7ac8b212)
 - Verified 7ac8b212, ee9f52f4 and dfd5df8e each 9/9 workflows PASS. Set actual 3.0.0-rc.1 package/lock, Help fallback, Inno display and numeric PE version 3.0.0.1; preserve AppId/user data/plugin identity. No stable publication.
 - Installer lifecycle builds actual prerelease plus synthetic 2.4.2 baseline, stages unsigned installer, portable ZIP, source ZIP, npm SBOM and SHA256; checks install/upgrade/uninstall/reinstall/repair and profile preservation. Synthetic old version is NOT authentic historical migration. New RC evidence pending.
