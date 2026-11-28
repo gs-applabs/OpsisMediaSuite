@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R5-P0.1 — SELECTIVE RECOVERY
+28 Νοεμβρίου 2026 • R5-P0.2 — SETTINGS BACKUP
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R5 και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι R5-P0.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι R5-P0.2. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R5-P0.2: OV-14 consolidate existing old backup helper (allowlist/schema, current keys, rollback, shared main/renderer sanitizer) replacing prefix-only flow; OV-13 settings export atomic staging and bounded import; photo save already no-overwrite, distinct contract. OV-04 and OV-12 inspected but pending actual security/origin review and opt-in photo capture date. CI pending, no merge/release. Base 9fa3861 seven PASS, two pending. Next OV-04/12/13 and desktop branch reconciliation.
+
 R5-P0.1: OV-03/18 REUSE existing FFmpeg resolver and subtitle decoder, no new modules; OV-05 EXTEND local-media-policy ASCII control/DEL/UNC rejection; OV-10 EXTEND existing music-tags with conservative read-only ID3 Greek UTF-8 mojibake recovery, wired to metadata:read and MusicBrainz. Added existing-suite regression tests. Legacy Greek codepage guesses excluded pending explicit review; next OV-04/12/13/14/02 branch reconciliation. New CI pending, no merge/release.
 
 R5-AUDIT: μοναδικό μητρώο πλήρους ελέγχου διπλοτύπων/αλληλοκαλύψεων/συγκρούσεων στο Master Roadmap, 25 σταθερά OV IDs, 6 κατηγορίες και πύλη πριν/μετά από κάθε pass. 112 literal IPC registrations / 0 duplicate names σε 4 main modules στο b0e2115. Στατικός στοχευμένος έλεγχος, όχι πλήρης AST/runtime πιστοποίηση. Επόμενο R5-P0: πραγματική διασταύρωση/επίλυση ανά OV-ID. Καμία αλλαγή runtime σε αυτό το commit.

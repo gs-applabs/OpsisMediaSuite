@@ -118,3 +118,17 @@ test('local media policy rejects control characters and network paths before fil
   for(const bad of [file+'\t',file+'\x01',file+'\x7f','//server/share/file','\\\\server\\share\\file']){assert.equal(localPath(bad),null);assert.equal(localDirectory(bad),null);}
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('settings backup uses one allowlist, validates before restore, and rolls back on quota failure',()=>{
+ const B=require('../renderer/backup');
+ const initial=new Map([['waveframe.lang','el'],['waveframe.skin','midnight'],['waveframe.unrecognized','do not export']]);
+ let failed=false;
+ const storage={getItem:k=>initial.has(k)?initial.get(k):null,setItem:(k,v)=>{if(k==='waveframe.skin'&&v==='light'&&!failed){failed=true;throw Error('quota');}initial.set(k,v);},removeItem:k=>initial.delete(k)};
+ assert.deepEqual(B.collect(storage),{'waveframe.lang':'el','waveframe.skin':'midnight'});
+ assert.equal(B.restore(storage,{'waveframe.lang':'en','waveframe.playlist':'{"bad":1}'}),false);assert.equal(initial.get('waveframe.lang'),'el');
+ assert.equal(B.restore(storage,{'waveframe.lang':'en','waveframe.skin':'light'}),false);assert.equal(initial.get('waveframe.lang'),'el');assert.equal(initial.get('waveframe.skin'),'midnight');
+ assert.equal(B.restore(storage,{'waveframe.lang':'en','waveframe.metadata.inferDisplay':'true','waveframe.video.remainingTime':'true','waveframe.unrecognized':'new'}),true);
+ assert.equal(initial.get('waveframe.unrecognized'),'do not export');assert.equal(initial.get('waveframe.lang'),'en');
+ assert.equal(B.sanitize({'waveframe.destFolder':'\\\\server\\share'}),null);
+ assert.equal(B.sanitize({'waveframe.video.resume':'{"a":"bad"}'}),null);
+});

@@ -2522,14 +2522,7 @@ document.getElementById('btnOpenFamily').addEventListener('click', () => window.
 document.addEventListener('waveframe:language-changed', () => { if (tutorialOverlay.classList.contains('open')) renderTutorial(); });
 
 /* ---- Backup & Cloud Sync ---- */
-function collectBackupData() {
-  const data = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('waveframe.')) data[key] = localStorage.getItem(key);
-  }
-  return data;
-}
+function collectBackupData() { return WaveframeBackup.collect(localStorage); }
 els.btnBackupExport.addEventListener('click', async () => {
   const result = await window.waveframe.exportSettings(collectBackupData());
   if (result.canceled) return;
@@ -2539,12 +2532,8 @@ els.btnBackupImport.addEventListener('click', async () => {
   const result = await window.waveframe.importSettings();
   if (result.canceled) return;
   if (!result.ok) { els.backupStatus.textContent = result.error || t('settings.backupError'); return; }
-  // a backup file is untrusted input: it must be a plain object and only waveframe.* string values are restored
-  const data = result.data && typeof result.data === 'object' && !Array.isArray(result.data) ? result.data : null;
-  if (!data) { els.backupStatus.textContent = t('settings.backupError'); return; }
-  Object.entries(data).forEach(([key, value]) => {
-    if (key.startsWith('waveframe.') && typeof value === 'string' && value.length < 5 * 1024 * 1024) localStorage.setItem(key, value);
-  });
+  // Validate the entire known-key set before touching localStorage; restore rolls back on write failure.
+  if (!WaveframeBackup.restore(localStorage,result.data)) { els.backupStatus.textContent = t('settings.backupError'); return; }
   await showAlertDialog(t('settings.backupImportTitle'), t('settings.backupImportDone'));
   location.reload();
 });

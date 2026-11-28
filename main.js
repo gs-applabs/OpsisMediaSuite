@@ -613,14 +613,24 @@ function createWindow() {
   });
 
   ipcMain.handle('settings:export', async (event, data) => {
-    if (!fromMain(event) || !data || typeof data !== 'object' || Array.isArray(data) || JSON.stringify(data).length > 8 * 1024 * 1024) return { canceled: false, ok: false, error: 'invalid data' };
+    if (!fromMain(event) || !data || typeof data !== 'object' || Array.isArray(data) || Buffer.byteLength(JSON.stringify(data)) > 8 * 1024 * 1024) return { canceled: false, ok: false, error: 'invalid data' };
+    const clean = require('./renderer/backup').sanitize(data);
+    if (!clean) return { canceled: false, ok: false, error: 'invalid data' };
     const result = await dialog.showSaveDialog(win, {
       defaultPath: 'opsis-media-suite-backup.json',
       filters: [{ name: 'Opsis Media Suite Backup', extensions: ['json'] }],
     });
     if (result.canceled || !result.filePath) return { canceled: true };
     try {
-      fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
+      if(!fromMain(event))return {canceled:true};
+      const parent=require('./local-media-policy').localDirectory(path.dirname(result.filePath));
+      const leaf=path.basename(result.filePath);
+      if(!parent||!leaf||/[\\/:*?"<>|\x00-\x1f\x7f]/.test(leaf)||path.extname(leaf).toLowerCase()!=='.json')throw Error('invalid backup path');
+      const output=path.join(parent,leaf);
+      try{const st=fs.lstatSync(output);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)throw Error('unsafe backup destination');}catch(err){if(err.code!=='ENOENT')throw err;}
+      const temp=path.join(parent,'.opsis-backup-'+require('node:crypto').randomUUID()+'.tmp');let owned=false,fd;
+      try{fd=fs.openSync(temp,'wx',0o600);owned=true;fs.writeFileSync(fd,JSON.stringify(clean,null,2));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(temp,output);owned=false;}
+      finally{if(fd!==undefined)fs.closeSync(fd);if(owned)try{fs.unlinkSync(temp);}catch{}}
       return { canceled: false, ok: true, path: result.filePath };
     } catch (err) {
       return { canceled: false, ok: false, error: err.message };
@@ -635,9 +645,15 @@ function createWindow() {
     });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
     try {
-      if (fs.statSync(result.filePaths[0]).size > 8 * 1024 * 1024) return { canceled: false, ok: false, error: 'file too large' };
-      const raw = fs.readFileSync(result.filePaths[0], 'utf-8');
-      const data = JSON.parse(raw);
+      if(!fromMain(event))return {canceled:true};
+      const file=localPath(result.filePaths[0]);if(!file||path.extname(file).toLowerCase()!=='.json')throw Error('invalid backup path');
+      const limit=8*1024*1024,fd=fs.openSync(file,'r');
+      let raw;
+      try{if(fs.fstatSync(fd).size>limit)throw Error('file too large');
+        const b=Buffer.alloc(limit+1);let n=0,k;while(n<b.length&&(k=fs.readSync(fd,b,n,b.length-n,null))>0)n+=k;
+        if(n>limit)throw Error('file too large');raw=new TextDecoder('utf-8',{fatal:true}).decode(b.subarray(0,n));
+      }finally{fs.closeSync(fd);}
+      const data=require('./renderer/backup').sanitize(JSON.parse(raw));if(!data)throw Error('invalid backup data');
       return { canceled: false, ok: true, data };
     } catch (err) {
       return { canceled: false, ok: false, error: err.message };
