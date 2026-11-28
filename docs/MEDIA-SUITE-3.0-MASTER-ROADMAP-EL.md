@@ -27,6 +27,9 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.7A — bounded HTTP(S) reconnect (28 Νοεμβρίου 2026)
+- Shared URL validation for manual input and playlist admission; reject credentials and malformed URLs. Opt-in bounded 2/5/10-second reconnect after Chromium open/error failure, no background polling. One scoped timer cancelled on full stop, transport stop, park, source change, pause API, toggle or unload. No native network admission, no HLS/RTSP guarantee. Guide 113, pure tests. Actual HTTP failure fixture and CI pending. No merge/release.
+
 ### ULTRA 3D.6C — CI ordering and approved video fixture (28 Νοεμβρίου 2026)
 - Base ee0ed76 packaged job 140852124461 failed cold converter skeleton because added A-B preparation tests preloaded converter. Moved those tests immediately after unchanged cold assertion in existing converter self-test. No weakening of lazy loading or production logic.
 - Added real approved decoded WebM duplicate occurrence reorder identity and A-B dialog transfer to existing media self-test, no automatic conversion. Paused decoded video, not physical continuous playback. New CI pending. No merge/release.

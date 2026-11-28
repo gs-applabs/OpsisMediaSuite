@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.6C
+28 Νοεμβρίου 2026 • ULTRA 3D.7A
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.6C. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.7A. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.7A: shared HTTP(S) URL admission, opt-in maximum three delayed reconnect attempts (2/5/10 s), scoped timeout and cancellation on stop/park/source change/unload, 113 guide entries and pure tests. Native HLS/RTSP and authorized IPTV remain open; no new native network admission. Base 3D.6C CI running at inspection; new CI pending. Next verify actual CI and real local HTTP retry fixture, then remaining 3D R4.
+
 3D.6C: packaged candidate ee0ed76 failed cold converter skeleton assertion because new test loaded converter too early. Move A-B preparation tests after existing cold assertion without weakening it. Added approved decoded WebM duplicate reorder identity and full A-B dialog transfer fixture, paused decoded video (not physical running playback). Base six CI PASS, one FAIL, two running. New CI pending; next fix actual failures and network playback R4.
 
 3D.6B: real Electron DOM keyboard and synthetic drag/drop events, external drop rejection, converter A-B preparation/control/queue isolation checks without FFmpeg start; queue-only existing admission API; reject empty/network transfer input. Base c5d0506 five CI PASS, four running at inspection. New CI pending; actual active playback reorder and full player A-B dialog transfer remain open, then network playback R4. No release.

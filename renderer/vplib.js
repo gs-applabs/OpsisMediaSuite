@@ -35,6 +35,7 @@
     if(typeof value!=='string'||value.length>2048||/[\x00-\x1f\x7f]/.test(value.trim()))return null;
     try{const u=new URL(value.trim());return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password?u.href:null;}catch{return null;}
   }
+  function streamRetryDelay(attempt){return Number.isInteger(attempt)&&attempt>=0&&attempt<3?[2000,5000,10000][attempt]:null;}
   function parseSeekTime(value){
     const s=typeof value==='string'?value.trim():'';
     if(!/^\d{1,6}(?::[0-5]\d){0,2}(?:[.,]\d{1,3})?$/.test(s))return null;
@@ -260,7 +261,7 @@
     return Object.fromEntries(e.slice(Math.max(0, e.length - LIMITS.resume)));
   }
   // A path from storage is only offered for playback when it looks like something the main process would serve.
-  const playable = (p) => typeof p === 'string' && (isUrl(p) || (/^[A-Za-z]:[\\/]/.test(p) && !p.slice(2).includes(':') && kindOf(p) !== '')) && p.length < 2048 && !/[\0\r\n]/.test(p);
+  const playable = (p) => typeof p === 'string' && ((isUrl(p)&&clipboardUrl(p)!==null) || (/^[A-Za-z]:[\\/]/.test(p) && !p.slice(2).includes(':') && kindOf(p) !== '')) && p.length < 2048 && !/[\0\r\n]/.test(p);
 
   // What plays after the current item. mode: off | list | file | shuffle. rnd: a number in [0,1) (injected for tests).
   function nextIndex(mode, idx, len, rnd) {
@@ -303,5 +304,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, exportAB, videoSleepMinutes, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, exportAB, videoSleepMinutes, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, streamRetryDelay, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

@@ -737,3 +737,6 @@ test('A-B transfer requires a finite complete local timeline range',()=>{assert.
 test('video sleep accepts whole minutes including cancel, rejects invalid and over-limit input',()=>{
  for(const [input,expected] of [['0',0],['1',1],[' 15 ',15],['480',480],['481',null],['-1',null],['1.5',null],['1e2',null],['\\d',null],['',null],[null,null],[15,null]])assert.equal(V.videoSleepMinutes(input),expected);
 });
+
+
+test('stream retry is finite and rejects invalid URL admission',()=>{assert.deepEqual([0,1,2,3,-1,1.5].map(V.streamRetryDelay),[2000,5000,10000,null,null,null]);assert.equal(V.playable('https://example.test/clip.mp4'),true);for(const p of ['https://user:pass@example.test/a.mp4','http://','https://x.test/a\n.mp4'])assert.equal(V.playable(p),false);});

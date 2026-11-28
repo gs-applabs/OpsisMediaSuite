@@ -77,11 +77,20 @@
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function disposeSession(){const previous=session;session=null;if(previous)previous.stop().catch(()=>{});}
+  let retryTimer=0,retryCount=0;
+  function cancelStreamRetry(reset=true){clearTimeout(retryTimer);retryTimer=0;if(reset)retryCount=0;}
+  function scheduleStreamRetry(){
+    const path=current(),epoch=generation,delay=VP.streamRetryDelay(retryCount);
+    if(!path||!VP.clipboardUrl(path)||parked||handoff||retryTimer||!$('vpReconnect').checked||delay===null)return;
+    retryCount++;say('Stream reconnect '+retryCount+'/3 / Επανασύνδεση');
+    retryTimer=setTimeout(()=>{retryTimer=0;if(epoch===generation&&current()===path&&!parked&&$('vpReconnect').checked)void playAt(idx,true);},delay);
+  }
   let videoSleep=0;
   function cancelVideoSleep(){clearTimeout(videoSleep);videoSleep=0;$('vpSleepVideo')?.setAttribute('aria-pressed','false');}
-  function stop() { cancelVideoSleep();clearChapters();parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
+  function stop() { cancelStreamRetry();cancelVideoSleep();clearChapters();parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
   function parkForAudio(){
+    cancelStreamRetry();
     if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return nativeStopping||(nativeStopUnconfirmed?stopNative():true);
     parked={path:current(),seconds:handoff?Number(handoff.status?.positionMs||0)/1000:video.currentTime||0,fx:$('vpFx').getAttribute('aria-pressed')==='true'};
     // Keep the selected subtitle and unsaved edits; release only the playback machinery.
@@ -240,7 +249,8 @@
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     try{if(s&&s===session&&playbackEngine==='chromium')await s.play();else await el.play();return g===generation&&el===video;}catch{return false;}
   }
-  async function playAt(i) {
+  async function playAt(i,retrying=false) {
+    cancelStreamRetry(!retrying);
     if (i < 0 || i >= list.length) return;
     window.dispatchEvent(new CustomEvent('waveframe:video-intent'));
     const stopped=stopNative();saveResume(); releaseTicket();
@@ -267,7 +277,7 @@
     if (!VP.isUrl(p)&&!resumeParked) loadSiblingSubs(p, g, subRevision);
     const result=await opening;
     if(g!==generation)return;
-    if(!result.ok){releaseTicket();say(t('vp.cantPlay'));if(!VP.isUrl(p)&&$('vpNativeFallback').checked){await nativeHandoff('libvlc',p,g);}return;}
+    if(!result.ok){releaseTicket();say(t('vp.cantPlay'));if(VP.isUrl(p))scheduleStreamRetry();if(!VP.isUrl(p)&&$('vpNativeFallback').checked){await nativeHandoff('libvlc',p,g);}return;}
     playbackEngine=result.engine;
     if(resumeParked){seekTo(resumeParked.seconds);rebuildTrack();}
     if (restoreFx) await toggleFx();
@@ -572,7 +582,7 @@
     for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev,()=>{syncTransport();syncResumeTimer();syncVideoFxActivity();});
     on('click', () => { if(parked){playAt(idx);return;}if (video.paused) void resumeChromium(); else video.pause(); });
     on('dblclick', () => $('vpFull').click());
-    on('error', () => say(t('vp.cantPlay')));
+    on('error', () => {say(t('vp.cantPlay'));if(playbackEngine)scheduleStreamRetry();});
     on('ended', onEnded);
     on('timeupdate', () => { if (ab.stage === 'loop' && video.currentTime >= ab.b) video.currentTime = ab.a; });
     on('pause', saveResume);
@@ -616,7 +626,8 @@
     $('vpOpen').addEventListener('click', async () => addPaths(await api.vpPick('files'), true));
     $('vpCloseMedia').addEventListener('click',closeMedia);
     $('vpOpenFolder').addEventListener('click', async () => addPaths(await api.vpPick('folder'), true));
-    $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
+    $('vpOpenUrl').addEventListener('click', async () => { const raw=await showInputDialog(t('vp.urlPrompt'));if(raw==null)return;const u=VP.clipboardUrl(raw);if(u)addPaths([u],true);else say(t('vp.unsupported')); });
+    $('vpReconnect').addEventListener('change',()=>{cancelStreamRetry();});
     $('vpPasteUrl').addEventListener('click',async()=>{
       const u=VP.clipboardUrl(await api.vpClipboardUrl().catch(()=>null));
       if(!u){say('No valid HTTP(S) URL / Μη έγκυρο URL');return;}
@@ -647,7 +658,7 @@
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
     $('vpPlay').addEventListener('click', () => { if(handoff){nativeCommand('toggle');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)void resumeChromium();else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
-    $('vpStop').addEventListener('click', () => { if(handoff){stopNative();playbackEngine=null;return;} if(parked){parked.seconds=0;syncTime();syncTransport();return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
+    $('vpStop').addEventListener('click', () => { cancelStreamRetry(); if(handoff){stopNative();playbackEngine=null;return;} if(parked){parked.seconds=0;syncTime();syncTransport();return;} video.pause(); seekTo(0); syncTime(); syncTransport(); });
     $('vpMute').addEventListener('click', () => { if(handoff){nativeCommand('mute');return;} video.muted = !video.muted; syncTransport(); });
     $('vpVolume').addEventListener('input', () => { if(handoff)return; video.volume = Number($('vpVolume').value) / 100; video.muted = video.volume === 0; syncTransport(); });
 
@@ -1005,7 +1016,7 @@
 
 
     syncResumeTimer();
-    window.addEventListener('beforeunload', () => { clearInterval(saveTimer);cancelVideoSleep();stopNative();saveResume(); releaseTicket(); });
+    window.addEventListener('beforeunload', () => { clearInterval(saveTimer);cancelStreamRetry();cancelVideoSleep();stopNative();saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
     window.addEventListener('waveframe:dsp-route-changed',refreshFx);
@@ -1051,14 +1062,14 @@
     open(p) { build(); addPaths([p], true); },
     enqueue(paths) { build(); addPaths(paths, false); },
     pause() {
-      if(!built)return;
+      cancelStreamRetry();if(!built)return;
       if(handoff){stopNative();return;}
       // Cancel an unresolved video open as well as an already-playing element.
       if(current()&&!playbackEngine){++generation;releaseTicket();disposeSession();video.pause();return;}
       if(video&&!video.paused)video.pause();
     },
     parkForAudio,
-    diagnostics(){return {videoSleep:!!videoSleep,parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,fxProcessors:fx?.nodes?.length||0,fxRoute:fx?.gate?.target||null,fxContext:fx?.ctx?.state||null,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
+    diagnostics(){return {streamRetry:!!retryTimer,streamRetryCount:retryCount,videoSleep:!!videoSleep,parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,fxProcessors:fx?.nodes?.length||0,fxRoute:fx?.gate?.target||null,fxContext:fx?.ctx?.state||null,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();
