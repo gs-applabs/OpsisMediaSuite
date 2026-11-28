@@ -627,10 +627,7 @@ function createWindow() {
       const leaf=path.basename(result.filePath);
       if(!parent||!leaf||/[\\/:*?"<>|\x00-\x1f\x7f]/.test(leaf)||path.extname(leaf).toLowerCase()!=='.json')throw Error('invalid backup path');
       const output=path.join(parent,leaf);
-      try{const st=fs.lstatSync(output);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)throw Error('unsafe backup destination');}catch(err){if(err.code!=='ENOENT')throw err;}
-      const temp=path.join(parent,'.opsis-backup-'+require('node:crypto').randomUUID()+'.tmp');let owned=false,fd;
-      try{fd=fs.openSync(temp,'wx',0o600);owned=true;fs.writeFileSync(fd,JSON.stringify(clean,null,2));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(temp,output);owned=false;}
-      finally{if(fd!==undefined)fs.closeSync(fd);if(owned)try{fs.unlinkSync(temp);}catch{}}
+      require('./atomic-write').atomicWrite(output,JSON.stringify(clean,null,2));
       return { canceled: false, ok: true, path: result.filePath };
     } catch (err) {
       return { canceled: false, ok: false, error: err.message };

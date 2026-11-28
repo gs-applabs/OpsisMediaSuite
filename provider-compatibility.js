@@ -32,9 +32,7 @@ function createFileStore(dir){
   save(state){
    const data=Buffer.from(JSON.stringify(state));if(data.length>max)throw Error('state-too-large');
    fs.mkdirSync(dir,{recursive:true,mode:0o700});
-   const temp=path.join(dir,'provider-registry-'+crypto.randomUUID()+'.partial');let fd,owned=false;
-   try{fd=fs.openSync(temp,'wx',0o600);owned=true;fs.writeFileSync(fd,data);fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(temp,file);owned=false;}
-   finally{if(fd!==undefined)fs.closeSync(fd);if(owned)try{fs.unlinkSync(temp);}catch{}}
+   require('./atomic-write').atomicWrite(file,data);
   }
  });
 }

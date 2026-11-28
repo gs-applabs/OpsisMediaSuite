@@ -89,9 +89,7 @@ function createStore(file, defaults, sanitize, fsApi = fs) {
       data = sanitize({ ...data, ...patch });
       try {
         fsApi.mkdirSync(path.dirname(file), { recursive: true });
-        const tmp = file + '.tmp';
-        fsApi.writeFileSync(tmp, JSON.stringify(data));
-        fsApi.renameSync(tmp, file);
+        require('./atomic-write').atomicWrite(file,JSON.stringify(data),{io:fsApi});
       } catch (_) { /* best effort: losing the state only means a repeated hint */ }
       return data;
     },

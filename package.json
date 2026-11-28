@@ -33,6 +33,7 @@
       "preload.js",
       "splash-preload.js",
       "suite.js",
+      "atomic-write.js",
       "suite-main.js",
       "conv-engine.js",
       "conv-main.js",
