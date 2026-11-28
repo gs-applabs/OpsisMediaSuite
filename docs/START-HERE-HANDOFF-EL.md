@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.9D.3
+28 Νοεμβρίου 2026 • ULTRA 3D.9E.1
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9D.3. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9E.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.9E.1: official YouTube Data API v3 metadata-only preview for public videos/playlists and compatible YouTube Music URLs, fixed Google API origin, user-supplied transient key, consent, four pages / 200 items maximum, cancellation and renderer results. No media extraction or download via API, no private playlist OAuth. Tests use injected transport. Live API credential and CI not yet verified. Previous 3D.9D.3 preserved; actual provider update trust configuration still pending. Official docs: https://developers.google.com/youtube/data/reference/rest/v3/playlistItems/list and https://developers.google.com/youtube/terms/developer-policies-guide.
+
 3D.9D.3: bounded HTTPS signed envelope transport, trusted endpoint supplied only by distribution, no redirects, JSON size/time checks, on-use/manual manager, single request, cancel, cooldown and fail-closed unconfigured state. Registered packaging/tests with mocked streams and transport. No production trust key, endpoint, actual adapter contract or UI connected; no live update. Base 91a84e7 2 PASS, 7 running. Next actual authorized adapter work and configured source integration once trust exists.
 
 3D.9D.2: optional bounded atomic local file store with signed envelopes for current/previous/highest, restart restore, expired active manifest disabled, high-water evidence retained after rollback, fail-closed invalid state and disk failure. Tests for restart, rollback, expiry, tamper, failed save. Not yet wired to main/UI, no production key or remote endpoint; local file deletion/replacement by an OS-level attacker is not prevented. Base 5d4b768 6/9 PASS incl packaged, 3 running. New CI pending.

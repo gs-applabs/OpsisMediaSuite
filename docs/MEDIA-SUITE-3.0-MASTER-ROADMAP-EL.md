@@ -31,6 +31,9 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 ### ULTRA 3D.9C — package inclusion and bounded streaming progress
 - Added download module to explicit package file list and both online suites to npm test. Shared stream writer validates response length/MIME/status, cleans owned partials, emits bounded byte/total/rate updates. Deterministic stream tests for success, size limit, truncation, MIME, redirect, empty, abort. No actual HTTPS or packaged UI certification yet. DNS lookup itself not cancellable. Provider adapters remain open.
 
+### ULTRA 3D.9E.1 — official YouTube metadata preview
+- YouTube Data API v3 metadata only, public item/playlist and compatible music.youtube.com links, transient user API key, explicit consent, fixed Google origin, four-page/200-item limit, cancellation, attributed preview. No downloads or media extraction via API, no private OAuth. Package/test entries added; fixtures only, live API and UI CI pending. Official docs: https://developers.google.com/youtube/data/reference/rest/v3/playlistItems/list and https://developers.google.com/youtube/terms/developer-policies-guide.
+
 ### ULTRA 3D.9D.3 — bounded provider update transport
 - Main-process-only candidate transport with distribution-supplied trusted HTTPS endpoint, no redirects, bounded JSON signed envelope, 15s deadline, cancellation, on-use/manual update manager and fail-closed unconfigured state. Tests use streams and injected transport. Packaged and registered in npm test. No production endpoint/key or actual adapter contract wired; automatic updates remain disabled. Base 91a84e7 two PASS, seven running.
 

@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('waveframe', {
   pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch (_) { return ''; } },
   convDefaultDir: () => ipcRenderer.invoke('conv:default-dir'),
   vidDefaultDir: () => ipcRenderer.invoke('vid:default-dir'),
+  vidYoutubePreview: (url,key)=>ipcRenderer.invoke('vid:youtube-preview',url,key),
+  vidYoutubeCancel: ()=>ipcRenderer.send('vid:youtube-cancel'),
   vidOnlineDownload: url=>ipcRenderer.invoke('vid:online-download',url),
   vidOnlineCancel: ()=>ipcRenderer.send('vid:online-cancel'),
   onVidOnlineProgress: cb=>ipcRenderer.on('vid:online-progress',(_e,data)=>cb(data)),

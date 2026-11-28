@@ -22,13 +22,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
   let closing=false,quitAllowed=false;
   const progressGate=require('./resource-diagnostics').createProgressGate();
-  let probeBusy=false,thumbBusy=false,onlineDownload=null;
-  const busy=()=>!!onlineDownload||pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
+  let probeBusy=false,thumbBusy=false,onlineDownload=null,youtubePreview=null;
+  const busy=()=>!!onlineDownload||!!youtubePreview||pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
   app.on('before-quit',event=>{
     if(quitAllowed)return;
     event.preventDefault();
     if(closing)return;
-    closing=true;onlineDownload?.abort();
+    closing=true;onlineDownload?.abort();youtubePreview?.abort();
     for(const id of pending)cancelledEarly.add(id);
     for(const job of jobs.values())try{job.cancel();}catch{}
     E.beginShutdown();EV.beginShutdown();
@@ -171,6 +171,18 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.handle('vid:default-dir', (e) => (trusted(e) ? defaultVideoOutDir() : null));
 
+  ipcMain.handle('vid:youtube-preview',async(e,url,key)=>{
+    if(!trusted(e)||youtubePreview||consentBusy)return {ok:false,code:'busy-or-denied'};
+    const Y=require('./youtube-metadata');if(!Y.identify(url)||typeof key!=='string'||!/^[A-Za-z0-9_-]{20,128}$/.test(key))return {ok:false,code:'invalid-source-or-key'};
+    const controller=new AbortController();youtubePreview=controller;
+    try{
+      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Preview / Προεπισκόπηση'],defaultId:0,cancelId:0,message:'Fetch YouTube metadata from Google?',detail:'The supplied API key and video or playlist ID will be sent to Google. No media is downloaded. Google privacy policy: https://policies.google.com/privacy'});
+      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
+      return {ok:true,...await Y.preview(url,key,{signal:controller.signal})};
+    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':['api-denied','rate-limit'].includes(err.message)?err.message:'preview-failed'};}
+    finally{youtubePreview=null;}
+  });
+  ipcMain.on('vid:youtube-cancel',e=>{if(trusted(e))youtubePreview?.abort();});
   ipcMain.handle('vid:online-download',async(e,url)=>{
     if(!trusted(e)||onlineDownload||consentBusy)return {ok:false,code:'busy-or-denied'};
     const D=require('./online-media-download');const candidate=D.candidate(url);

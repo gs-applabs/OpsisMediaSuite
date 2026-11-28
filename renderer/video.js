@@ -88,6 +88,11 @@
       h('button',{id:'vidOnlineAnalyze',class:'small-btn',text:'Identify source / Αναγνώριση πηγής'}),
       h('button',{id:'vidOnlineDownload',class:'small-btn',text:'Download direct file / Λήψη αρχείου'}),
       h('button',{id:'vidOnlineCancel',class:'small-btn',text:'Cancel download / Ακύρωση λήψης',disabled:true}),
+      h('label',{class:'field-label',htmlFor:'vidYoutubeKey',text:'YouTube Data API key (not saved) / Κλειδί API (δεν αποθηκεύεται)'}),
+      h('input',{id:'vidYoutubeKey',type:'password',maxLength:128,autocomplete:'off'}),
+      h('button',{id:'vidYoutubePreview',class:'small-btn',text:'YouTube metadata preview / Προεπισκόπηση'}),
+      h('button',{id:'vidYoutubeCancel',class:'small-btn',text:'Cancel preview / Ακύρωση',disabled:true}),
+      h('textarea',{id:'vidYoutubeResults',readOnly:true,rows:4,'aria-label':'YouTube metadata results'}),
       h('p',{id:'vidOnlineStatus',class:'hint',role:'status','aria-live':'polite',text:'Local identification only / Τοπική αναγνώριση χωρίς σύνδεση'})
     ]));
 
@@ -393,6 +398,15 @@
   function wire() {
     const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
     $('vidOnlineAnalyze').addEventListener('click',identify);
+    $('vidYoutubeCancel').addEventListener('click',()=>api.vidYoutubeCancel());
+    $('vidYoutubePreview').addEventListener('click',async()=>{
+      const btn=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidYoutubeKey');
+      if(btn.disabled)return;
+      const key=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';btn.disabled=true;cancel.disabled=false;
+      try{const result=await api.vidYoutubePreview(url,key);
+        out.value=result?.ok?'YouTube — '+result.items.length+' items'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel).join('\n'):'YouTube preview: '+(result?.code||'failed');
+      }catch{out.value='YouTube preview failed';}finally{btn.disabled=false;cancel.disabled=true;}
+    });
     $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
     api.onVidOnlineProgress(data=>{
       if(!$('vidOnlineDownload').disabled||!data||!Number.isFinite(data.received))return;
