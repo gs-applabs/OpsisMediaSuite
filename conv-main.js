@@ -2,7 +2,7 @@
 // IPC glue for the audio converter. Only the main window may call these channels; every payload is validated here
 // (options through convlib.validateOptions, files must exist and be regular files). The original files are only read.
 
-const { ipcMain, dialog, shell, app } = require('electron');
+const { ipcMain, dialog, shell, app, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const L = require('./renderer/convlib.js');
@@ -12,6 +12,7 @@ const V = require('./renderer/vidlib.js');
 const { localPath, localDirectory, allowedFile } = require('./local-media-policy.js');
 const MEDIA_TYPES = new Set([...E.AUDIO_EXTS, ...E.VIDEO_EXTS]);
 const SUB_TYPES = new Set(['srt','ass','ssa','vtt','sub']);
+const COVER_TYPES=new Set(['jpg','jpeg','png']);
 
 const MAX_READ = 600 * 1024 * 1024; // the renderer decodes the whole file in memory
 
@@ -39,7 +40,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   });
   const sendProgress = (payload) => { if(closing)return;if(payload.id&&(!pending.has(payload.id)||!progressGate.allow(payload.id,payload.pct)))return;const w = getMainWin(); if (w && !w.isDestroyed()) w.webContents.send('conv:progress', payload); };
   const okFile = p => !!localPath(p);
-  const sourceGrants=new Set(),subtitleGrants=new Set(),directoryGrants=new Set(),outputGrants=new Set();
+  const sourceGrants=new Set(),subtitleGrants=new Set(),directoryGrants=new Set(),outputGrants=new Set(),coverGrants=new Set();
   const boundedAdd=(set,p,limit=4096)=>{if(set.size>=limit)set.delete(set.values().next().value);set.add(p);return p;};
   const approveSource=p=>{const f=allowedFile(p,MEDIA_TYPES);return f?boundedAdd(sourceGrants,f):null;};
   const approveSubtitle=p=>{const f=allowedFile(p,SUB_TYPES);return f?boundedAdd(subtitleGrants,f,128):null;};
@@ -127,7 +128,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       if (closing||cancelledEarly.has(id)) job.cancel();
       const r = await job.promise;
       const output=localPath(r.output);if(output)boundedAdd(outputGrants,output);
-      return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom,outputCount:r.outputCount,keyframeCut:r.keyframeCut===true };
+      return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom,outputCount:r.outputCount,coverStatus:r.coverStatus,keyframeCut:r.keyframeCut===true };
     } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); pending.delete(id);progressGate.release(id); }
   }
 
@@ -224,12 +225,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.on('vid:online-cancel',e=>{if(trusted(e))onlineDownload?.abort();});
   ipcMain.handle('vid:pick', async (e, kind) => {
     if (!trusted(e)) return [];
-    const subs = kind === 'subtitle',oneMedia=kind==='media-one';
+    const subs = kind === 'subtitle',oneMedia=kind==='media-one',cover=kind==='cover';
     const r = await dialog.showOpenDialog(getMainWin(), {
-      properties: subs||oneMedia ? ['openFile'] : ['openFile', 'multiSelections'],
-      filters: subs ? [{ name: 'Subtitles', extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'] }] : [{ name: 'Video', extensions: oneMedia?[...MEDIA_TYPES]:E.VIDEO_EXTS }, { name: 'All files', extensions: ['*'] }],
+      properties: subs||oneMedia||cover ? ['openFile'] : ['openFile', 'multiSelections'],
+      filters: cover?[{name:'JPEG / PNG cover',extensions:[...COVER_TYPES]}]:subs ? [{ name: 'Subtitles', extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'] }] : [{ name: 'Video', extensions: oneMedia?[...MEDIA_TYPES]:E.VIDEO_EXTS }, { name: 'All files', extensions: ['*'] }],
     });
-    if (r.canceled) return [];
+    if (r.canceled||!trusted(e)) return [];
+    if(cover){const f=allowedFile(r.filePaths[0],COVER_TYPES);return f?[boundedAdd(coverGrants,f,16)]:[];}
     return r.filePaths.slice(0,V.LIMITS.maxFiles).map(p=>subs?(V.validSubtitlePath(p)?approveSubtitle(p):null):approveSource(p)).filter(Boolean);
   });
 
@@ -257,6 +259,11 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (!trusted(e) || !req || !okId(req.id) || !okMedia(req.path)) return { ok: false, code: 'bad-request' };
     const v = V.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
+    let coverPath=null;
+    if(req.outputCover!==undefined){
+      if(!v.options.audioOnly||v.options.operation!=='encode'||!['mp3','flac'].includes(v.options.audioOnlyFormat))return {ok:false,code:'bad-options',error:'outputCover'};
+      coverPath=allowedFile(req.outputCover,COVER_TYPES);if(!coverPath||!coverGrants.has(coverPath))return {ok:false,code:'denied',error:'outputCover'};
+    }
     if(req.outputTags!==undefined){
       if(!v.options.audioOnly||v.options.operation!=='encode'||!req.outputTags||typeof req.outputTags!=='object'||Array.isArray(req.outputTags)||Object.keys(req.outputTags).some(k=>!['title','artist','album'].includes(k)))return {ok:false,code:'bad-options',error:'outputTags'};
       const clean=require('./music-tags').clean(req.outputTags);
@@ -270,7 +277,9 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       const d=V.needsVideoEncoder(v.options)?await EV.detectEncoders(ff):{encoders:new Set()};
       const outDir=resolveOutDir(req,true,defaultVideoOutDir);
       if(v.options.subtitleFile){const sub=allowedFile(v.options.subtitleFile,SUB_TYPES);if(!sub||!subtitleGrants.has(sub))throw Object.assign(Error('subtitle not approved'),{code:'denied'});v.options.subtitleFile=sub;}
-      ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,ensureActive,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
+      let outputCover=null;
+      if(coverPath){try{outputCover=await require('./music-tags').readLocalCover(coverPath);if(!outputCover||nativeImage.createFromBuffer(outputCover.data).isEmpty())throw Error('invalid cover');}catch{throw Object.assign(Error('Invalid or unavailable JPEG/PNG cover'),{code:'invalid-cover'});}}
+      ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,outputCover,available:d.encoders,outDir,ensureActive,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});
     });
   });
 

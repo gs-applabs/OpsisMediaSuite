@@ -185,3 +185,18 @@ test('real filtered video export decodes with gamma, sharpen and deinterlace',{s
 
 test('real remux preserves both audio streams and original codecs',{skip},async()=>{const before=await EV.probeVideo(FFMPEG,SRC);const r=await encode({operation:'remux',suffix:'-remux'},new Set());const after=(await check(r.output)).info;assert.equal(after.video.codec,before.video.codec);assert.deepEqual(after.audio.map(x=>x.codec),before.audio.map(x=>x.codec));assert.equal(after.audio.length,2);});
 test('real poster, contact sheet and bounded PNG sequence',{skip},async()=>{for(const operation of ['poster','contact','sequence']){const r=await encode({operation,frameInterval:1,frameCount:2,suffix:'-'+operation},new Set());const b=fs.readFileSync(r.output);assert.deepEqual([...b.subarray(0,8)],[137,80,78,71,13,10,26,10]);const w=b.readUInt32BE(16),h=b.readUInt32BE(20);assert.ok(w>0&&h>0);if(operation==='contact'){assert.equal(w,2560);assert.equal(h,1080);}if(operation==='sequence'){assert.equal(r.outputCount,2);assert.equal(fs.readdirSync(path.dirname(r.output)).length,2);assert.ok(w<=640&&h<=360);}}});
+
+test('audio extraction can add a local cover before publication without source or backup changes',{skip},async()=>{
+ const data=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1sAAAAASUVORK5CYII=','base64');
+ const before=fs.readFileSync(SRC);
+ const dir=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'opsis-export-cover-'));
+ try{
+  const validated=V.validateOptions({audioOnly:true,audioOnlyFormat:'flac',suffix:'-cover'});
+  const job=await EV.encodeVideo({ffmpegPath:FFMPEG,input:SRC,options:validated.options,available:new Set(),outDir:dir,outputCover:{data}});
+  const result=await job.promise;assert.equal(result.coverStatus,'added');
+  const mm=await import('music-metadata'),meta=await mm.parseFile(result.output);
+  assert.ok(meta.common.picture.some(p=>Buffer.from(p.data).equals(data)));
+  assert.deepEqual(fs.readFileSync(SRC),before);
+  assert.deepEqual(fs.readdirSync(dir),[path.basename(result.output)]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

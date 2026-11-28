@@ -57,7 +57,7 @@
     const base = { ...DEFAULTS, ...(PRESETS[r.preset] || {}) };
     const o = { ...base, ...r };
     // Output tags are independently admitted by the main process, never raw options.
-    delete o.outputTags;
+    delete o.outputTags;delete o.outputCover;
     const errors = [], warnings = [];
     if(typeof o.sourceMetadata!=='boolean')errors.push('sourceMetadata');
     if(!OPERATIONS.includes(o.operation))return {ok:false,options:o,errors:['operation'],warnings};

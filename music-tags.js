@@ -44,6 +44,18 @@ function validateCover(cover){
  if(!size||!Number.isSafeInteger(size.width)||!Number.isSafeInteger(size.height)||size.width<1||size.height<1||size.width>4096||size.height>4096||size.width*size.height>16000000)return null;
  return {data:b,mime,width:size.width,height:size.height};
 }
+// Shared bounded local cover read; caller must have explicit picker consent.
+async function readLocalCover(file){
+ const safe=require('./local-media-policy').allowedFile(file,new Set(['jpg','jpeg','png']));if(!safe)throw Error('unsafe cover path');
+ const h=await fs.open(safe,'r');
+ try{
+  const st=await h.stat();if(!st.isFile()||st.size>2*1024*1024||st.size<24)throw Error('cover size');
+  const data=Buffer.alloc(st.size);let n=0;
+  while(n<data.length){const got=(await h.read(data,n,data.length-n,n)).bytesRead;if(!got)throw Error('cover truncated');n+=got;}
+  const after=await h.stat();if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)throw Error('cover changed');
+  const cover=validateCover({data});if(!cover)throw Error('invalid cover');return cover;
+ }finally{await h.close();}
+}
 function patchTag(header,body,values,common={},cover=null){
  const has=header.subarray(0,3).toString()==='ID3';
  const version=has?header[3]:3;
@@ -228,7 +240,7 @@ async function readMp4(h,stat,values,common,cover){
  }
  throw Error('missing MP4 moov');
 }
-async function complete(file,values,{cover:inputCover=null,cancelled=()=>false}={}){
+async function complete(file,values,{cover:inputCover=null,cancelled=()=>false,stagedOutput=false}={}){
  const cover=inputCover?validateCover(inputCover):null;if(inputCover&&!cover)throw Error('invalid cover');
  const checkCancelled=()=>{if(cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});};checkCancelled();
  const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac','.wav','.m4a','.ogg','.opus'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('unsupported local audio format');
@@ -253,9 +265,11 @@ async function complete(file,values,{cover:inputCover=null,cancelled=()=>false}=
   if(patch.coverApplied&&!check.common.picture?.some(p=>Buffer.from(p.data).equals(cover.data)))throw Error('cover verification failed');
   for(const [k,v] of Object.entries(patch.applied))if(Array.isArray(check.common[k])?!check.common[k].includes(v):String(check.common[k])!==v)throw Error('tag verification failed: '+k);
   const same=async()=>{const s=await fs.lstat(file);if(s.size!==stat.size||s.mtimeMs!==stat.mtimeMs||s.ino!==stat.ino||!s.isFile())throw Error('file changed during operation');};
-  checkCancelled();await same();await fs.copyFile(file,backup,F.constants.COPYFILE_EXCL);await same();checkCancelled();
+  checkCancelled();await same();
+  // Internal unpublished converter output only: no user source backup needed.
+  if(!stagedOutput){await fs.copyFile(file,backup,F.constants.COPYFILE_EXCL);await same();}checkCancelled();
   await fs.rename(tmp,file);
-  return {status:'updated',backup,applied:patch.applied,coverApplied:patch.coverApplied};
+  return {status:'updated',...(stagedOutput?{}:{backup}),applied:patch.applied,coverApplied:patch.coverApplied};
  }finally{await fs.unlink(tmp).catch(()=>{});}
 }
-module.exports={infer,clean,readTrackText,patchTag,complete,syncWrite,patchFlac,validateCover,oggCRC,patchMp4};
+module.exports={readLocalCover,infer,clean,readTrackText,patchTag,complete,syncWrite,patchFlac,validateCover,oggCRC,patchMp4};

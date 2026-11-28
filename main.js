@@ -494,12 +494,7 @@ function createWindow() {
         const file=picked.filePaths[0];
         const image=await dialog.showOpenDialog(win,{title:'Select local cover (JPEG / PNG)',properties:['openFile'],filters:[{name:'JPEG / PNG',extensions:['jpg','jpeg','png']}]});
         if(image.canceled||metadataCancelled||win.isDestroyed())return {cancelled:true};
-        const safe=localPath(image.filePaths[0]);if(!safe)return {error:'Unsafe image path'};
-        const h=await fs.promises.open(safe,'r');let cover;
-        try{const st=await h.stat();if(st.size>2*1024*1024||st.size<24)return {error:'Cover must be at most 2 MiB'};
-          const data=Buffer.alloc(st.size);if((await h.read(data,0,data.length,0)).bytesRead!==data.length)return {error:'Image read failed'};
-          cover=tags.validateCover({data});
-        }finally{await h.close();}
+        const cover=await tags.readLocalCover(image.filePaths[0]);
         if(!cover||nativeImage.createFromBuffer(cover.data).isEmpty())return {error:'Invalid JPEG / PNG cover (maximum 4096 px)'};
         const confirm=await dialog.showMessageBox(win,{type:'question',message:'Add missing cover only? / Προσθήκη μόνο αν λείπει εξώφυλλο;',detail:path.basename(file)+' — '+cover.width+' × '+cover.height+' px. Original backup retained; existing artwork is never replaced.',buttons:['Cancel / Ακύρωση','Add cover / Προσθήκη'],defaultId:0,cancelId:0});
         if(confirm.response!==1||metadataCancelled||win.isDestroyed())return {cancelled:true};

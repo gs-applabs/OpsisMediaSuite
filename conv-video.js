@@ -77,7 +77,8 @@ const lastLines = (text) => String(text).split(/\r?\n/).filter(Boolean).slice(-3
 // Encodes one video (or extracts its audio / makes a GIF). Tries the available encoders of the chosen codec in order (hardware first, then
 // software): a failing hardware encoder (no GPU, missing driver) falls through to the next one. Two passes run only for encoders that
 // support -pass. Returns { promise -> { output, encoder, fellBackFrom }, cancel() }; a half-written file is removed on error and on cancel.
-async function encodeVideo({ ffmpegPath, input, options, available, onProgress, outDir, ensureActive=()=>{} }) {
+async function encodeVideo({ ffmpegPath, input, options, outputCover=null, available, onProgress, outDir, ensureActive=()=>{} }) {
+  if(outputCover&&(!options.audioOnly||options.operation!=='encode'||!['mp3','flac'].includes(options.audioOnlyFormat)))throw Object.assign(Error('Unsupported cover output format'),{code:'invalid-cover'});
   ensureRunning();ensureActive();const info = await probeVideo(ffmpegPath, input);ensureRunning();ensureActive();
   if (!info.video && !options.audioOnly&&options.operation!=='remux') throw Object.assign(new Error('no-video'), { code: 'no-video' });
   if (options.audioOnly && !info.audio.length) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
@@ -129,12 +130,19 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
         }
         if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
         ensureRunning();ensureActive();
+        let coverStatus;
+        if(outputCover){
+          const tags=require('./music-tags');
+          const result=await tags.complete(tmp,{}, {cover:outputCover,stagedOutput:true,cancelled:()=>{if(cancelled)return true;try{ensureRunning();ensureActive();return false;}catch{return true;}}});
+          coverStatus=result.coverApplied?'added':'existing-preserved';
+        }
+        if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});ensureRunning();ensureActive();
         const out=publishOutput(tmp,{input,ext,suffix:options.suffix,outDir});
         try{fs.unlinkSync(tmp);}catch{}
         if(passScratch)passScratch.release();
         passScratch=null;tmp=null;passLog=null;
         if (onProgress) onProgress(1);
-        return { output: out, encoder: enc, fellBackFrom: firstTried, keyframeCut:options.operation==='remux'&&(options.trimStart>0||options.trimEnd>0) };
+        return { output: out, encoder: enc, fellBackFrom: firstTried, coverStatus, keyframeCut:options.operation==='remux'&&(options.trimStart>0||options.trimEnd>0) };
       } catch (e) {
         cleanup();
         if (cancelled || (e && e.code === 'cancelled')) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
