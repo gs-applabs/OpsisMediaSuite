@@ -3216,6 +3216,20 @@ window.__selfTest = async function () {
     check('sleep button present', !!document.getElementById('btnSleep'));
     check('export button present', !!document.getElementById('btnExportApo'));
     check('loudness panel present', !!document.getElementById('loudnessInfo'));
+    // Real DOM, isolated self-test profile: exercise video sleep dialog wiring.
+    showTab('video');await loadVideoPlayer();
+    const sleepButton=document.getElementById('vpSleepVideo'),videoPlayer=window.WaveframeVideoPlayer;
+    const setVideoSleep=async(value)=>{sleepButton.click();inputModalField.value=value;inputModalOk.click();await Promise.resolve();await Promise.resolve();};
+    check('video sleep initially inactive',!videoPlayer.diagnostics().videoSleep);
+    await setVideoSleep('15');
+    check('video sleep dialog arms actual timer',videoPlayer.diagnostics().videoSleep&&sleepButton.getAttribute('aria-pressed')==='true');
+    await setVideoSleep('481');
+    check('invalid video sleep preserves existing timer',videoPlayer.diagnostics().videoSleep);
+    await setVideoSleep('0');
+    check('video sleep dialog cancels actual timer',!videoPlayer.diagnostics().videoSleep&&sleepButton.getAttribute('aria-pressed')==='false');
+    await setVideoSleep('1');document.getElementById('vpCloseMedia').click();
+    check('closing video releases sleep timer',!videoPlayer.diagnostics().videoSleep);
+    showTab('player');
     // loudness through a REAL decoded AudioBuffer: stereo 997 Hz sine at -23 dBFS must read -23 LUFS and need +5 dB to reach -18
     const fs = 48000, ctx = new OfflineAudioContext(2, fs * 6, fs);
     const buf = ctx.createBuffer(2, fs * 6, fs);

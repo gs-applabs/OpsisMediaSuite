@@ -78,7 +78,7 @@
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function disposeSession(){const previous=session;session=null;if(previous)previous.stop().catch(()=>{});}
   let videoSleep=0;
-  function cancelVideoSleep(){clearTimeout(videoSleep);videoSleep=0;}
+  function cancelVideoSleep(){clearTimeout(videoSleep);videoSleep=0;$('vpSleepVideo')?.setAttribute('aria-pressed','false');}
   function stop() { cancelVideoSleep();clearChapters();parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
   function parkForAudio(){
@@ -932,12 +932,16 @@
         showTab('converter');
       }catch{say('Converter unavailable / Μη διαθέσιμη μετατροπή');}
     });
+    $('vpSleepVideo').setAttribute('aria-pressed','false');
     $('vpSleepVideo').addEventListener('click',async()=>{
+      const epoch=generation;
       const value=await showInputDialog('Video sleep in minutes (1–480), 0 cancels / Λεπτά έως το κλείσιμο βίντεο, 0 ακύρωση');
-      if(value==null)return;const s=String(value).trim();if(!/^\\d{1,3}$/.test(s)||Number(s)>480){say('Invalid minutes / Μη έγκυρα λεπτά');return;}
-      cancelVideoSleep();const minutes=Number(s);
+      if(epoch!==generation)return;
+      if(value==null)return;const minutes=VP.videoSleepMinutes(value);if(minutes===null){say('Invalid minutes / Μη έγκυρα λεπτά');return;}
+      cancelVideoSleep();
       if(!minutes){say('Video sleep cancelled / Ακυρώθηκε');return;}
       videoSleep=setTimeout(()=>{videoSleep=0;closeMedia();},minutes*60000);
+      $('vpSleepVideo').setAttribute('aria-pressed','true');
       say('Video closes in '+minutes+' min / Κλείσιμο βίντεο σε '+minutes+' λεπτά');
     });
     $('vpSnap').addEventListener('click',()=>snapshot(false));
@@ -1053,7 +1057,7 @@
       if(video&&!video.paused)video.pause();
     },
     parkForAudio,
-    diagnostics(){return {parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,fxProcessors:fx?.nodes?.length||0,fxRoute:fx?.gate?.target||null,fxContext:fx?.ctx?.state||null,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
+    diagnostics(){return {videoSleep:!!videoSleep,parked:!!parked,session:!!session,ticket:!!activeTicket,fx:!!fx,fxProcessors:fx?.nodes?.length||0,fxRoute:fx?.gate?.target||null,fxContext:fx?.ctx?.state||null,saveTimer:!!saveTimer,nativeStopping:!!nativeStopping,nativeStopUnconfirmed,selected:idx};},
     get playing() { return !!(built&&(handoff||video&&!video.paused)); },
   };
   build();

@@ -27,6 +27,10 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.6A — video sleep correction and renderer acceptance (28 Νοεμβρίου 2026)
+- Base `6c4b93f27f6294f0bb255878fb922d72b6680e7a`: five CI PASS, four running at inspection. 3D.4 all nine PASS; 3D.5A four PASS, three cancelled, two running.
+- Found escaped digit regex in 3D.5B sleep input that rejects ordinary numbers. Extracted pure validation, added boundary tests, timer aria-pressed and stale dialog generation guard. Actual Electron self-test now clicks dialog, arms, rejects invalid without disarming, cancels and closes media. No new service, no app shutdown. New CI pending. Playlist/A-B real interaction and other 3D R4 items still open.
+
 ### ULTRA 3D.5B — A–B transfer and video sleep (28 Νοεμβρίου 2026)
 - Base `fc7114dbc4b6227e9ed7e5898d1a82ad045b20b9`: RAR/DSP PASS, seven workflows running at inspection.
 - Local Chromium complete finite A–B range transfers after explicit confirmation to idle existing converter with empty or matching one-file queue. Uses MKV stream copy; approximate keyframe cut, no automatic execution. No native or network transfer. One explicit video-only sleep timeout (1–480 min, 0 cancels), cleared on full stop/unload; does not quit application or stop independent jobs. Guide 112 and pure range validation test. New Windows CI and real UI checks pending. App exit remains open; no merge/release.

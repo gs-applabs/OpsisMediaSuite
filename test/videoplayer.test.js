@@ -732,3 +732,8 @@ test('moving an inactive playlist occurrence preserves active identity and dupli
 
 
 test('A-B transfer requires a finite complete local timeline range',()=>{assert.deepEqual(V.exportAB({stage:'loop',a:1.12345,b:3.45678},10),{start:1.123,end:3.457});for(const state of [{stage:'a',a:1,b:3},{stage:'loop',a:-1,b:3},{stage:'loop',a:1,b:11},{stage:'loop',a:1,b:1.1},{stage:'loop',a:NaN,b:3}])assert.equal(V.exportAB(state,10),null);assert.equal(V.exportAB({stage:'loop',a:1,b:3},Infinity),null);});
+
+
+test('video sleep accepts whole minutes including cancel, rejects invalid and over-limit input',()=>{
+ for(const [input,expected] of [['0',0],['1',1],[' 15 ',15],['480',480],['481',null],['-1',null],['1.5',null],['1e2',null],['\\d',null],['',null],[null,null],[15,null]])assert.equal(V.videoSleepMinutes(input),expected);
+});
