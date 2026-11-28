@@ -1,6 +1,6 @@
-# Control inventory — 19C
+# Control inventory — 19C + R5 online delta
 
-Source snapshot at 19C. Static named buttons, inputs, selects, textareas, summaries and labels, plus literal dynamic identifiers in converter/video/photo builders. Not a complete runtime DOM audit: generated lists, controls without IDs and conditionally computed IDs still need inspection. `Direct` means an individual guide destination, not proof of working functionality. Other IDs may be covered by group guidance or be internal; no percentage of functional coverage is inferred.
+Source snapshot at 19C; R5 delta appended below. Do not treat old non-online entries as newly verified. Static named buttons, inputs, selects, textareas, summaries and labels, plus literal dynamic identifiers in converter/video/photo builders. Not a complete runtime DOM audit: generated lists, controls without IDs and conditionally computed IDs still need inspection. `Direct` means an individual guide destination, not proof of working functionality. Other IDs may be covered by group guidance or be internal; no percentage of functional coverage is inferred.
 
 | Tab | ID | Kind | Source | Direct |
 |---|---|---|---|---|
@@ -273,3 +273,28 @@ Source snapshot at 19C. Static named buttons, inputs, selects, textareas, summar
 | converter | `vidTrack` | dynamic-id | video.js | review/group |
 | converter | `vidFill` | dynamic-id | video.js | review/group |
 | converter | `vidStatus` | dynamic-id | video.js | review/group |
+
+
+## R5 delta — online converter controls
+Audited source 9447ded478b6755dec6d249eee971bf608651479; all 18 IDs declared in renderer/video.js. Only vidOnlineAnalyze has a direct feature-guide entry. Static declaration/handler reference is not live UI proof.
+
+| Tab | ID | Kind | Source | Direct |
+|---|---|---|---|---|
+| converter | `vidOnlineUrl` | input | video.js | review/group |
+| converter | `vidOnlineAnalyze` | button | video.js | yes |
+| converter | `vidOnlineDownload` | button | video.js | review/group |
+| converter | `vidOnlineCancel` | button | video.js | review/group |
+| converter | `vidYoutubeKey` | input | video.js | review/group |
+| converter | `vidYoutubePreview` | button | video.js | review/group |
+| converter | `vidSpotifyToken` | input | video.js | review/group |
+| converter | `vidSpotifyPreview` | button | video.js | review/group |
+| converter | `vidSpotifyOpen` | button | video.js | review/group |
+| converter | `vidOtherPreview` | button | video.js | review/group |
+| converter | `vidYoutubeCancel` | button | video.js | review/group |
+| converter | `vidYoutubeResults` | textarea | video.js | review/group |
+| converter | `vidYoutubeItems` | select | video.js | review/group |
+| converter | `vidYoutubeAll` | button | video.js | review/group |
+| converter | `vidYoutubeMatch` | button | video.js | review/group |
+| converter | `vidYoutubeQueue` | button | video.js | review/group |
+| converter | `vidYoutubeSelectionStatus` | status | video.js | review/group |
+| converter | `vidOnlineStatus` | status | video.js | review/group |

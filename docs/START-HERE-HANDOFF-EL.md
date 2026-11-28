@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.9H.1
+28 Νοεμβρίου 2026 • R5 — SOURCE CROSS-CHECK
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9H.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι ο έλεγχος R5 (μόνο τεκμηρίωση). Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R5 source audit baseline 9447ded478b6755dec6d249eee971bf608651479: 134 changed files, 156 commits vs historical PR base, 9 branches, 3 PRs, 27 PR1 overlap; master 13 own commits. 8/9 CI PASS including General and Packaged, Inno pending. Full branch/file-level inventory and targeted source evidence in R5 of master roadmap. Critical: build/opsis-2.4.2-review-installer has 74 branch-side changes and 10 modules not present by same path at active SHA; reconcile semantics before new features. Six audio formats already have tag writers; don't recreate. Provider registry/updater library not wired to runtime. Provider preview transport/lifecycle and path identity have overlaps. Next R5-P0 selective branch reconciliation, then R5-P1 common preview/path and R5-P2 existing tag integration. No runtime edits in audit; no merge/release. Scope is static cross-check, not exhaustive runtime certification.
+
 3D.9H.1: official Vimeo/Dailymotion/SoundCloud oEmbed public metadata, canonical URL admission, fixed endpoints, 256 KiB/15s limits, explicit consent, common preview cancellation and single-item local mapping. SoundCloud sets show collection metadata only. HTML/media/thumbnail URLs discarded. Bandcamp remains pending (no verified official endpoint here), no provider audio/video downloads. Fixtures and packaging registered. Base e7b28d2 8/9 PASS incl General and Packaged, Inno pending. Live endpoint/UI tests pending. Docs: https://developer.vimeo.com/api/oembed/videos https://developers.dailymotion.com/v0/docs/embed-with-oembed https://developers.soundcloud.com/docs/oembed.
 
 3D.9G.1: Spotify metadata preview via official /tracks, /albums/id/tracks and 2026 /playlists/id/items, transient user token, explicit consent, shared preview mutex/cancel and local-file mapping, links back to Spotify, 4 pages/200 tracks, no preview/audio URLs, no downloading Spotify content. Tests and package registered. Live OAuth/API, provider logo/branding compliance and actual UI/CI verification pending; do not claim production-ready. Base da2bd1a 6 PASS, 3 running. Official migration: https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide.
