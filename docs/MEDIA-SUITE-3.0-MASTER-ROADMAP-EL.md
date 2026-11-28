@@ -28,6 +28,9 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.7B — subtitle viewport regression
+- Packaged job 140853768011 failed actual subtitle pixel comparison: video outside viewport. Restore video tab and scroll decoded video into view before capture; retain original assertion and pixel threshold. CI pending, no release.
+
 ### ULTRA 3D.7A — bounded HTTP(S) reconnect (28 Νοεμβρίου 2026)
 - Shared URL validation for manual input and playlist admission; reject credentials and malformed URLs. Opt-in bounded 2/5/10-second reconnect after Chromium open/error failure, no background polling. One scoped timer cancelled on full stop, transport stop, park, source change, pause API, toggle or unload. No native network admission, no HLS/RTSP guarantee. Guide 113, pure tests. Actual HTTP failure fixture and CI pending. No merge/release.
 

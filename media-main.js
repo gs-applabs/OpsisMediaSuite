@@ -594,6 +594,8 @@ function init({ getMainWin, resolveFfmpegPath }) {
             await seek(1.3);check('downloaded Greek subtitle active at 1.3s',await until("Array.from(document.getElementById('vpVideo').textTracks).some(t=>Array.from(t.activeCues||[]).some(c=>c.text==='Δοκιμή υποτίτλων'))",3000));
             // Compare the same paused video frame with captions on/off in the compositor.
             // Report difference independently from timing; a cue event alone does not prove pixels.
+            await js("showTab('video');document.getElementById('vpVideo').scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});1");
+            await new Promise(r=>setTimeout(r,250));
             const rect=await js("(()=>{const r=document.getElementById('vpVideo').getBoundingClientRect();return {x:Math.max(0,Math.floor(r.x)),y:Math.max(0,Math.floor(r.y)),width:Math.floor(Math.min(r.right,innerWidth)-Math.max(0,r.left)),height:Math.floor(Math.min(r.bottom,innerHeight)-Math.max(0,r.top))}})()");
             if(rect.width>0&&rect.height>0){
               await new Promise(r=>setTimeout(r,250));const on=(await win.webContents.capturePage(rect)).toBitmap();
