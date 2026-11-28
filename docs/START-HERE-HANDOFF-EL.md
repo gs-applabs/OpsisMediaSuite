@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.4
+28 Νοεμβρίου 2026 • ULTRA 3D.5A
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -12,6 +12,8 @@
 - Το commit που περιέχει αυτό το αρχείο είναι το 3D.4. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.5A: arbitrary playlist reorder via internal drag/drop and Alt+Up/Down on focused row, existing pure reorder helper, active duplicate occurrence preserved, no playback restart or new background work. Added pure regression cases; renderer interaction and new CI pending. Base 93a5b65: 8/9 PASS, installer pending at inspection. Next A-B transfer and video sleep/exit; then remaining R4. Earlier 3D.4 context follows.
+
 3D.4: existing converter operation selector, MKV stream-copy remux/keyframe trim, PNG poster/contact sheet/bounded sequence, existing queue/cancel, 110 guide entries, tests added, new CI pending. No new standalone service. Πρώτα έλεγξε CI πραγματικού PR head, διόρθωσε failures. Μετά 3D.5: player A-B transfer, arbitrary playlist reorder, video sleep/exit, remaining 3D R4 items, then 3E/3F/4A–D/5A–C. All older items are preserved in R4 and Git history; no duplicate implementation or premature release.
 
 ## Αμετάβλητες απαιτήσεις

@@ -21,12 +21,25 @@
   const current = () => (idx >= 0 ? list[idx] : null);
 
   /* ---------------- playlist ---------------- */
+  let playlistDrag = null;
+  function movePlaylistRow(from,to){
+    if(!Number.isInteger(from)||!Number.isInteger(to)||from===to||from<0||to<0||from>=list.length||to>=list.length)return;
+    const result=VP.reorderPlaylist(list,idx,'move',from,to);list=result.items;idx=result.selected;renderList();
+  }
   function renderList() {
+    playlistDrag=null;
     const ul = $('vpList'); ul.textContent = '';
     list.forEach((p, i) => {
       const li = document.createElement('li'); if (i === idx) li.classList.add('current');
       const b = document.createElement('button'); b.className = 'vp-name'; b.textContent = VP.titleOf(p); b.title = p; b.addEventListener('click', () => playAt(i));
       const x = document.createElement('button'); x.className = 'vp-x'; x.textContent = '✕'; x.setAttribute('aria-label', t('vp.remove')); x.addEventListener('click', () => removeAt(i));
+      b.draggable=true;
+      b.addEventListener('dragstart',e=>{playlistDrag={index:i,path:p};e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','opsis-playlist-row');});
+      b.addEventListener('dragend',()=>{playlistDrag=null;});
+      li.addEventListener('dragover',e=>{if(playlistDrag){e.preventDefault();e.dataTransfer.dropEffect='move';}});
+      li.addEventListener('drop',e=>{if(!playlistDrag)return;e.preventDefault();e.stopPropagation();const from=playlistDrag.index;const valid=list[from]===playlistDrag.path;playlistDrag=null;if(valid)movePlaylistRow(from,i);});
+      b.addEventListener('keydown',e=>{if(!e.altKey||!['ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();e.stopPropagation();const to=i+(e.key==='ArrowUp'?-1:1);if(to<0||to>=list.length)return;movePlaylistRow(i,to);ul.children[to]?.querySelector('.vp-name')?.focus();});
+      b.setAttribute('aria-keyshortcuts','Alt+ArrowUp Alt+ArrowDown');
       li.append(b, x); ul.append(li);
     });
     put(K.queue, list.slice(0, VP.LIMITS.playlist));
