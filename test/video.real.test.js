@@ -178,3 +178,6 @@ test('thumbnail: a PNG data URL of one frame', { skip }, async () => {
   assert.ok(t.length > 500);
   assert.equal(await EV.thumbnail(FFMPEG, path.join(dir, 'nope.mp4'), 1), null);
 });
+
+
+test('real filtered video export decodes with gamma, sharpen and deinterlace',{skip},async()=>{const encoder=sw264();if(!encoder)return;const r=await encode({preset:'webSmall',gamma:1.2,sharpen:.3,deinterlace:true,suffix:'-filters'},new Set([encoder]));assert.equal((await EA.verifyDecodes(FFMPEG,r.output)).ok,true);});

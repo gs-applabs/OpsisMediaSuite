@@ -105,6 +105,9 @@
       input('vidBitrate', 'vid.bitrate', { type: 'number', min: V.LIMITS.minBitrate, max: V.LIMITS.maxBitrate, step: 100, value: s.bitrate }),
       select('vidPasses', 'vid.passes', [[1, t('vid.pass1')], [2, t('vid.pass2')]], s.passes),
       select('vidSpeed', 'vid.speed', V.SPEEDS.map((k) => [k, t(`vid.speed.${k}`)]), s.speed),
+      h('div',{class:'conv-field',id:'vidGammaField'},[h('label',{class:'field-label',htmlFor:'vidGamma',text:'Gamma / Γάμμα'}),h('input',{id:'vidGamma',type:'number',min:.5,max:2,step:.05,value:s.gamma})]),
+      h('div',{class:'conv-field',id:'vidSharpenField'},[h('label',{class:'field-label',htmlFor:'vidSharpen',text:'Sharpen / Όξυνση'}),h('input',{id:'vidSharpen',type:'number',min:0,max:1.5,step:.1,value:s.sharpen})]),
+      h('div',{class:'conv-field',id:'vidDeinterlaceField'},[h('label',{class:'field-label',htmlFor:'vidDeinterlace',text:'Deinterlace / Αποπλέξη'}),h('input',{id:'vidDeinterlace',type:'checkbox',checked:s.deinterlace===true})]),
       select('vidAudioCodec', 'vid.audio', audioCodecs, s.audioCodec),
       input('vidAudioBitrate', 'vid.audioBitrate', { type: 'number', min: 32, max: 512, step: 16, value: s.audioBitrate }),
       select('vidAudioTrack', 'vid.audioTrack', [[0, fmt(t('vid.track'), { n: 1 })]], s.audioTrack),
@@ -141,7 +144,7 @@
     const ts = parseTime($('vidTrimStart').value), te = parseTime($('vidTrimEnd').value);
     const raw = {
       codec: $('vidCodec').value, container: $('vidContainer').value, height: +$('vidHeight').value, fps: +$('vidFps').value,
-      rateMode: $('vidRateMode').value, crf: +$('vidCrf').value, bitrate: +$('vidBitrate').value, passes: +$('vidPasses').value, speed: $('vidSpeed').value,encoderPolicy:$('vidEncoderPolicy').value,
+      rateMode: $('vidRateMode').value, crf: +$('vidCrf').value, bitrate: +$('vidBitrate').value, passes: +$('vidPasses').value, speed: $('vidSpeed').value,encoderPolicy:$('vidEncoderPolicy').value,gamma:+$('vidGamma').value,sharpen:+$('vidSharpen').value,deinterlace:$('vidDeinterlace').checked,
       audioCodec: $('vidAudioCodec').value, audioBitrate: +$('vidAudioBitrate').value, audioTrack: +$('vidAudioTrack').value,
       removeAudio: $('vidRemoveAudio').checked, subtitle: $('vidSubtitle').value, subtitleTrack: +$('vidSubtitleTrack').value, subtitleFile: subFile,
       trimStart: ts, trimEnd: te, audioOnly: mode === 'audio', audioOnlyFormat: $('vidAudioOnlyFormat').value, gif: mode === 'gif', suffix: $('vidSuffix').value,
@@ -156,6 +159,7 @@
     mode = p.gif ? 'gif' : p.audioOnly ? 'audio' : 'video';
     $('vidCodec').value = o.codec; $('vidContainer').value = o.container; $('vidHeight').value = String(o.height); $('vidFps').value = String(o.fps);
     $('vidRateMode').value = o.rateMode; $('vidCrf').value = o.crf; $('vidSpeed').value = o.speed; $('vidAudioCodec').value = o.audioCodec;
+    $('vidGamma').value=o.gamma;$('vidSharpen').value=o.sharpen;$('vidDeinterlace').checked=o.deinterlace;
     $('vidAudioBitrate').value = o.audioBitrate; $('vidRemoveAudio').checked = !!o.removeAudio; $('vidAudioOnlyFormat').value = o.audioOnlyFormat;
     for (const b of document.querySelectorAll('#vidPresets button')) b.setAttribute('aria-pressed', String(b.dataset.preset === key));
     sync();
@@ -175,7 +179,7 @@
     const candidates=encInfo?V.encoderOrder($('vidCodec').value,new Set(encInfo.encoders||[]),{policy:$('vidEncoderPolicy').value}):[];
     const best=candidates[0];
     const show = (id, on) => $(`${id}Field`).classList.toggle('dep-hidden', !on);
-    for (const id of ['vidCodec','vidEncoderPolicy', 'vidContainer', 'vidRateMode', 'vidSpeed', 'vidSubtitle']) show(id, vid);
+    for (const id of ['vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidRateMode', 'vidSpeed', 'vidSubtitle']) show(id, vid);
     show('vidHeight', vid || gif); show('vidFps', vid || gif);
     show('vidCrf', vid && !rateBitrate); show('vidBitrate', vid && rateBitrate);
     const canPass=!encInfo||candidates.some(V.canTwoPass);if(!canPass)$('vidPasses').value='1';
@@ -374,7 +378,7 @@
     $('vidDrop').addEventListener('drop', async (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[])); });
     $('vidClear').addEventListener('click', () => { if (!running&&!starting) { clearPreviews();items = []; renderList(); fillTracks(); estimate(); } });
     $('vidPresets').addEventListener('click', (e) => { const b = e.target.closest('button[data-preset]'); if (b) applyPreset(b.dataset.preset); });
-    for (const id of ['vidCodec', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
+    for (const id of ['vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
       $(id).addEventListener('change', sync);
       if ($(id).tagName === 'INPUT') $(id).addEventListener('input', estimate);
     }

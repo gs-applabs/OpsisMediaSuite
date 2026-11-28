@@ -198,3 +198,6 @@ test('explicit encoder policy is strict and two pass does not silently select on
  assert.deepEqual(V.encoderOrder('h264',set,{policy:'hardware',passes:2}),[]);
  assert.equal(V.validateOptions({encoderPolicy:'invalid'}).ok,false);
 });
+
+
+test('video filter options are bounded, neutral by default and ordered',()=>{const a=args({gamma:1.3,sharpen:.4,deinterlace:true},'libx264');const f=a[a.indexOf('-vf')+1];assert.ok(f.startsWith('yadif=mode=send_frame:parity=auto:deint=all,eq=gamma=1.3,unsharp=5:5:0.4:5:5:0'));assert.equal(V.validateOptions({gamma:Infinity}).ok,false);assert.equal(V.validateOptions({sharpen:2}).ok,false);assert.ok(!args({},'libx264').join(' ').includes('unsharp'));});

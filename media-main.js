@@ -802,14 +802,33 @@ function init({ getMainWin, resolveFfmpegPath }) {
     return out;
   }
 
+  let playlistExportBusy=false;
+  ipcMain.handle('vp:export-m3u',async(e,items)=>{
+    if(!trusted(e)||playlistExportBusy)return {ok:false,code:'denied'};
+    playlistExportBusy=true;let tmp=null;
+    try{
+      const data=M3U.serializeM3u(items);
+      if(!items.length||items.some(p=>!VP.playable(p)))return {ok:false,code:'invalid-list'};
+      const r=await dialog.showSaveDialog(getMainWin(),{title:'Export playlist (paths and URLs) / Εξαγωγή λίστας',defaultPath:path.join(app.getPath('documents'),'playlist.m3u8'),filters:[{name:'UTF-8 M3U',extensions:['m3u8','m3u']}]});
+      if(r.canceled||!r.filePath||!trusted(e))return {ok:false,canceled:true};
+      const parent=localDirectory(path.dirname(r.filePath)),leaf=path.basename(r.filePath);
+      if(!parent||!/^.+\.m3u8?$/i.test(leaf)||/[<>:"/\\|?*\x00-\x1f]/.test(leaf))return {ok:false,code:'invalid-output'};
+      const output=path.join(parent,leaf),scratch=path.join(parent,'.opsis-playlist-'+randomBytes(16).toString('hex')+'.tmp');
+      const handle=await fs.promises.open(scratch,'wx',0o600);tmp=scratch;
+      try{await handle.writeFile(data,'utf8');}finally{await handle.close();}
+      if(!trusted(e)||localDirectory(parent)!==parent)return {ok:false,canceled:true};
+      try{await fs.promises.link(tmp,output);}catch(err){if(err.code==='EEXIST')return {ok:false,code:'exists'};throw err;}
+      return {ok:true};
+    }catch{return {ok:false,code:'export-failed'};}finally{if(tmp)await fs.promises.unlink(tmp).catch(()=>{});playlistExportBusy=false;}
+  });
   ipcMain.handle('vp:pick-m3u', async (e) => {
     if (!trusted(e)) return [];
     const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Playlists', extensions: ['m3u', 'm3u8'] }] });
-    if (r.canceled) return [];
-    return r.filePaths.slice(0, 20).map(M3U.readM3uFile).filter(Boolean);
+    if (r.canceled||!trusted(e)) return [];
+    return r.filePaths.slice(0,20).map(p=>allowedFile(p,new Set(['m3u','m3u8']))).filter(Boolean).map(M3U.readM3uFile).filter(Boolean);
   });
 
-  return { selfTest,shutdownBusy:()=>nativeHost.busy()||dspBridge.busy()||autoSyncBusy||embeddedBusy||providerBusy||imageReadBusy||imageSaveBusy||!!batchState?.running };
+  return { selfTest,shutdownBusy:()=>nativeHost.busy()||dspBridge.busy()||autoSyncBusy||embeddedBusy||providerBusy||imageReadBusy||imageSaveBusy||playlistExportBusy||!!batchState?.running };
 }
 
 module.exports = { init, registerScheme, decodeText, siblingSubtitles, VIDEO_EXTS, AUDIO_EXTS, SUB_EXTS, IMG_EXTS };

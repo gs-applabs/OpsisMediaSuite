@@ -20,7 +20,7 @@
   const LIMITS = { maxHeight: 4320, maxFps: 240, minBitrate: 100, maxBitrate: 200000, maxFiles: 200, maxTrack: 31 };
 
   const DEFAULTS = {
-    preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',encoderPolicy:'auto',
+    preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',encoderPolicy:'auto',gamma:1,sharpen:0,deinterlace:false,
     audioCodec: 'aac', audioBitrate: 192, audioTrack: 0, removeAudio: false, subtitle: 'none', subtitleFile: '', subtitleTrack: 0,
     trimStart: 0, trimEnd: 0, audioOnly: false, audioOnlyFormat: 'm4a', gif: false, suffix: '-video',
   };
@@ -59,6 +59,8 @@
     else if (!CODECS[o.codec].containers.includes(o.container)) { o.container = CODECS[o.codec].containers[0]; warnings.push('container-changed'); }
     for (const k of ['height', 'fps', 'crf', 'bitrate', 'passes', 'audioBitrate', 'audioTrack', 'subtitleTrack']) o[k] = int(o[k]);
     o.trimStart = num(o.trimStart); o.trimEnd = num(o.trimEnd);
+    o.gamma=num(o.gamma);o.sharpen=num(o.sharpen);o.deinterlace=o.deinterlace===true;
+    if(!(o.gamma>=.5&&o.gamma<=2))errors.push('gamma');if(!(o.sharpen>=0&&o.sharpen<=1.5))errors.push('sharpen');
     if (!(o.height === 0 || (o.height >= 144 && o.height <= LIMITS.maxHeight))) errors.push('height');
     if (!(o.fps === 0 || (o.fps >= 1 && o.fps <= LIMITS.maxFps))) errors.push('fps');
     if (!['crf', 'bitrate'].includes(o.rateMode)) errors.push('rateMode');
@@ -167,6 +169,9 @@
 
   function filterChain(o, input) {
     const f = [];
+    if(o.deinterlace)f.push('yadif=mode=send_frame:parity=auto:deint=all');
+    if(o.gamma!==1)f.push('eq=gamma='+o.gamma);
+    if(o.sharpen>0)f.push('unsharp=5:5:'+o.sharpen+':5:5:0');
     if (o.height > 0) f.push(`scale=-2:min(${o.height}\\,ih):flags=lanczos`); // never upscales; '\,' keeps the comma inside the expression
     if (o.fps > 0 && !o.gif) f.push(`fps=${o.fps}`);
     if (o.subtitle === 'burn') {

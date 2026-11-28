@@ -32,4 +32,10 @@ function readM3uFile(file) {
     return { name, ...r };
   } catch (_) { return null; }
 }
-module.exports = { validRef, parseM3u, readM3uFile };
+// Portable UTF-8 extended M3U, no injected tags or line breaks.
+function serializeM3u(items){
+ if(!Array.isArray(items)||items.length>2000)throw Error('playlist-limit');
+ if(items.some(p=>!validRef(p)||/[\x00-\x1f\x7f]/.test(p)))throw Error('invalid-playlist-entry');
+ return '#EXTM3U\r\n'+items.join('\r\n')+'\r\n';
+}
+module.exports = { validRef, parseM3u, readM3uFile, serializeM3u };

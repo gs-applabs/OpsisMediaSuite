@@ -23,6 +23,14 @@
     return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(r).padStart(2, '0');
   }
 
+  // Track the original index, not the path: duplicate playlist entries
+  // must retain the exact active occurrence when sorting or moving.
+  function reorderPlaylist(items,selected,mode,from=selected,to=selected){
+    const rows=items.map((value,index)=>({value,index}));
+    if(mode==='title')rows.sort((a,b)=>titleOf(a.value).localeCompare(titleOf(b.value),undefined,{numeric:true,sensitivity:'base'})||a.index-b.index);
+    else if(mode==='move'&&Number.isInteger(from)&&Number.isInteger(to)&&from>=0&&to>=0&&from<rows.length&&to<rows.length){rows.splice(to,0,rows.splice(from,1)[0]);}
+    return {items:rows.map(r=>r.value),selected:rows.findIndex(r=>r.index===selected)};
+  }
   function parseSeekTime(value){
     const s=typeof value==='string'?value.trim():'';
     if(!/^\d{1,6}(?::[0-5]\d){0,2}(?:[.,]\d{1,3})?$/.test(s))return null;
@@ -279,5 +287,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

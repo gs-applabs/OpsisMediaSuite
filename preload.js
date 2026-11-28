@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   photoRead: (p) => ipcRenderer.invoke('photo:read', p),
   photoSave: (req) => ipcRenderer.invoke('photo:save', req),
   vpPickM3u: () => ipcRenderer.invoke('vp:pick-m3u'),
+  vpExportM3u: items=>ipcRenderer.invoke('vp:export-m3u',items),
   openHelp: () => ipcRenderer.send('help:open'),
   checkDeps: () => ipcRenderer.invoke('deps:check'),
   installDeps: () => ipcRenderer.invoke('deps:install'),

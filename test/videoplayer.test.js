@@ -717,3 +717,7 @@ test('subtitle activity estimation honours cancellation during scoring',()=>{
 
 
 test('seek input and remaining display reject invalid times and handle live duration',()=>{assert.equal(V.parseSeekTime('1:02:03.250'),3723.25);assert.equal(V.parseSeekTime('90'),90);assert.equal(V.parseSeekTime('2:15,5'),135.5);for(const x of ['','-1','1:60','1e3','1:2','9999999',null])assert.equal(V.parseSeekTime(x),null);assert.equal(V.displayTime(20,100,true),'-1:20 / 1:40');assert.equal(V.displayTime(20,Infinity,true),'0:20 / LIVE');});
+
+
+test('video playlist reorder preserves exact active duplicate occurrence',()=>{const a=['C:/z.mp4','C:/a.mp4','C:/z.mp4'];const sorted=V.reorderPlaylist(a,2,'title');assert.deepEqual(sorted,{items:[a[1],a[0],a[2]],selected:2});assert.deepEqual(V.reorderPlaylist(a,2,'move',2,0),{items:[a[2],a[0],a[1]],selected:0});assert.deepEqual(a,['C:/z.mp4','C:/a.mp4','C:/z.mp4']);});
+test('M3U export preserves Unicode and rejects injected entries',()=>{const M=require('../m3u');const items=['C:/Μουσική/α.mp3','https://example.com/film.mp4'];assert.deepEqual(M.parseM3u(M.serializeM3u(items),'C:/').items,items);for(const bad of ['C:/a.mp4\n#EXTINF:0,b','\\\\server\\file.mp4','file:///C:/x.mp4'])assert.throws(()=>M.serializeM3u([bad]));});

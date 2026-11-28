@@ -30,6 +30,7 @@
       li.append(b, x); ul.append(li);
     });
     put(K.queue, list.slice(0, VP.LIMITS.playlist));
+    $('vpMoveUp').disabled=idx<=0;$('vpMoveDown').disabled=idx<0||idx>=list.length-1;$('vpSort').disabled=list.length<2;$('vpExportM3u').disabled=!list.length;
   }
   function addPaths(paths, play) {
     const ok = (paths || []).filter(VP.playable);
@@ -848,6 +849,16 @@
     $('vpClear').addEventListener('click', () => { stop(); list = []; idx = -1; renderList(); renderBookmarks(); });
     $('vpSavePl').addEventListener('click', savePlaylist);
     $('vpImportM3u').addEventListener('click', importM3u);
+    function reorder(mode,to){const r=VP.reorderPlaylist(list,idx,mode,idx,to);list=r.items;idx=r.selected;renderList();}
+    $('vpSort').addEventListener('click',()=>reorder('title'));
+    $('vpMoveUp').addEventListener('click',()=>reorder('move',idx-1));
+    $('vpMoveDown').addEventListener('click',()=>reorder('move',idx+1));
+    $('vpExportM3u').addEventListener('click',async()=>{
+      if(!list.length)return;
+      const snapshot=list.slice();if(!await showConfirmDialog('Export M3U / Εξαγωγή M3U','The playlist includes full file paths and URLs. / Η λίστα περιλαμβάνει πλήρεις διαδρομές και URL.'))return;
+      const r=await api.vpExportM3u(snapshot).catch(()=>null);
+      if(r?.ok)say('Playlist exported / Η λίστα εξήχθη');else if(!r?.canceled)say(r?.code==='exists'?'Choose a new filename / Επιλέξτε νέο όνομα':'Export failed / Αποτυχία εξαγωγής');
+    });
     $('vpPlLoad').addEventListener('click', () => { const l = get(K.playlists, {})[$('vpPlSelect').value]; if (Array.isArray(l)) { stop(); list = []; idx = -1; addPaths(l, true); } });
     $('vpPlDelete').addEventListener('click', () => { const all = get(K.playlists, {}); delete all[$('vpPlSelect').value]; put(K.playlists, all); fillPlaylists(); });
     $('vpRecent').addEventListener('change', () => { const p = $('vpRecent').value; if (p) addPaths([p], true); $('vpRecent').value = ''; });

@@ -27,6 +27,12 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.2 — playlist and converter tools (28 Νοεμβρίου 2026)
+- 3D.1 seven specialist CI PASS; general real renderer and installer pending at inspection. Last fully verified base 3C.
+- M3U UTF-8 export from existing video queue with explicit consent to disclose paths/URLs, bounded 2000 entries, trusted main frame, local destination, exclusive publication and no overwrite. Import additionally checks local approved file type after picker. Sort and move active item preserve exact occurrence even with duplicates; no playback restart. No watcher or new scheduler.
+- Normal video converter: bounded gamma, sharpen and deinterlace filters, default neutral, same FFmpeg arguments/queue/atomic publish, no change to GIF/audio-only. Encoder policy now wired to change event. Added unit and real decode tests, guide 103 entries. New CI pending.
+- Still open: arbitrary item reorder, clipboard/reveal, MKV chapters and view modes, frame extraction/poster/contact sheet, lossless remux/A-B, all other R4 items. No merge/release.
+
 ### ULTRA 3D.1 — first closure
 - 3C base `88eeecc0f7bba6f8b08b58c4215134c91a13b4a5`: all nine workflows PASS, general 46073208388 job 140754791176 logs 303/303, Electron SELF-TEST PASSED.
 - Fixed duplicate static ID vpSubLanguage: local preferred subtitle language now independent of online provider language; new static unique-ID regression check. Added bounded timestamp parser, explicit seek dialog for active seekable Chromium/native playback, elapsed/remaining toggle, on-demand Chromium frame stats (no invented native counters). 100 guide routes. Tests added, new CI pending; no merge or release.
