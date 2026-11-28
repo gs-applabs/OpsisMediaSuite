@@ -524,7 +524,7 @@ function createWindow() {
           if(metadataCancelled||win.isDestroyed())return {cancelled:true};
           choices=await lookup.acousticSearch(fp,m.format.duration,key);
         }else{
-          const guessed=tags.infer(file), artist=m.common.artist||guessed.artist, title=m.common.title||guessed.title;
+          const guessed=tags.infer(file), displayed=tags.readTrackText(m),artist=displayed.artist||guessed.artist,title=displayed.title||guessed.title;
           if(!artist||!title)return {error:'Artist and title needed / Απαιτούνται καλλιτέχνης και τίτλος'};
           const consent=await dialog.showMessageBox(win,{type:'question',buttons:['Cancel / Ακύρωση','Search MusicBrainz'],defaultId:0,cancelId:0,message:'Send artist and title to MusicBrainz?',detail:artist+' — '+title+'\nNo file, path or audio is uploaded.'});
           if(consent.response!==1||metadataCancelled||win.isDestroyed())return {cancelled:true};
@@ -586,6 +586,7 @@ function createWindow() {
       const mm = await import('music-metadata');
       const meta = await mm.parseFile(filePath, { duration: false, skipCovers: false });
       const { common } = meta;
+      const displayed=require('./music-tags').readTrackText(meta);
       let picture = null;
       if (common.picture && common.picture[0]) {
         const pic = common.picture[0];
@@ -601,9 +602,9 @@ function createWindow() {
         }
       }
       return {
-        title: typeof common.title==='string'?common.title.slice(0,4096):null,
-        artist: typeof common.artist==='string'?common.artist.slice(0,4096):null,
-        album: typeof common.album==='string'?common.album.slice(0,4096):null,
+        title: displayed.title,
+        artist: displayed.artist,
+        album: displayed.album,
         picture,
       };
     } catch {

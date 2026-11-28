@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R5-AUDIT — SOURCE CROSS-CHECK
+28 Νοεμβρίου 2026 • R5-P0.1 — SELECTIVE RECOVERY
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R5 και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι ο έλεγχος R5 (μόνο τεκμηρίωση). Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι R5-P0.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R5-P0.1: OV-03/18 REUSE existing FFmpeg resolver and subtitle decoder, no new modules; OV-05 EXTEND local-media-policy ASCII control/DEL/UNC rejection; OV-10 EXTEND existing music-tags with conservative read-only ID3 Greek UTF-8 mojibake recovery, wired to metadata:read and MusicBrainz. Added existing-suite regression tests. Legacy Greek codepage guesses excluded pending explicit review; next OV-04/12/13/14/02 branch reconciliation. New CI pending, no merge/release.
+
 R5-AUDIT: μοναδικό μητρώο πλήρους ελέγχου διπλοτύπων/αλληλοκαλύψεων/συγκρούσεων στο Master Roadmap, 25 σταθερά OV IDs, 6 κατηγορίες και πύλη πριν/μετά από κάθε pass. 112 literal IPC registrations / 0 duplicate names σε 4 main modules στο b0e2115. Στατικός στοχευμένος έλεγχος, όχι πλήρης AST/runtime πιστοποίηση. Επόμενο R5-P0: πραγματική διασταύρωση/επίλυση ανά OV-ID. Καμία αλλαγή runtime σε αυτό το commit.
 
 R5 source audit baseline 9447ded478b6755dec6d249eee971bf608651479: 134 changed files, 156 commits vs historical PR base, 9 branches, 3 PRs, 27 PR1 overlap; master 13 own commits. 8/9 CI PASS including General and Packaged, Inno pending. Full branch/file-level inventory and targeted source evidence in R5 of master roadmap. Critical: build/opsis-2.4.2-review-installer has 74 branch-side changes and 10 modules not present by same path at active SHA; reconcile semantics before new features. Six audio formats already have tag writers; don't recreate. Provider registry/updater library not wired to runtime. Provider preview transport/lifecycle and path identity have overlaps. Next R5-P0 selective branch reconciliation, then R5-P1 common preview/path and R5-P2 existing tag integration. No runtime edits in audit; no merge/release. Scope is static cross-check, not exhaustive runtime certification.

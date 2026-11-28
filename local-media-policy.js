@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 function resolveLocal(value, directory=false) {
-  if (typeof value !== 'string' || value.length > 32767 || /[\0\r\n]/.test(value) || !path.isAbsolute(value)) return null;
+  if (typeof value !== 'string' || value.length > 32767 || /[\x00-\x1f\x7f]/.test(value)||/^[\\/]{2}/.test(value) || !path.isAbsolute(value)) return null;
   if (process.platform === 'win32' && (!/^[a-z]:[\\/]/i.test(value) || value.slice(2).includes(':'))) return null;
   try {
     const normalized = path.resolve(value), root = path.parse(normalized).root;

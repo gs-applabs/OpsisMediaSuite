@@ -109,3 +109,12 @@ test('experimental WASM page and artifact are excluded from release and require 
  assert.ok(p.build.files.includes('!renderer/dsp-dev/**/*'));
  assert.ok(!html.includes('wasm-unsafe-eval'));
 });
+
+test('local media policy rejects control characters and network paths before filesystem access',()=>{
+ const {localPath,localDirectory}=require('../local-media-policy');
+ const os=require('node:os'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-local-'));
+ try{
+  const file=path.join(dir,'sample.mp3');fs.writeFileSync(file,'fixture');assert.equal(localPath(file),fs.realpathSync.native(file));
+  for(const bad of [file+'\t',file+'\x01',file+'\x7f','//server/share/file','\\\\server\\share\\file']){assert.equal(localPath(bad),null);assert.equal(localDirectory(bad),null);}
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

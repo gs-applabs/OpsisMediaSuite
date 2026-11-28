@@ -10,6 +10,32 @@ function syncRead(b){if(b.length!==4||b.some(x=>x>127))throw Error('invalid sync
 function syncWrite(n){return Buffer.from([(n>>>21)&127,(n>>>14)&127,(n>>>7)&127,n&127]);}
 function infer(file){const parts=path.basename(file,path.extname(file)).split(' - ');return parts.length===2&&parts.every(x=>x.trim())?{artist:parts[0].trim(),title:parts[1].trim()}:{};}
 function clean(values){const out={};for(const k of Object.keys(fields)){const v=values?.[k];if(typeof v==='string'&&v.trim()&&v.length<=250&&!/[\u0000-\u001f\u007f]/.test(v)&&(k!=='year'||/^\d{4}$/.test(v.trim())))out[k]=v.trim();}return out;}
+// Read-only recovery of Greek text mislabelled as Latin-1/Windows-1252 in ID3.
+ // Keep original tags untouched. Ambiguous legacy Greek code-page guessing is
+ // deliberately excluded from automatic display/lookup; it needs explicit review.
+function readTrackText(metadata){
+ const common=metadata?.common||{},native=metadata?.native||{};
+ const id3Values=new Set();
+ for(const [format,tags] of Object.entries(native)){
+  if(!/^ID3v/i.test(format)||!Array.isArray(tags))continue;
+  for(const tag of tags)if(typeof tag?.value==='string'&&tag.value.length<=4096)id3Values.add(tag.value);
+ }
+ const utf8=new TextDecoder('utf-8',{fatal:true}),latin=new TextDecoder('windows-1252');
+ const latinBytes=new Map(Array.from({length:256},(_,byte)=>[latin.decode(Uint8Array.of(byte)),byte]));
+ const repair=value=>{
+  if(typeof value!=='string')return null;
+  if(value.length>4096)return value.slice(0,4096);
+  if(!id3Values.has(value)||/\p{Script=Greek}/u.test(value)||/[\u0000-\u001f\u007f]/u.test(value))return value;
+  const bytes=[];
+  for(const c of value){const cp=c.codePointAt(0),b=cp<256?cp:latinBytes.get(c);if(b===undefined)return value;bytes.push(b);}
+  try{
+   const decoded=utf8.decode(Uint8Array.from(bytes));
+   if((decoded.match(/\p{Script=Greek}/gu)||[]).length>=2&&!/[\u0000-\u001f\u007f-\u009f\ufffd]/u.test(decoded))return decoded.normalize('NFC');
+  }catch{}
+  return value;
+ };
+ return {title:repair(common.title),artist:repair(common.artist),album:repair(common.album)};
+}
 // Local cover only: bounded JPEG/PNG, no overwrite of any existing picture.
 function validateCover(cover){
  if(!cover||!Buffer.isBuffer(cover.data)||cover.data.length>2*1024*1024)return null;
@@ -232,4 +258,4 @@ async function complete(file,values,{cover:inputCover=null,cancelled=()=>false}=
   return {status:'updated',backup,applied:patch.applied,coverApplied:patch.coverApplied};
  }finally{await fs.unlink(tmp).catch(()=>{});}
 }
-module.exports={infer,clean,patchTag,complete,syncWrite,patchFlac,validateCover,oggCRC,patchMp4};
+module.exports={infer,clean,readTrackText,patchTag,complete,syncWrite,patchFlac,validateCover,oggCRC,patchMp4};

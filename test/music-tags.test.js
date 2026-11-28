@@ -124,3 +124,17 @@ test('music folder scan is bounded, recursive and never writes or follows symlin
  assert.equal(result.files.length,2);assert.equal(result.truncated,false);assert.equal((await scanFolder(dir,{maxFiles:1})).files.length,1);assert.equal((await scanFolder(dir,{maxEntries:1})).truncated,true);assert.equal((await scanFolder(dir,{cancelled:()=>true})).files.length,0);
  assert.equal(await fs.readFile(path.join(dir,'album','a.mp3'),'utf8'),'fixture');
 });
+
+test('recovered Greek ID3 display text does not mutate or guess ambiguous original tags',()=>{
+ const {readTrackText}=require('../music-tags');
+ const original='Καλημέρα',bad=Buffer.from(original,'utf8').toString('latin1');
+ const cp1252=new TextDecoder('windows-1252').decode(Buffer.from('Ελληνικά','utf8'));
+ const meta={common:{title:bad,artist:'Björk',album:cp1252},native:{ID3v24:[{value:bad},{value:'Björk'},{value:cp1252}]}};
+ assert.deepEqual(readTrackText(meta),{title:original,artist:'Björk',album:'Ελληνικά'});
+ assert.equal(meta.common.title,bad);
+ assert.equal(readTrackText({common:{title:bad},native:{vorbis:[{value:bad}]}}).title,bad);
+ assert.equal(readTrackText({common:{title:'Café'},native:{ID3v23:[{value:'Café'}]}}).title,'Café');
+ assert.equal(readTrackText({common:{title:'Ήδη ελληνικά'},native:{ID3v23:[{value:'Ήδη ελληνικά'}]}}).title,'Ήδη ελληνικά');
+ assert.equal(readTrackText({common:{title:'a'.repeat(5000)}}).title.length,4096);
+ assert.deepEqual(readTrackText({common:{},native:{ID3v23:null}}),{title:null,artist:null,album:null});
+});
