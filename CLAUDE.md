@@ -1,5 +1,8 @@
 # CLAUDE.md — Waveframe Architecture & Development Guidelines
 
+## CURRENT RC1 RULES — supersede obsolete instructions below
+Start at docs/CLAUDE-CODE-RC1-HANDOFF-EL.md, docs/RC1-FUNCTIONAL-ACCEPTANCE.md, docs/RC1-CONTROL-AUDIT.csv, docs/RC1-ACCEPTANCE.md and master roadmap. Product is Opsis Media Suite 3.0.0-rc.1; Inno Setup only (NSIS legacy migration only), plugin 1.0.0.0. Never use global taskkill or blind clicks; target only owned isolated test process. All features must be tested for actual effects, not button existence. Keep all pending groups and evidence on exact SHA. Historical rules below may be obsolete where they conflict.
+
 ## Project Context & Environment
 - **Application Name:** Waveframe (renamed from "SoundForge" — trademark conflict with MAGIX/Boris FX "Sound Forge")
 - **Target Platform:** Windows 10 / 11 (x64) desktop only

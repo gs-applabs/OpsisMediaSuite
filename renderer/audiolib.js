@@ -35,50 +35,54 @@
     return [shelf, high];
   }
 
-  function biquad(input, c) {
-    const out = new Float64Array(input.length);
-    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-    const [b0, b1, b2] = c.b, [, a1, a2] = c.a;
-    for (let i = 0; i < input.length; i++) {
-      const x0 = input[i];
-      const y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-      out[i] = y0; x2 = x1; x1 = x0; y2 = y1; y1 = y0;
-    }
-    return out;
-  }
-
   /**
-   * Integrated loudness in LUFS. channels: array of Float32Array/Float64Array (one per channel).
-   * Returns -Infinity for silence / material shorter than one block.
+   * Integrated loudness in LUFS. Keep the existing K-weighting and gates,
+   * but accumulate overlapping block energies with a bounded 400 ms ring.
+   * For multichannel inputs the legacy weighting is retained until an explicit
+   * channel layout is supplied; this is not layout-aware 5.1/7.1 metering.
    */
   function integratedLufs(channels, sampleRate) {
-    if (!channels.length || !channels[0].length) return -Infinity;
-    const [shelf, high] = kWeighting(sampleRate);
-    const n = channels[0].length;
-    const block = Math.round(0.4 * sampleRate), step = Math.round(0.1 * sampleRate);
-    if (n < block) return -Infinity;
-    // Prefix sums of the squared, K-weighted samples: mean square of any block in O(1).
-    const prefix = channels.map((ch) => {
-      const f = biquad(biquad(ch, shelf), high);
-      const p = new Float64Array(n + 1);
-      for (let i = 0; i < n; i++) p[i + 1] = p[i] + f[i] * f[i];
-      return p;
-    });
-    // BS.1770 channel weights: 1.0 for L/R/C, 1.41 for the surround channels (indices 3 and 4 of a 5.x layout).
-    const weight = (c) => (channels.length >= 5 && (c === 3 || c === 4) ? 1.41 : 1);
-    const blocks = [];
-    for (let start = 0; start + block <= n; start += step) {
-      let sum = 0;
-      for (let c = 0; c < prefix.length; c++) sum += weight(c) * (prefix[c][start + block] - prefix[c][start]) / block;
-      blocks.push(sum);
+    if(!Array.isArray(channels)||!channels.length||channels.length>32||
+       !Number.isFinite(sampleRate)||sampleRate<8000||sampleRate>192000)return -Infinity;
+    const n=channels[0]?.length;
+    if(!Number.isSafeInteger(n)||channels.some(ch=>!ch||ch.length!==n))return -Infinity;
+    const block=Math.round(.4*sampleRate),step=Math.round(.1*sampleRate);
+    if(n<block)return -Infinity;
+    const [shelf,high]=kWeighting(sampleRate);
+    const [b0,b1,b2]=shelf.b,[,a1,a2]=shelf.a;
+    const [c0,c1,c2]=high.b,[,d1,d2]=high.a;
+    const blocks=new Float64Array(1+Math.floor((n-block)/step)),ring=new Float64Array(block);
+    for(let c=0;c<channels.length;c++){
+      const ch=channels[c],weight=channels.length>=5&&(c===3||c===4)?1.41:1;
+      let x1=0,x2=0,y1=0,y2=0,z1=0,z2=0,sum=0,index=0,next=block,slot=0;
+      ring.fill(0);
+      // Process only through the last complete block.
+      const stop=block+(blocks.length-1)*step;
+      for(let i=0;i<stop;i++){
+        const x=ch[i];if(!Number.isFinite(x))return -Infinity;
+        const y=b0*x+b1*x1+b2*x2-a1*y1-a2*y2;
+        const z=c0*y+c1*y1+c2*y2-d1*z1-d2*z2;
+        x2=x1;x1=x;y2=y1;y1=y;z2=z1;z1=z;
+        const energy=z*z;if(!Number.isFinite(energy))return -Infinity;
+        sum+=energy-ring[index];ring[index]=energy;
+        if(++index===block)index=0;
+        if(i+1===next){
+          // Rebase occasionally to limit subtractive drift on long quiet tails.
+          if((slot&255)===0){sum=0;for(let k=0;k<block;k++)sum+=ring[k];}
+          blocks[slot++]+=weight*Math.max(0,sum)/block;
+          next+=step;
+        }
+      }
     }
-    const lufs = (z) => -0.691 + 10 * Math.log10(z);
-    const abs = blocks.filter((z) => z > 0 && lufs(z) > -70);
-    if (!abs.length) return -Infinity;
-    const relGate = lufs(abs.reduce((a, b) => a + b, 0) / abs.length) - 10;
-    const kept = abs.filter((z) => lufs(z) > relGate);
-    if (!kept.length) return -Infinity;
-    return lufs(kept.reduce((a, b) => a + b, 0) / kept.length);
+    const lufs=z=>-.691+10*Math.log10(z);
+    const absolute=Math.pow(10,(-70+.691)/10);
+    let sum=0,count=0;
+    for(const z of blocks)if(z>absolute){sum+=z;count++;}
+    if(!count)return -Infinity;
+    const gate=Math.max(absolute,sum/count*.1);
+    sum=0;count=0;
+    for(const z of blocks)if(z>gate){sum+=z;count++;}
+    return count?lufs(sum/count):-Infinity;
   }
 
   /** Linear gain that moves a track at `lufs` to `targetLufs`, limited to ±clampDb (default ±12 dB). */
@@ -130,5 +134,50 @@
     return remainingMs / fadeMs;
   }
 
-  return { EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
+  // Independent presence and stereo balance; no external DSP implementation copied.
+  function presenceParams(amount) {
+    const n=Math.max(0,Math.min(100,Number(amount)||0))/100;
+    return {frequency:2800,q:.85,gain:6*n};
+  }
+  function balanceValue(amount) {return Math.max(-1,Math.min(1,(Number(amount)||0)/100));}
+  function impulseSamples(rate,duration=2.2,decay=2,channel=0){
+    if(!Number.isFinite(rate)||rate<8000||rate>192000||!Number.isFinite(duration)||duration<=0||duration>4||!Number.isFinite(decay)||decay<.1||decay>8)throw Error('invalid impulse');
+    const n=Math.floor(rate*duration),out=new Float32Array(n);let seed=(0x9e3779b9^(channel*0x85ebca6b))>>>0;
+    for(let i=0;i<n;i++){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;out[i]=((seed>>>0)/4294967296*2-1)*Math.pow(1-i/n,decay);}
+    return out;
+  }
+  function effectMix(amount,legacy){return Math.max(0,Math.min(100,Number.isFinite(Number(amount))?Number(amount):100))/100*legacy;}
+  function compressorParams(mode){
+    const modes={gentle:{threshold:-18,knee:20,ratio:2,attack:.015,release:.35},standard:{threshold:-24,knee:30,ratio:8,attack:.003,release:.25},night:{threshold:-32,knee:24,ratio:12,attack:.005,release:.4}};
+    return {...(Object.hasOwn(modes,mode)?modes[mode]:modes.standard)};
+  }
+  // Existing playback stays the sole owner until the native DSP is proven.
+  // This versioned snapshot is the adapter contract, not a second live graph.
+  function nativeDspConfig(state,mode='native',defaultIsFxSound=false){
+    const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,Number.isFinite(v)?v:0));
+    const bands=Array.isArray(state?.eqBands)?state.eqBands:[];
+    return {version:1,enabled:state?.masterEnabled===true&&!routeBypass(mode,defaultIsFxSound)?1:0,
+      eq_db:EQ_FREQS.map((_,i)=>clamp(bands[i],-12,12)),bass_db:clamp(state?.bassBoost,-12,12),
+      presence_percent:clamp(state?.presence,0,100),balance_percent:clamp(state?.balance,-100,100),
+      surround_percent:clamp(state?.surround,0,100),preamp_db:clamp(state?.volumeBoost,-24,12)};
+  }
+  function nativeDspConfigV2(state,mode='native',defaultIsFxSound=false){
+    const percent=(v)=>Math.max(0,Math.min(100,Number.isFinite(v)?v:100));
+    const modes={gentle:1,standard:2,night:3};
+    return {version:2,base:nativeDspConfig(state,mode,defaultIsFxSound),
+      compressor_mode:state?.compressor===true?(Object.hasOwn(modes,state.compressorMode)?modes[state.compressorMode]:2):0,
+      ambience_percent:state?.reverb===true?percent(state.reverbAmount):0,
+      exciter_percent:state?.exciter===true?percent(state.exciterAmount):0,
+      limiter:1};
+  }
+  // Video has a deliberately smaller effect set than the music enhancer.
+  function videoFxConfig(state,selected){
+    const n=(v,min,max)=>Math.max(min,Math.min(max,Number.isFinite(v)?v:0));
+    const enabled=selected===true&&state?.masterEnabled===true&&!state?.routeBypass;
+    const eq=EQ_FREQS.map((_,i)=>enabled?n(state?.eqBands?.[i],-12,12):0);
+    const bass=enabled?n(state?.bassBoost,-12,12):0,presence=enabled?presenceParams(state?.presence).gain:0,balance=enabled?balanceValue(state?.balance):0;
+    return {eq,bass,presence,balance,active:eq.some(x=>x!==0)||bass!==0||presence!==0||balance!==0};
+  }
+  function routeBypass(mode,defaultIsFxSound) { return mode==='external'||(mode==='auto'&&defaultIsFxSound===true); }
+  return { videoFxConfig,nativeDspConfig,nativeDspConfigV2,impulseSamples,effectMix,compressorParams,presenceParams,balanceValue,routeBypass, EQ_FREQS, kWeighting, integratedLufs, lufsToGainDb, dbToLinear, toEqualizerApo, parseEqualizerApo, sleepFadeGain };
 });

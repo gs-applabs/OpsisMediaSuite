@@ -19,7 +19,7 @@ function findFfmpeg() {
 const FFMPEG = findFfmpeg();
 const opts = { skip: FFMPEG ? false : 'ffmpeg not available' };
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-conv-'));
+const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-conv-')));
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 function tone(file, seconds, rate, channels) {
@@ -62,7 +62,7 @@ for (const [format, extra, codec, rate, channels] of MATRIX) {
     assert.ok(v.ok, v.errors.join());
     const job = await E.convertDirect({ ffmpegPath: FFMPEG, input: src, options: v.options });
     const { output } = await job.promise;
-    assert.equal(path.dirname(output), path.dirname(src), 'written next to the original');
+    assert.equal(fs.realpathSync.native(path.dirname(output)), fs.realpathSync.native(path.dirname(src)), 'written next to the original');
     assert.match(path.basename(output), /^tone-converted.*\./);
     const r = await E.verifyDecodes(FFMPEG, output);
     assert.ok(r.ok, 'output decodes without errors');
@@ -159,11 +159,26 @@ test('outDir: results go to the chosen folder (created on demand), named after t
   const v = C.validateOptions({ format: 'flac', suffix: '-out' });
   const a = await (await E.convertDirect({ ffmpegPath: FFMPEG, input: src, options: v.options, outDir: target })).promise;
   const b = await (await E.convertDirect({ ffmpegPath: FFMPEG, input: src, options: v.options, outDir: target })).promise;
-  assert.equal(path.dirname(a.output), target);
+  assert.equal(fs.realpathSync.native(path.dirname(a.output)), fs.realpathSync.native(target));
   assert.equal(path.basename(a.output), 'tone-out.flac');
   assert.equal(path.basename(b.output), 'tone-out (1).flac');
   // a playlist track has no file on disk: a virtual source name inside the folder is used
   const wav = C.writeWav([new Float32Array(4800)], 48000, 16);
   const w = await (await E.convertFromWav({ ffmpegPath: null, input: path.join(target, 'Song title.src'), wavBytes: wav, options: C.validateOptions({ format: 'wav', suffix: '' }).options, outDir: target })).promise;
   assert.equal(path.basename(w.output), 'Song title-converted.wav');
+});
+
+test('shutdown cancellation stops active FFmpeg runs and releases registry',opts,async()=>{const a=E.runFfmpeg(FFMPEG,['-hide_banner','-re','-stream_loop','-1','-i',src,'-f','null','-'],{timeoutMs:10000});const b=E.runFfmpeg(FFMPEG,['-hide_banner','-re','-stream_loop','-1','-i',src,'-f','null','-'],{timeoutMs:10000});const settled=Promise.allSettled([a.promise,b.promise]);assert.equal(E.activeRunCount(),2);E.cancelActiveRuns();const results=await settled;assert.ok(results.every(r=>r.status==='rejected'&&r.reason.code==='cancelled'));assert.equal(E.activeRunCount(),0);});
+
+test('six repeated conversions publish distinct complete outputs and leave no staging files',opts,async()=>{const target=path.join(dir,'soak-convert'),before=sha(src);const options=C.validateOptions({format:'flac',suffix:'-repeat'}).options;for(let i=0;i<6;i++){const job=await E.convertDirect({ffmpegPath:FFMPEG,input:src,options,outDir:target});const r=await job.promise;assert.ok((await E.verifyDecodes(FFMPEG,r.output)).ok);assert.equal(E.activeRunCount(),0);}const names=fs.readdirSync(target);assert.equal(names.length,6);assert.ok(names.every(n=>n.endsWith('.flac')&&!n.startsWith('.waveframe-')));assert.equal(sha(src),before);});
+
+
+test('processed WAV goes directly through FFmpeg stdin and cancellation prevents publication',opts,async()=>{
+ const pcm=C.writeWav([new Float32Array(44100).map((_,i)=>.1*Math.sin(i/20))],44100,16);
+ const input=path.join(dir,'pipe-source.wav'),options=C.validateOptions({format:'flac',suffix:'-pipe'}).options;
+ const result=await (await E.convertFromWav({ffmpegPath:FFMPEG,input,wavBytes:pcm,options,duration:1})).promise;
+ assert.equal((await E.verifyDecodes(FFMPEG,result.output)).ok,true);
+ const stop=C.validateOptions({format:'wav',suffix:'-not-published'}).options;
+ let checks=0;await assert.rejects(E.convertFromWav({ffmpegPath:null,input,wavBytes:pcm,options:stop,ensureActive(){if(++checks>1)throw Object.assign(Error('cancelled'),{code:'cancelled'});}}),{code:'cancelled'});
+ assert.equal(fs.existsSync(path.join(dir,'pipe-source-not-published.wav')),false);
 });

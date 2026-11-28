@@ -1,0 +1,76 @@
+name: Packaged native candidate (test only)
+on:
+  push:
+    branches: ['feat/photo-tools-fxsound-coexistence']
+    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js','native-player/**','native-host.js','package.json','package-lock.json','selftest.js','subtitle-sync-worker.js','subtitle-autosync.js']
+  pull_request:
+    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js','native-player/**','native-host.js','package.json','package-lock.json','renderer/**','main.js','preload.js','media-main.js','conv-main.js','subtitle-*.js','m3u.js','decode-text.js','photo-metadata.js','music-library.js','music-tags.js','local-media-policy.js','atomic-write.js']
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: npm ci
+      - run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
+      - name: Seed developer-only marker files to test packaging exclusion
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force renderer/dsp-dev | Out-Null
+          Set-Content renderer/index-dsp-dev.html 'CI exclusion marker'
+          Set-Content renderer/dsp-dev/exclusion-marker.txt 'CI exclusion marker'
+      - name: Build unsigned directory candidate (no publication)
+        run: node test/build-native-candidate.js
+      - name: Verify native resources and worker placement
+        shell: pwsh
+        run: |
+          $resources='release-native-candidate/win-unpacked/resources'
+          foreach($file in @('native-player/Opsis.NativePlayer.exe','app.asar','app.asar.unpacked/subtitle-sync-worker.js','app.asar.unpacked/subtitle-autosync.js')){
+            if(-not (Test-Path (Join-Path $resources $file))){throw "Missing resource: $file"}
+          }
+          $root=(Resolve-Path "$resources/native-player").Path
+          Get-ChildItem $root -Recurse -File | ForEach-Object {
+            [PSCustomObject]@{path=$_.FullName.Substring($root.Length+1);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
+          } | ConvertTo-Json -Depth 3 | Set-Content native-candidate-inventory.json
+          Get-ChildItem $root -Recurse -File | Where-Object Name -match 'license|copying|notice' | ForEach-Object {$_.FullName.Substring($root.Length+1)} | Set-Content native-notice-inventory.txt
+      - name: Check packaged ASAR excludes developer assets and includes production routes
+        run: node -e "const a=require('@electron/asar').listPackage('release-native-candidate/win-unpacked/resources/app.asar').map(x=>x.replaceAll('\\','/'));if(a.some(x=>x.includes('/dsp-dev/')||x.endsWith('/index-dsp-dev.html'))||!a.some(x=>x.endsWith('/renderer/dsp-routing.js')))throw Error('packaging exclusion or production route missing');console.log('PASS production-only ASAR layout')"
+      - name: Verify actual packaged app, workers and native discovery
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          $env:OPSIS_PACKAGED_SELFTEST_EXE=(Resolve-Path 'release-native-candidate/win-unpacked/Opsis Media Suite.exe').Path
+          npm run selftest 2>&1 | Tee-Object packaged-test.log
+          if ($LASTEXITCODE) {throw 'packaged selftest failed'}
+      - name: Run real native command pipe from packaged resources
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=5 -f lavfi -i sine=frequency=440:duration=5 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest fixture.mkv
+          if ($LASTEXITCODE) {throw 'fixture failed'}
+          $env:OPSIS_NATIVE_TEST_EXE=(Resolve-Path 'release-native-candidate/win-unpacked/resources/native-player/Opsis.NativePlayer.exe').Path
+          node test/native-pipe-fixture.js
+          if ($LASTEXITCODE) {throw 'packaged native pipe test failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-candidate-test-evidence
+          path: |
+            native-candidate-inventory.json
+            native-notice-inventory.txt
+            packaged-test.log
+            pipe-result.json

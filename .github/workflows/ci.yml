@@ -2,26 +2,67 @@ name: CI
 
 on:
   push:
+    branches: [master]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      soak_cycles:
+        description: 'Audio soak: 20 (1 min), 120 (6 min), 1200 (at least 1 hour)'
+        type: choice
+        options: ['20', '120', '1200']
+        default: '20'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 permissions:
   contents: read
 
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_cycles == '1200' && 140 || 25 }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: JavaScript syntax gate
+        shell: pwsh
+        run: |
+          git ls-files '*.js' | ForEach-Object { node --check $_; if ($LASTEXITCODE) { throw "Syntax error: $_" } }
       - name: Install dependencies
         run: npm ci
+      - name: Dependency audit (production and development)
+        run: npm audit --audit-level=high
       - name: FFmpeg for the real-conversion tests and the converter self-test
-        run: choco install ffmpeg --no-progress -y
+        shell: pwsh
+        run: ./.github/scripts/ensure-ffmpeg.ps1
+      - name: Build experimental native DSP adapter for integration tests
+        shell: pwsh
+        run: |
+          cmake -S native-dsp -B native-dsp-build -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE) { throw 'native DSP configure failed' }
+          cmake --build native-dsp-build --config Release
+          if ($LASTEXITCODE) { throw 'native DSP build failed' }
+          if (-not (Test-Path native-dsp-build/Release/opsis_dsp_pcm.exe)) { throw 'adapter missing' }
       - name: Unit, localisation, security and real-conversion tests
         run: npm test
       - name: Electron self-test (real renderer, welcome/family/update windows, converter, layout in 20 languages)
-        run: npm run selftest
+        env:
+          OPSIS_RESOURCE_PROFILE: '1'
+          OPSIS_RESOURCE_SOAK: '1'
+          OPSIS_SOAK_CYCLES: ${{ inputs.soak_cycles || '20' }}
+        run: |
+          npm run selftest 2>&1 | Tee-Object -FilePath selftest-resource.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload resource sampling and renderer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-resource-profile
+          path: selftest-resource.log
+          if-no-files-found: warn

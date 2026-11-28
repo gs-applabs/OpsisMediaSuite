@@ -1,0 +1,47 @@
+# Opsis Media Suite 3.0.0 RC1 — acceptance and remaining scope
+
+Base source 7ac8b2129b5c2efba52f0dde68121a247aba0a90: all nine existing workflows passed. RC1 itself requires new evidence.
+
+## Complete pending-scope register (no group dropped)
+| Group | Remaining scope including partially implemented items | Evidence / rules |
+|---|---|---|
+| 01 | Ενεργές αποτυχίες CI, προηγούμενες διορθώσεις που δεν πιστοποιήθηκαν, ακριβής απογραφή head/branches/PR και έλεγχος δέσμης | P1, R5-AUDIT, OV-01–25· CI ανά SHA, όχι εκτίμηση |
+| 02 | Μικρές διορθώσεις: κοινή ταυτότητα διαδρομής, διπλά controls/listeners, ελληνικά tags, encoding, FFmpeg discovery, guide/Help entries, έλεγχος νέων settings στο Backup | OV-03/05/07/08/10/14/18/22· reuse, targeted tests· μερικά ήδη υλοποιημένα, όχι επανάληψη |
+| 03 | Ενοποίηση IPC/path/media types, renderer origin, ασφαλής εγγραφή/stores/recovery, malformed inputs, cancellation και παλιές security fixes | OV-04/05/13/14/19/25, P1· διατήρηση αυστηρότερων contracts, test migration |
+| 04 | Photo EXIF ημερομηνία opt-in, προσανατολισμός, ICC/alpha/GPS privacy, preview/export, collision, non-destructive undo, worker/large files, διασταύρωση παλιού photo helper | OV-11/12, 3F/P6· πραγματικά exports, originals intact |
+| 05 | Ενοποίηση κοινής προεπισκόπησης/HTTPS clients, error/cancel/auth/limits, provider registry integration (trusted key/source, artifact contract, rollback, failure detection), Bandcamp και SoundCloud collections, OAuth onboarding, playlist selection/authorized download/metadata και covers/subtitles, queue recovery | OV-06/07/09/10/15, 3D.9A–J· πραγματικές επιτρεπόμενες πηγές, no DRM, explicit blocked if unavailable |
+| 06 | Μουσική: metadata preview/undo, WMA και ευρύτερες διατάξεις υπάρχοντος writer, output tags/cover linkage, library indexing, smart collections, album/artist/genre, history, import/export, search/filter, duplicate review, crossfade/gapless, optional lyrics feasibility | 3E/P2, OV-10/11· byte integrity, backup, live MusicBrainz/AcoustID |
+| 07 | Video/player: υπόλοιπα shortcuts/mouse/OSD, movie/series info opt-in, safe application exit, chapter/track/metadata preservation, HLS/RTSP/authorized IPTV/reconnect, delay, output device/channels, frame/seek/rate/fullscreen, native/Chromium parity, actual codec/decoder evidence | 3D/P3, OV-01/17/19· ήδη implemented controls audit not duplicate |
+| 08 | Υπότιτλοι: OpenSubtitles/SubDL live/auth, ελληνικά fallback links, encoding, compressed RAR/RAR5, ranking/episode/hash, forced/default/SDH, ASS styling/PGS/VobSub/dual language, saved naming, sync/preview/dirty/actual displayed cues | P4, OV-18· real UI and provider fixtures |
+| 09 | DSP: native/web/worklet/FxSound exclusive routing, audio/video/export parity, 15/31/parametric feasibility, headphone/device profiles, dialogue/dynamic boost, de-esser/gate, LUFS/headroom/true peak, compressor, latency, Bluetooth/HDMI, physical outputs | P5/3E, OV-16· signal and device tests |
+| 10 | Photo advanced: zoom/pan, free crop/straighten/perspective, curves/HSL/dehaze/texture, grading/WB/red-eye, masks/healing/clone, text/watermark/LUT/grain, batch edits/conversion/rename, gallery/albums/slideshow/print/PDF, RAW/DNG/TIFF/HEIC and GPU parity feasibility | 3F/P6/P9· compare existing tools first, explicit feasibility |
+| 11 | Desktop and family: reconcile PR1 + build/flyout branches, Windows session/mixer/flyout/volume keys/taskbar/lock/spectrum/monitors, Opsis.UI 6 contract, skins/visualizers/backgrounds/layout/styles, installed Opsis plugin 1.0.0.0, Crawler M3U, Spectrum Sphere metadata, master demo | 4A–C/P7, OV-02/20/23/24· no blind merge, one owner |
+| 12 | Whole-app UI/help/history/welcome, 20 locales, control ownership, keyboard/focus/reduced motion/high contrast, DPI, resource panel, pending/dirty state, settings migration, original Waveframe regressions | 4D/P7, OV-22· runtime control matrix |
+| 13 | Demand-driven lifecycle/anti-pile-up: leases/epochs/cancel/stop ACK, bounded queue/cache/handles, idle shutdown, independent simultaneous jobs, startup and CPU/RAM/GPU/I/O measurements, same fixture comparisons, 20/120/1200-cycle and 1h/8h/mixed workload | P0, OV-21· no inferred metrics; separate physical tests |
+| 14 | Full security/dependencies/license/SBOM, package verification, actual codec pack matrix (K-Lite variants/other packs), Windows 10/11 x64, second authorized free VM if accessible, real display/audio/GPU, all mandatory tests on frozen SHA | P1/P3/P8, 5A–C· blocked explicitly, no false certification |
+| 15 | RC 3.0.0 version/help/history/splash/plugin, authentic 2.4.2 migration, Inno Setup repair/uninstall/reinstall/rollback, source archive/portable/hashes/download verification, signing only if authorized/feasible, release acceptance | P8, OV-24· no release before gate |
+| 16 | Advanced/conditional scope remains explicitly open: casting/DLNA, system-wide signed DSP/APO, VST3, advanced photo/RAW, HDR, waveform/spectrogram/ABX, optional OCR/STT, x86/ARM64, unprotected optical media, isolated SDK, library interoperability | P9; feasibility/license/security decision, no unsigned workarounds, no premature claim of closure |
+
+## RC1 test matrix
+- General CI: JS syntax, dependencies, npm audit, all unit/real conversion, renderer/selftest, 20 locales and 20-cycle soak.
+- Native playback, isolated K-Lite Mega, DSP C++, AudioWorklet WASM, plugin contract, RAR subtitles, packaged candidate/native pipe, installer lifecycle.
+- Public subtitle HTTPS, real cues, screenshots and timing evidence; resource hour soak (1200 cycles). RC marker triggers both public subtitle and extended soak workflows; matrix 120 and 1200 cycles. All 11 workflow definitions use exact PR head checkout. Remove extra PR triggers after freezing RC1 to avoid repeating costly runs on every later fix.
+- RC artifacts: unsigned Inno installer, portable directory ZIP, exact source archive, SBOM, SHA256; artifacts are test-only, not stable releases.
+- Additional final gates: candidate-specific Defender/secrets/trace/NuGet scan now runs as independent Windows Server 2022 job in installer workflow, using the same unsigned artifact and exact source SHA (availability and findings pending); real 2.4.2 migration and rollback, clean Windows 10/11 and second authorized VM, physical GPU/audio/monitor/hardware/codec matrix, 8h continuous mixed soak, live API account/token tests, third-party notices and signing feasibility. No claims of completed physical or release tests.
+- Final release after remaining implementation and regression fixes, fresh full CI on frozen final SHA, human acceptance and release artifacts/hashes. Preserve all prior user requirements in master roadmap; avoid duplicates or blanket closure.
+
+### R8 — RC1 functional acceptance corrections
+- Original immutable RC1 7d5e1c18: 10/11 workflows passed; installer lifecycle succeeded, security job failed (16 path matches, 2 historical public Inno digest findings). Both 120/1200-cycle jobs passed, 1200 elapsed 3601973 ms, private bytes 283322 to 299364 KiB, process count 6 to 6. No physical device claim.
+- Exact two historical digest fingerprints added to existing .gitleaksignore after checking original lines against official pinned compiler checksum; no general rule exclusion. Trace scan still a blocking issue; require provenance, path-map and actual bytes review, no blanket allowance of vendor DLLs.
+- Fixed invalid preset startup/import shape; shared validation and reload write guard. Flyout slider refresh no longer stops simply because input retains focus; all transport commands scoped to displayed owner/title. Added actual generated WAV playback through flyout DOM for play/pause, seek, volume, mute, next/previous, stop and destruction, not only existence checks. New tests pending.
+- Detailed Claude Code handoff and per-capability acceptance matrix accompany this revision. All 16 groups remain; never infer functional completion from controls, docs, static tests or provider mocks. Build RC1 revision on exact SHA and keep original archived.
+
+## Claude Code handoff
+- docs/CLAUDE-CODE-RC1-HANDOFF-EL.md
+- docs/RC1-FUNCTIONAL-ACCEPTANCE.md
+- docs/RC1-CONTROL-AUDIT.csv (inventory only, each row requires individual evidence)
+
+## Trace scan (RC1 correction)
+- `test/trace-scan.js` replaces the inline workflow step. A match passes only through an exact entry of `test/trace-approvals.json` (file, pattern, and SHA-256 or the exact matched strings). All 16 matches of the 51b9da1 portable zip were checked against the official packages named in each entry. Personal identifiers (patterns 2-4) cannot be approved.
+- A new .NET runtime patch, LibVLCSharp or Electron version changes hashes or strings and fails the scan until it is reviewed again.
+- Not covered: files compressed inside the Inno Setup installer (the portable zip comes from the same win-unpacked folder). Not yet run in CI.

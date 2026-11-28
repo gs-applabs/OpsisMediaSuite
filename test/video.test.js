@@ -188,3 +188,56 @@ test('the shared queue handles video jobs: sequential, progress, per-file errors
   const done = q2.start(); q2.cancel(); release('late');
   assert.deepEqual((await done).map((x) => x.status), ['cancelled', 'cancelled']);
 });
+
+
+test('explicit encoder policy is strict and two pass does not silently select one pass',()=>{
+ const set=new Set(['h264_nvenc','libx264','libopenh264']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'software'}),['libx264','libopenh264']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'hardware'}),['h264_nvenc']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'auto',passes:2}),['libx264']);
+ assert.deepEqual(V.encoderOrder('h264',set,{policy:'hardware',passes:2}),[]);
+ assert.equal(V.validateOptions({encoderPolicy:'invalid'}).ok,false);
+});
+
+
+test('video filter options are bounded, neutral by default and ordered',()=>{const a=args({gamma:1.3,sharpen:.4,deinterlace:true},'libx264');const f=a[a.indexOf('-vf')+1];assert.ok(f.startsWith('yadif=mode=send_frame:parity=auto:deint=all,eq=gamma=1.3,unsharp=5:5:0.4:5:5:0'));assert.equal(V.validateOptions({gamma:Infinity}).ok,false);assert.equal(V.validateOptions({sharpen:2}).ok,false);assert.ok(!args({},'libx264').join(' ').includes('unsharp'));});
+
+
+test('special video tasks use explicit bounded stream copy or image output without encoder selection',()=>{const info={duration:30};const remux=opts({operation:'remux',trimStart:2,trimEnd:9});assert.equal(V.needsVideoEncoder(remux),false);const a=V.buildArgs({input:'in.mp4',output:'out.mkv',options:remux,info});assert.deepEqual(a.slice(a.indexOf('-map'),a.indexOf('-map')+4),['-map','0','-c','copy']);assert.equal(V.outputExt(remux),'mkv');for(const operation of ['poster','contact','sequence']){const o=opts({operation});assert.equal(V.outputExt(o),'png');const a=V.buildArgs({input:'in.mp4',output:'out.png',options:o,info});assert.ok(a.includes('png'));assert.ok(a.includes('0:V:0'));}assert.equal(V.validateOptions({operation:'sequence',frameCount:61}).ok,false);assert.equal(V.validateOptions({operation:'sequence',frameInterval:0}).ok,false);assert.throws(()=>V.buildArgs({input:'in',output:'out',options:opts({operation:'poster',trimStart:40}),info}),{code:'bad-range'});});
+
+test('source metadata option is validated and disables copy in supported output routes',()=>{
+ assert.equal(V.validateOptions({sourceMetadata:'false'}).ok,false);
+ assert.equal(V.validateOptions({}).options.sourceMetadata,true);
+ for(const [options,encoder] of [[{sourceMetadata:false},'libx264'],[{sourceMetadata:false,audioOnly:true},null],[{sourceMetadata:false,operation:'remux'},null]]){
+  const a=args(options,encoder,{info:{duration:30}});
+  assert.equal(a[a.indexOf('-map_metadata')+1],'-1');
+  assert.equal(a[a.indexOf('-map_metadata:s')+1],'-1');
+  assert.equal(a[a.indexOf('-map_chapters')+1],'-1');
+ }
+ const kept=args({operation:'remux'},null,{info:{duration:30}});
+ assert.equal(kept[kept.indexOf('-map_metadata')+1],'0');
+ assert.equal(kept[kept.indexOf('-map_chapters')+1],'0');
+});
+
+test('matched tags are explicit audio-output-only metadata, not arbitrary FFmpeg options',()=>{
+ assert.deepEqual(V.matchedAudioTags({title:' Song ',channel:'Artist',album:'Album'},'Spotify'),{title:'Song',artist:'Artist',album:'Album'});
+ assert.deepEqual(V.matchedAudioTags({title:'Clip',channel:'Uploader'},'YouTube'),{title:'Clip'});
+ assert.equal(V.validateOptions({outputTags:{title:'untrusted'}}).options.outputTags,undefined);
+ const o=opts({audioOnly:true,sourceMetadata:false});o.outputTags={title:'-y',artist:'A',album:'B',comment:'not allowed'};
+ const a=V.buildArgs({input:'in.mp4',output:'out.m4a',options:o,encoder:null});
+ assert.ok(a.includes('title=-y'));assert.ok(a.includes('artist=A'));assert.ok(a.includes('album=B'));assert.ok(!a.includes('comment=not allowed'));
+ assert.equal(a.filter(x=>x==='-metadata').length,3);
+ assert.ok(!V.buildArgs({input:'in.mp4',output:'out.mp4',options:{...opts({}),outputTags:o.outputTags},encoder:'libx264'}).includes('title=-y'));
+});
+
+test('individual output cover can inherit, override or opt out; format limits shared',()=>{
+ const batch='C:/cover.png';
+ assert.equal(V.coverForItem({},batch),batch);
+ assert.equal(V.coverForItem({outputCover:'C:/track.jpg'},batch),'C:/track.jpg');
+ assert.equal(V.coverForItem({outputCover:null},batch),undefined);
+ assert.equal(V.coverForItem({},''),undefined);
+ for(const format of ['mp3','flac','m4a','opus'])assert.equal(V.supportsOutputCover(opts({audioOnly:true,audioOnlyFormat:format})),true);
+ assert.equal(V.supportsOutputCover(opts({})),false);
+ assert.equal(V.outputCoverLimit('opus'),40*1024);
+ assert.equal(V.outputCoverLimit('m4a'),2*1024*1024);
+});

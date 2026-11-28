@@ -3,9 +3,9 @@
 // ARRAY, never a shell string), encoder detection/selection, size prediction and probe parsing. UMD like convlib.js: loaded lazily by the
 // renderer (window.WaveframeVideo), required by the main process and the unit tests.
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.WaveframeVideo = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./path-identity'));
+  else root.WaveframeVideo = factory(root.OpsisPathIdentity);
+})(typeof self !== 'undefined' ? self : this, function (identity) {
   // software encoders first are NOT preferred: hardware (if listed) comes first, then software; the engine retries the next one on failure.
   const CODECS = {
     h264: { label: 'H.264', hw: ['h264_nvenc', 'h264_qsv', 'h264_amf'], sw: ['libx264', 'libopenh264'], containers: ['mp4', 'mkv'], crf: [0, 51], crfDefault: 21, webCodec: 'avc1.42001f' },
@@ -19,8 +19,10 @@
   const MUXERS = { mp4: 'mp4', mkv: 'matroska', webm: 'webm' };
   const LIMITS = { maxHeight: 4320, maxFps: 240, minBitrate: 100, maxBitrate: 200000, maxFiles: 200, maxTrack: 31 };
 
+  const OPERATIONS=['encode','remux','poster','contact','sequence'];
   const DEFAULTS = {
-    preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',
+    operation:'encode',frameInterval:5,frameCount:30,sourceMetadata:true,
+    preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',encoderPolicy:'auto',gamma:1,sharpen:0,deinterlace:false,
     audioCodec: 'aac', audioBitrate: 192, audioTrack: 0, removeAudio: false, subtitle: 'none', subtitleFile: '', subtitleTrack: 0,
     trimStart: 0, trimEnd: 0, audioOnly: false, audioOnlyFormat: 'm4a', gif: false, suffix: '-video',
   };
@@ -54,11 +56,27 @@
     const r = raw && typeof raw === 'object' ? raw : {};
     const base = { ...DEFAULTS, ...(PRESETS[r.preset] || {}) };
     const o = { ...base, ...r };
+    // Output tags are independently admitted by the main process, never raw options.
+    delete o.outputTags;delete o.outputCover;
     const errors = [], warnings = [];
+    if(typeof o.sourceMetadata!=='boolean')errors.push('sourceMetadata');
+    if(!OPERATIONS.includes(o.operation))return {ok:false,options:o,errors:['operation'],warnings};
+    if(o.operation!=='encode'){
+      o.trimStart=num(o.trimStart);o.trimEnd=num(o.trimEnd);
+      o.frameInterval=num(o.frameInterval);o.frameCount=int(o.frameCount);
+      if(!(o.trimStart>=0&&o.trimStart<=360000&&o.trimEnd>=0&&o.trimEnd<=360000&&(o.trimEnd===0||o.trimEnd>o.trimStart)))errors.push('trim');
+      if(!(o.frameInterval>=1&&o.frameInterval<=60))errors.push('frameInterval');
+      if(!(o.frameCount>=1&&o.frameCount<=60))errors.push('frameCount');
+      o.suffix=sanitizeSuffix(o.suffix)||'-'+o.operation;
+      o.audioOnly=false;o.gif=false;o.subtitleFile='';o.passes=1;
+      return {ok:errors.length===0,options:o,errors,warnings};
+    }
     if (!CODECS[o.codec]) errors.push('codec');
     else if (!CODECS[o.codec].containers.includes(o.container)) { o.container = CODECS[o.codec].containers[0]; warnings.push('container-changed'); }
     for (const k of ['height', 'fps', 'crf', 'bitrate', 'passes', 'audioBitrate', 'audioTrack', 'subtitleTrack']) o[k] = int(o[k]);
     o.trimStart = num(o.trimStart); o.trimEnd = num(o.trimEnd);
+    o.gamma=num(o.gamma);o.sharpen=num(o.sharpen);o.deinterlace=o.deinterlace===true;
+    if(!(o.gamma>=.5&&o.gamma<=2))errors.push('gamma');if(!(o.sharpen>=0&&o.sharpen<=1.5))errors.push('sharpen');
     if (!(o.height === 0 || (o.height >= 144 && o.height <= LIMITS.maxHeight))) errors.push('height');
     if (!(o.fps === 0 || (o.fps >= 1 && o.fps <= LIMITS.maxFps))) errors.push('fps');
     if (!['crf', 'bitrate'].includes(o.rateMode)) errors.push('rateMode');
@@ -66,6 +84,7 @@
     if (!(o.bitrate >= LIMITS.minBitrate && o.bitrate <= LIMITS.maxBitrate)) errors.push('bitrate');
     if (![1, 2].includes(o.passes)) errors.push('passes');
     if (!SPEEDS.includes(o.speed)) errors.push('speed');
+    if(!['auto','software','hardware'].includes(o.encoderPolicy))errors.push('encoderPolicy');
     if (!AUDIO_CODECS.includes(o.audioCodec)) errors.push('audioCodec');
     if (!(o.audioBitrate >= 32 && o.audioBitrate <= 512)) errors.push('audioBitrate');
     if (!(o.audioTrack >= 0 && o.audioTrack <= LIMITS.maxTrack)) errors.push('audioTrack');
@@ -102,11 +121,13 @@
   }
 
   // Candidate encoders for a codec, best first: hardware (when listed) then software. `available` is a Set of encoder names.
-  function encoderOrder(codec, available, { preferHardware = true } = {}) {
+  function encoderOrder(codec, available, { preferHardware = true,policy='auto',passes=1 } = {}) {
     const c = CODECS[codec];
     if (!c) return [];
     const hw = c.hw.filter((e) => available.has(e)), sw = c.sw.filter((e) => available.has(e));
-    return preferHardware ? [...hw, ...sw] : [...sw, ...hw];
+    const order=policy==='software'?sw:policy==='hardware'?hw:preferHardware?[...hw,...sw]:[...sw,...hw];
+    // Explicit two-pass means two-pass, not silently switching to one pass.
+    return passes===2?order.filter(canTwoPass):order;
   }
   const isHardware = (enc) => /_(nvenc|qsv|amf)$/.test(enc);
   // For the UI: what exists per codec and which one is chosen automatically.
@@ -164,6 +185,9 @@
 
   function filterChain(o, input) {
     const f = [];
+    if(o.deinterlace)f.push('yadif=mode=send_frame:parity=auto:deint=all');
+    if(o.gamma!==1)f.push('eq=gamma='+o.gamma);
+    if(o.sharpen>0)f.push('unsharp=5:5:'+o.sharpen+':5:5:0');
     if (o.height > 0) f.push(`scale=-2:min(${o.height}\\,ih):flags=lanczos`); // never upscales; '\,' keeps the comma inside the expression
     if (o.fps > 0 && !o.gif) f.push(`fps=${o.fps}`);
     if (o.subtitle === 'burn') {
@@ -174,14 +198,65 @@
 
   // Builds the argument ARRAY for one ffmpeg run. info = { duration } is optional.
   // pass: 0 = single pass, 1 = first pass of two (null output), 2 = second pass. passLog: base path for -passlogfile (a temp file, never user input).
+  function needsVideoEncoder(o){return (!o.operation||o.operation==='encode')&&!o.audioOnly&&!o.gif;}
+  // Keep the historical default; explicit stripping disables automatic global,
+  // stream and chapter metadata mapping. Not an anonymizer: media content,
+  // attachments, codec data and muxer-generated fields may still identify it.
+  function matchedAudioTags(row,provider){
+    const value=x=>typeof x==='string'?x.replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,250):'';
+    const result={};const title=value(row?.title);if(title)result.title=title;
+    // Upload channel/creator is not necessarily a musical artist.
+    if(provider==='Spotify'){const artist=value(row?.channel),album=value(row?.album);if(artist)result.artist=artist;if(album)result.album=album;}
+    return result;
+  }
+  function outputTagArgs(tags){
+    const args=[];for(const key of ['title','artist','album']){
+      const value=tags?.[key];if(typeof value==='string'&&value.trim()&&value.length<=250&&!/[\x00-\x1f\x7f]/.test(value))args.push('-metadata',key+'='+value);
+    }return args;
+  }
+  // Covers use the existing lossless tag writer; Opus comments must fit one page.
+  function supportsOutputCover(options){
+    return options?.operation==='encode'&&options.audioOnly===true&&Object.hasOwn(AUDIO_ONLY,options.audioOnlyFormat);
+  }
+  function outputCoverLimit(format){return format==='opus'?40*1024:2*1024*1024;}
+  function coverForItem(item,batch){
+    const value=item?.outputCover===undefined?batch:item.outputCover;
+    return typeof value==='string'&&value?value:undefined;
+  }
+  function metadataArgs(o){
+    return o.sourceMetadata===false?['-map_metadata','-1','-map_metadata:s','-1','-map_chapters','-1']:['-map_metadata','0','-map_chapters','0'];
+  }
+  function specialArgs({input,output,options:o,info}){
+    const duration=Number(info?.duration),start=o.trimStart,end=o.trimEnd>0?Math.min(o.trimEnd,duration):duration;
+    if(!Number.isFinite(duration)||duration<=0||start>=duration||end<=start)throw Object.assign(Error('Invalid media range'),{code:'bad-range'});
+    const span=end-start,a=['-hide_banner','-nostdin','-y'];
+    if(start>0)a.push('-ss',String(start));
+    if(o.operation!=='remux')a.push('-t',String(o.operation==='poster'?Math.min(span,2):o.operation==='sequence'?Math.min(span,o.frameInterval*o.frameCount):span));
+    a.push('-i',input);
+    if(o.operation==='remux'){
+      if(o.trimEnd>0)a.push('-t',String(span));
+      return a.concat(['-map','0','-c','copy',...metadataArgs(o),'-avoid_negative_ts','make_zero','-f','matroska',output]);
+    }
+    a.push('-map','0:V:0','-an','-sn','-dn');
+    const scale='scale=640:360:force_original_aspect_ratio=decrease:force_divisible_by=2';
+    if(o.operation==='poster')a.push('-vf','scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2','-frames:v','1','-c:v','png','-f','image2',output);
+    else if(o.operation==='contact'){
+      const interval=Math.max(.001,span/12);
+      a.push('-vf','fps=1/'+interval+','+scale+',pad=640:360:(ow-iw)/2:(oh-ih)/2,tile=4x3:nb_frames=12','-frames:v','1','-c:v','png','-f','image2',output);
+    }else if(o.operation==='sequence'){
+      a.push('-vf','fps=1/'+o.frameInterval+','+scale,'-frames:v',String(o.frameCount),'-start_number','1','-c:v','png','-f','image2',output);
+    }else throw Error('unsupported operation');
+    return a;
+  }
   function buildArgs({ input, output, options, encoder, pass = 0, passLog = '', info = null }) {
     const o = options;
+    if(o.operation&&o.operation!=='encode')return specialArgs({input,output,options:o,info});
     const a = ['-hide_banner', '-nostdin', '-y', '-i', input];
     if (o.trimStart > 0) a.push('-ss', String(o.trimStart));
     if (o.trimEnd > 0) a.push('-t', String(o.trimEnd - o.trimStart));
     if (o.audioOnly) {
       const f = AUDIO_ONLY[o.audioOnlyFormat];
-      a.push('-vn', '-map', `0:a:${o.audioTrack}?`, '-c:a', f.codec, ...(o.audioOnlyFormat === 'flac' ? [] : ['-b:a', `${o.audioBitrate}k`]), '-f', f.muxer, output);
+      a.push('-vn', '-map', `0:a:${o.audioTrack}?`, '-c:a', f.codec, ...(o.audioOnlyFormat === 'flac' ? [] : ['-b:a', `${o.audioBitrate}k`]), ...(o.sourceMetadata===false?metadataArgs(o):[]), ...outputTagArgs(o.outputTags), '-f', f.muxer, output);
       return a;
     }
     if (o.gif) {
@@ -201,11 +276,12 @@
       a.push('-map', `0:s:${o.subtitleTrack}?`, '-c:s', o.container === 'mp4' ? 'mov_text' : o.container === 'webm' ? 'webvtt' : 'copy');
     }
     if (o.container === 'mp4') a.push('-movflags', '+faststart');
+    if(o.sourceMetadata===false)a.push(...metadataArgs(o));
     a.push('-f', MUXERS[o.container], output);
     return a;
   }
 
-  function outputExt(o) { return o.audioOnly ? AUDIO_ONLY[o.audioOnlyFormat].ext : o.gif ? 'gif' : o.container; }
+  function outputExt(o) { if(o.operation==='remux')return 'mkv';if(['poster','contact','sequence'].includes(o.operation))return 'png';return o.audioOnly ? AUDIO_ONLY[o.audioOnlyFormat].ext : o.gif ? 'gif' : o.container; }
 
   // Two passes are only used when the chosen encoder supports -pass (software H.264 / VP9 / AV1-aom).
   function canTwoPass(enc) { return enc === 'libx264' || enc === 'libvpx-vp9' || enc === 'libaom-av1'; }
@@ -228,6 +304,7 @@
     return s.w * s.h * s.fps * bpp / 1000;
   }
   function predictBytes({ duration, width = 1920, height = 1080, fps = 30 }, o) {
+    if(o.operation&&o.operation!=='encode')return 0;
     if (!(duration > 0)) return 0;
     const span = (o.trimEnd > 0 ? Math.min(o.trimEnd, duration) : duration) - o.trimStart;
     if (!(span > 0)) return 0;
@@ -259,5 +336,44 @@
     return out;
   }
 
-  return { CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
+  // Classification only: no network requests, credentials or implied download permission.
+  function onlineSource(value){
+    if(typeof value!=='string'||value.length>2048||/[\x00-\x1f\x7f]/.test(value.trim()))return null;
+    let u;try{u=new URL(value.trim());}catch{return null;}
+    if(!['http:','https:'].includes(u.protocol)||u.username||u.password||!u.hostname)return null;
+    const host=u.hostname.toLowerCase(),path=u.pathname;
+    const domain=d=>host===d||host.endsWith('.'+d);
+    let provider='direct',kind='unknown',capability='unverified';
+    if(domain('youtube.com')||host==='youtu.be'){
+      provider=host==='music.youtube.com'?'youtube-music':'youtube';
+      kind=u.searchParams.has('list')?'playlist':(host==='youtu.be'||u.searchParams.has('v')||/^\/(?:shorts|live|embed)\//.test(path))?'item':'unknown';
+      capability='adapter-required';
+    }else if(domain('spotify.com')){
+      provider='spotify';kind=/\/playlist\//.test(path)?'playlist':/\/album\//.test(path)?'album':/\/(?:track|episode)\//.test(path)?'item':'unknown';capability='metadata-only';
+    }else if(domain('vimeo.com')||domain('dailymotion.com')||host==='dai.ly'||domain('soundcloud.com')||domain('bandcamp.com')){
+      provider=domain('vimeo.com')?'vimeo':domain('dailymotion.com')||host==='dai.ly'?'dailymotion':domain('soundcloud.com')?'soundcloud':'bandcamp';
+      kind=/\/(?:sets|playlist|showcase)\//.test(path)?'playlist':/\/album\//.test(path)?'album':'item';capability='adapter-required';
+    }else if(/\.(?:mp4|mkv|webm|mov|mp3|wav|flac|m4a|aac|ogg|opus|m3u8?)$/i.test(path)){
+      kind=/\.m3u8?$/i.test(path)?'playlist':'item';capability='direct-candidate';
+    }
+    return {provider,kind,capability};
+  }
+  // Match by occurrence, not video ID; repeated tracks remain independently selectable.
+  // Local paths must still come from the main-process picker and be revalidated at encode.
+  function playlistQueuePlan(rows,selection,bindings,existing=[],capacity=LIMITS.maxFiles){
+    if(!Array.isArray(rows)||rows.length>200||!Array.isArray(selection)||!(bindings instanceof Map)||!Array.isArray(existing)||!Number.isSafeInteger(capacity)||capacity<0)return {ok:false,code:'invalid-selection'};
+    const chosen=new Set(selection);
+    if(!chosen.size||[...chosen].some(i=>!Number.isInteger(i)||i<0||i>=rows.length))return {ok:false,code:'invalid-selection'};
+    const paths=[],seen=new Set(existing.map(identity.key).filter(Boolean));
+    for(let i=0;i<rows.length;i++){
+      if(!chosen.has(i))continue;
+      const p=bindings.get(i);
+      if(typeof p!=='string'||!p||!(/^[A-Za-z]:[\\/]/.test(p))||/[\x00-\x1f]/.test(p))return {ok:false,code:'unmatched-item'};
+      const key=identity.key(p);if(seen.has(key))return {ok:false,code:'duplicate-file'};
+      seen.add(key);paths.push(p);
+    }
+    if(paths.length>capacity)return {ok:false,code:'queue-full'};
+    return {ok:true,paths};
+  }
+  return { supportsOutputCover,outputCoverLimit,coverForItem,matchedAudioTags,playlistQueuePlan, onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
 });

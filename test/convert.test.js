@@ -178,3 +178,44 @@ test('mapChannels: mono average, stereo duplication, multichannel front pair, un
   assert.equal(C.mapChannels([a, b], 0).length, 2);
   assert.equal(C.mapChannels([a, b], 2).length, 2);
 });
+
+
+test('normalization gain is applied once to shared mono-to-stereo buffers',()=>{
+ const mono=new Float32Array([.1,-.2]),stereo=C.mapChannels([mono],2);
+ C.applyGainDb(stereo,20*Math.log10(2));
+ assert.ok(Math.abs(stereo[0][0]-.2)<1e-7);
+ assert.ok(Math.abs(stereo[1][1]+.4)<1e-7);
+});
+
+
+test('exclusive publication preserves a concurrently created output and cleans completed staging file',()=>{
+ const fs=require('node:fs'),os=require('node:os');
+ const {publishOutput}=require('../conv-engine');
+ const dir=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'opsis-publish-')));
+ const src=path.join(dir,'source.wav'),tmp=path.join(dir,'.temp.wav'),first=path.join(dir,'source-out.wav');
+ try{
+  fs.writeFileSync(src,'source');fs.writeFileSync(tmp,'complete');
+  const real=fs.linkSync;let raced=false;
+  fs.linkSync=(from,to)=>{if(!raced){raced=true;assert.equal(fs.realpathSync.native(path.dirname(to)),fs.realpathSync.native(path.dirname(first)));assert.equal(path.basename(to),path.basename(first));fs.writeFileSync(to,'competing file',{flag:'wx'});}return real(from,to);};
+  let final;try{final=publishOutput(tmp,{input:src,ext:'wav',suffix:'-out',outDir:dir});}finally{fs.linkSync=real;}
+  assert.equal(path.basename(final),'source-out (1).wav');
+  assert.equal(fs.readFileSync(first,'utf8'),'competing file');assert.equal(fs.readFileSync(final,'utf8'),'complete');
+  assert.equal(fs.readFileSync(src,'utf8'),'source');assert.equal(fs.existsSync(tmp),false);
+  fs.writeFileSync(tmp,'new');fs.linkSync=()=>{throw Object.assign(Error('unsupported'),{code:'ENOTSUP'});};
+  try{assert.throws(()=>publishOutput(tmp,{input:src,ext:'wav',suffix:'-out',outDir:dir}),{code:'publish-failed'});}finally{fs.linkSync=real;}
+  assert.equal(fs.readFileSync(tmp,'utf8'),'new');assert.equal(fs.existsSync(path.join(dir,'source-out (2).wav')),false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('queue owns a stable item snapshot, ignores invalid/backward progress and refuses a second start',async()=>{
+ const items=['a','b'],seen=[],progress=[];
+ const q=C.createQueue(items,async(item,ctx)=>{seen.push(item);ctx.report(.8);ctx.report(.2);ctx.report(NaN);return item;},p=>progress.push(p.overall));
+ items.push('c');const results=await q.start();
+ assert.deepEqual(seen,['a','b']);assert.equal(results.length,2);
+ assert.ok(progress.every((x,j)=>Number.isFinite(x)&&(j===0||x>=progress[j-1])));
+ await assert.rejects(q.start(),/queue-already-started/);
+});
+
+test('owned scratch cleanup is idempotent and preserves neighboring files',()=>{const fs=require('node:fs'),os=require('node:os'),{createScratch}=require('../resource-diagnostics');const root=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-test-'));try{const sibling=path.join(root,'keep.txt');fs.writeFileSync(sibling,'keep');const s=createScratch('opsis-conv-',root);fs.writeFileSync(path.join(s.dir,'source.wav'),'temporary');assert.equal(s.release(),true);assert.equal(s.release(),true);assert.equal(fs.existsSync(s.dir),false);assert.equal(fs.readFileSync(sibling,'utf8'),'keep');assert.throws(()=>createScratch('../unsafe-',root));}finally{fs.rmSync(root,{recursive:true,force:true});}});
+test('bounded crash log rotates without exceeding the limit, even with repeated writes',()=>{const fs=require('node:fs'),os=require('node:os'),{appendBoundedLog}=require('../resource-diagnostics');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'opsis-logtest-'));try{const file=path.join(dir,'crash.log');for(let i=0;i<100;i++){appendBoundedLog(file,'1234567890\\n',64);assert.ok(fs.statSync(file).size<=64);}assert.ok(fs.existsSync(file+'.old'));assert.equal(appendBoundedLog(file,'x'.repeat(65),64),false);}finally{fs.rmSync(dir,{recursive:true,force:true});}});
+
+test('progress throttle bounds message frequency and releases job keys',()=>{const {createProgressGate}=require('../resource-diagnostics');let now=0;const g=createProgressGate(100,()=>now);assert.equal(g.allow('one',0),true);for(let i=0;i<10000;i++)assert.equal(g.allow('one',.1),false);now=100;assert.equal(g.allow('one',.2),true);assert.equal(g.allow('one',1),true);g.release('one');assert.equal(g.size(),0);assert.equal(g.allow('one',0),true);g.release('one');assert.equal(g.size(),0);});

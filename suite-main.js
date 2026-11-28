@@ -206,7 +206,7 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
     return true;
   }
 
-  const fromSplash = (e) => !!splash && !splash.isDestroyed() && e.sender === splash.webContents;
+  const fromSplash = (e) => !!splash && !splash.isDestroyed() && e.sender === splash.webContents && e.senderFrame === splash.webContents.mainFrame;
 
   ipcMain.handle('splash:init', async (e) => {
     if (!fromSplash(e)) return null;
@@ -350,19 +350,19 @@ function init({ getMainWin, getTheme, isMini, isTrusted, onLang }) {
 
   /* ---------- main window / help window entry points ---------- */
   ipcMain.on('suite:open', (e, kind) => {
-    if (!isTrusted(e.sender)) return;
+    if (!(e.senderFrame === e.sender.mainFrame && isTrusted(e.sender))) return;
     if (kind === 'welcome' || kind === 'family') openSplash(kind);
   });
   ipcMain.on('suite:settings', (e, s) => {
-    if (!isTrusted(e.sender) || !s || typeof s !== 'object') return;
+    if (!(e.senderFrame === e.sender.mainFrame && isTrusted(e.sender)) || !s || typeof s !== 'object') return;
     if (typeof s.lang === 'string' && /^[a-z]{2}$/.test(s.lang)) { lang = s.lang; if (onLang) onLang(lang); }
     if (typeof s.notify === 'boolean') store.set({ notifyEnabled: s.notify });
   });
   ipcMain.handle('updates:check-now', async (e) => {
-    if (!isTrusted(e.sender)) return { status: 'error' };
+    if (!(e.senderFrame === e.sender.mainFrame && isTrusted(e.sender))) return { status: 'error' };
     return checkForUpdate({ manual: true });
   });
-  ipcMain.on('suite:get-notify-sync', (e) => { e.returnValue = isTrusted(e.sender) ? store.get().notifyEnabled : true; });
+  ipcMain.on('suite:get-notify-sync', (e) => { e.returnValue = (e.senderFrame === e.sender.mainFrame && isTrusted(e.sender)) ? store.get().notifyEnabled : true; });
 
   /* ---------- startup hooks ---------- */
   function onMainLoaded() {

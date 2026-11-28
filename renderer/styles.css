@@ -855,6 +855,9 @@ body.mini-mode #bgCanvas { display: none; }
 .vid-row { grid-template-columns: 64px minmax(0, 1fr) auto auto; }
 .vid-thumb { width: 64px; height: 38px; object-fit: cover; border-radius: 6px; background: var(--panel-border); display: flex; align-items: center; justify-content: center; font-size: 16px; }
 .vid-info { min-width: 0; }
+.vid-item-cover { display:none; }
+#vidList.cover-enabled .vid-item-cover { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:4px; }
+.vid-item-cover .vid-meta { max-width:100%; }
 .vid-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vid-estimate { min-height: 16px; }
 .vid-sub-row { align-items: center; gap: 10px; }
@@ -887,9 +890,11 @@ body.mini-mode #bgCanvas { display: none; }
 .vp-list li.current { outline: 1px solid var(--accent); }
 .vp-list .vp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; border: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; padding: 0; }
 .vp-list .vp-x { background: none; border: 0; color: inherit; cursor: pointer; opacity: 0.7; }
-.vp-video::cue { font-size: calc(var(--vp-sub-size, 16) * 1%); color: var(--vp-sub-color, #fff); }
+.vp-video::cue { font-size: calc(var(--vp-sub-size, 100) * 1%); color: var(--vp-sub-color, #fff); }
 .ph-canvas { max-width: 100%; max-height: 54vh; display: none; }
 .ph-drop.has-media .ph-canvas { display: block; }
+.ph-canvas.zoomed { cursor: grab; touch-action: none; }
+.ph-canvas.zoomed:active { cursor: grabbing; }
 .ph-drop.drag, .vp-frame.drag { outline: 2px dashed var(--accent); }
 .ph-hist { width: 100%; max-width: 256px; height: 64px; margin-top: 10px; border-radius: 6px; background: rgba(127,127,127,0.12); }
 .ph-slider { display: grid; grid-template-columns: 110px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
@@ -927,3 +932,15 @@ body.mini-mode #bgCanvas { display: none; }
 .vp-stage:fullscreen .vp-video { max-height: none; height: 100%; }
 .vp-stage:fullscreen .vp-head, .vp-stage:fullscreen .hint { display: none; }
 @media (max-width: 1250px) { .vp-layout { grid-template-columns: minmax(0, 1fr); } .vp-cards { grid-template-columns: minmax(0, 1fr); } }
+
+/* Audio endpoint inventory: no inline styles under strict CSP. */
+#audioEndpointReport { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.feature-guide-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px;max-height:340px;overflow:auto;padding:3px}.feature-guide-result{white-space:normal;text-align:start;display:flex;flex-direction:column;align-items:flex-start;gap:4px;line-height:1.35}.feature-guide-result span{font-weight:normal;font-size:.9em}.feature-guide-highlight{outline:2px solid currentColor!important;outline-offset:3px}#featureGuideQuick{margin:4px auto;font-size:1.25rem}
+
+#featureGuideQuick{font-size:.85rem;white-space:normal;max-width:100%}#featureGuideGroup{max-width:100%;margin-block:8px}.feature-guide-result:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+
+.metadata-tools{flex-wrap:wrap;justify-content:flex-start;gap:6px}.metadata-tools .small-btn{white-space:normal;max-width:100%}.source-btn:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+
+/* Feature finder uses existing theme tokens, no new theme or duplicate setting. */
+.feature-guide-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-block:12px}.feature-guide-toolbar input{flex:1 1 200px;min-width:0;width:auto;margin:0}.feature-guide-filter{display:flex;align-items:center;gap:6px;max-width:100%;flex-wrap:wrap}.feature-guide-filter select{min-width:0;color:var(--text);background:var(--panel);border:1px solid var(--panel-border);border-radius:8px;padding:7px}.feature-guide-results{grid-auto-rows:minmax(0,auto);align-items:stretch;max-height:min(340px,45vh)}.feature-guide-result{min-width:0;overflow-wrap:anywhere;padding:10px 12px;border:1px solid var(--panel-border);background:var(--panel);border-radius:10px}.feature-guide-result:hover{border-color:var(--accent)}.feature-guide-category{color:var(--text-dim);font-size:.78em!important}.feature-guide-result strong{color:var(--text)}#featureGuideClear:disabled{opacity:.5;cursor:default}

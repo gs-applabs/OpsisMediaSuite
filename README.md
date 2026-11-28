@@ -73,6 +73,7 @@ See the [published release](https://github.com/gs-applabs/OpsisMediaSuite/releas
 - [Ελληνικά](#ελληνικά)
 - [English](#english)
 - [Άδεια / License](#άδεια--license)
+- [Master Roadmap 3.0 / OPSIS Audio Engine](docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md) · [Handoff](docs/START-HERE-HANDOFF-EL.md)
 
 ## Ελληνικά
 

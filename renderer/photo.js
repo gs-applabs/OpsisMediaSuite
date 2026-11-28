@@ -9,13 +9,25 @@
   const SLIDERS = [
     ['exposure', -2, 2, 0.05], ['contrast', -100, 100, 1], ['highlights', -100, 100, 1], ['shadows', -100, 100, 1],
     ['saturation', -100, 100, 1], ['temperature', -100, 100, 1], ['tint', -100, 100, 1], ['sharpen', 0, 100, 1], ['denoise', 0, 100, 1],
-    ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01],
+    ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01], ['vibrance', -100, 100, 1], ['sepia', 0, 100, 1], ['vignette', 0, 100, 1], ['red',-100,100,1], ['green',-100,100,1], ['blue',-100,100,1], ['clarity',-100,100,1],
   ];
-  const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
+  const CROPS = [['none', null], ['free', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
+  let openGeneration = 0,opening=false,picking=false,exportController=null,exportPhase='idle',captureToken=null,captureDate=null;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
+  let history=P.createHistory({params,cropKey}),view={scale:1,x:0,y:0},pan=null;
+  function updateViewport(){
+    const c=$('phCanvas'),box=$('phDrop');
+    view=P.previewViewport(view.scale,view.x,view.y,c.clientWidth,c.clientHeight,box.clientWidth,box.clientHeight);
+    c.style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
+    $('phZoomValue').textContent=Math.round(view.scale*100)+'%';c.classList.toggle('zoomed',view.scale>1);
+  }
+  function resetViewport(){pan=null;view={scale:1,x:0,y:0};$('phZoom').value='100';$('phZoom').disabled=$('phZoomReset').disabled=!bmp;updateViewport();}
+  function updateHistory(){ $('phUndo').disabled=!history.canUndo();$('phRedo').disabled=!history.canRedo(); }
+  function checkpoint(){if(!orig)return;history.push({params,cropKey});updateHistory();}
+  function restore(snapshot){params=snapshot.params;cropKey=snapshot.cropKey;$('phCrop').value=cropKey;syncCrop();syncSliders();updateHistory();schedule();}
   const info = (text) => { $('phInfo').textContent = text || ''; };
 
   function build() {
@@ -27,36 +39,80 @@
       const input = document.createElement('input'); input.type = 'range'; input.id = `ph_${key}`; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(P.defaults()[key]);
       const out = document.createElement('output'); out.htmlFor = input.id; out.textContent = input.value;
       input.addEventListener('input', () => { params[key] = Number(input.value); out.textContent = key === 'exposure' || key === 'gamma' ? Number(input.value).toFixed(2) : input.value; schedule(); });
-      input.addEventListener('dblclick', () => { input.value = String(P.defaults()[key]); input.dispatchEvent(new Event('input')); });
+      input.addEventListener('change',checkpoint);
+      input.addEventListener('dblclick', () => { input.value = String(P.defaults()[key]); input.dispatchEvent(new Event('input')); checkpoint(); });
       row.append(label, input, out); box.append(row);
     }
-    for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k; $('phCrop').append(o); }
-    $('phOpen').addEventListener('click', async () => { const p = await api.photoPick(); if (p) openPath(p); });
-    $('phAuto').addEventListener('click', () => { if (!preview) return; params = { ...params, ...P.autoParams(preview) }; syncSliders(); schedule(); });
-    $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders(); schedule(); });
-    $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; schedule(); });
-    $('phRotR').addEventListener('click', () => { params.rotate = (params.rotate + 90) % 360; schedule(); });
-    $('phFlipH').addEventListener('click', () => { params.flipH = !params.flipH; schedule(); });
-    $('phFlipV').addEventListener('click', () => { params.flipV = !params.flipV; schedule(); });
-    $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value; schedule(); });
+    for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k==='free'?'Ελεύθερη / Free':k; $('phCrop').append(o); }
+    $('phOpen').addEventListener('click', async () => {
+      if(opening||busy||picking)return;
+      picking=true;$('phOpen').disabled=true;
+      let p=null;
+      try{p=await api.photoPick();}catch{info(t('ph.cantOpen'));}
+      finally{picking=false;$('phOpen').disabled=false;}
+      if(p)await openPath(p);
+    });
+    $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params={...P.applyLook(params,$('phLook').value,Number($('phLookStrength').value)),anchorX:params.anchorX,anchorY:params.anchorY,freeW:params.freeW,freeH:params.freeH};syncSliders();checkpoint();schedule();});
+    $('phAuto').addEventListener('click', () => { if (!preview) return; params = {...P.applyAuto(preview,params),anchorX:params.anchorX,anchorY:params.anchorY,freeW:params.freeW,freeH:params.freeH}; syncSliders(); checkpoint(); schedule(); });
+    $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders(); checkpoint(); schedule(); });
+    $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; checkpoint(); schedule(); });
+    $('phRotR').addEventListener('click', () => { params.rotate = (params.rotate + 90) % 360; checkpoint(); schedule(); });
+    $('phFlipH').addEventListener('click', () => { params.flipH = !params.flipH; checkpoint(); schedule(); });
+    $('phFlipV').addEventListener('click', () => { params.flipV = !params.flipV; checkpoint(); schedule(); });
+    $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value;syncCrop();checkpoint();schedule(); });
+    for(const [id,key] of [['phCropX','anchorX'],['phCropY','anchorY'],['phFreeW','freeW'],['phFreeH','freeH']]){ $(id).addEventListener('input',()=>{params[key]=Number($(id).value);schedule();});$(id).addEventListener('change',checkpoint);}
+    $('phHistMode').addEventListener('change',schedule);syncCrop();
+    $('phUndo').addEventListener('click',()=>{if(orig)restore(history.undo());});$('phRedo').addEventListener('click',()=>{if(orig)restore(history.redo());});updateHistory();
     const cmp = $('phCompare');
     const down = () => { comparing = true; schedule(); }, up = () => { comparing = false; schedule(); };
-    cmp.addEventListener('pointerdown', down); cmp.addEventListener('pointerup', up); cmp.addEventListener('pointerleave', up);
+    cmp.addEventListener('pointerdown', down); cmp.addEventListener('pointerup', up); cmp.addEventListener('pointerleave', up); cmp.addEventListener('pointercancel',up);cmp.addEventListener('blur',up);window.addEventListener('blur',up);
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
-    $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png'); });
+    $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png');$('phMatteField').hidden=$('phFormat').value!=='jpeg'; });
+    $('phFormat').addEventListener('change',syncCaptureDate);
+    const canvas=$('phCanvas');
+    $('phZoom').addEventListener('input',()=>{view.scale=Number($('phZoom').value)/100;updateViewport();});
+    $('phZoomReset').addEventListener('click',resetViewport);
+    canvas.addEventListener('pointerdown',e=>{if(!bmp||view.scale<=1||e.button!==0)return;e.preventDefault();pan={id:e.pointerId,x:e.clientX,y:e.clientY,startX:view.x,startY:view.y};canvas.setPointerCapture(e.pointerId);});
+    canvas.addEventListener('pointermove',e=>{if(pan?.id!==e.pointerId)return;view.x=pan.startX+e.clientX-pan.x;view.y=pan.startY+e.clientY-pan.y;updateViewport();});
+    for(const ev of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(ev,e=>{if(pan?.id===e.pointerId)pan=null;});
+    canvas.addEventListener('keydown',e=>{if(!bmp||view.scale<=1||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();e.stopPropagation();view.x+=(e.key==='ArrowLeft'?30:e.key==='ArrowRight'?-30:0);view.y+=(e.key==='ArrowUp'?30:e.key==='ArrowDown'?-30:0);updateViewport();});
+    window.addEventListener('resize',()=>{if(bmp&&photoVisible())updateViewport();});
     $('phSave').addEventListener('click', save);
+    $('phCancelExport').addEventListener('click',()=>{if(exportPhase==='processing')exportController?.abort();});
+    $('phCloseMedia').addEventListener('click',async()=>{
+      if(!bmp||busy||opening||picking)return;
+      const current=bmp;
+      const greek=document.documentElement.lang==='el';
+      if(!await showConfirmDialog(greek?'Κλείσιμο φωτογραφίας':'Close photo',greek?'Οι μη αποθηκευμένες αλλαγές θα χαθούν. Το αρχικό αρχείο δεν επηρεάζεται.':'Unsaved edits will be discarded. The original file is unaffected.'))return;
+      if(bmp===current&&!busy&&!opening&&!picking)releasePhoto();
+    });
+    $('phResize').addEventListener('change',exportSize);
     const drop = $('phDrop');
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
     drop.addEventListener('drop', (e) => {
-      e.preventDefault(); drop.classList.remove('drag');
+      e.preventDefault(); e.stopPropagation(); drop.classList.remove('drag');
       const f = e.dataTransfer.files[0]; if (!f) return;
-      const p = api.pathForFile(f);
-      if (p) openPath(p); else openBlob(f, f.name);
+      // A real drag/drop File is already authorized by the browser. Do not
+      // turn its path into a general-purpose filesystem read capability.
+      openBlob(f, f.name);
     });
-    document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone'); });
+    document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone');if(orig)schedule(); });
   }
 
+  function syncCaptureDate(){const field=$('phKeepDate');field.disabled=!captureToken||!Object.hasOwn(P.OUT_FORMATS,$('phFormat').value);if(field.disabled)field.checked=false;$('phCaptureDate').textContent=captureDate||'';}
+  function releasePhoto(){
+    ++openGeneration;if(raf)cancelAnimationFrame(raf);raf=0;
+    bmp?.close();bmp=null;orig=null;preview=null;comparing=false;resetViewport();
+    captureToken=null;captureDate=null;$('phKeepDate').checked=false;syncCaptureDate();
+    name='photo';params=P.defaults();cropKey='none';history=P.createHistory({params,cropKey});
+    $('phCanvas').width=0;$('phCanvas').height=0;
+    const hist=$('phHist');hist.getContext('2d').clearRect(0,0,hist.width,hist.height);
+    $('phDrop').classList.remove('has-media');$('phCloseMedia').disabled=true;
+    $('phCrop').value='none';syncCrop();syncSliders();updateHistory();
+    $('phClipping').textContent='';$('phDimensions').textContent='';$('phSave').title='';info('');
+  }
+  function syncCrop(){ $('phCropX').value=String(params.anchorX??50);$('phCropY').value=String(params.anchorY??50);$('phCropX').disabled=$('phCropY').disabled=cropKey==='none';$('phFreeW').value=String(params.freeW??100);$('phFreeH').value=String(params.freeH??100);$('phFreeCrop').hidden=cropKey!=='free';$('phFreeW').disabled=$('phFreeH').disabled=cropKey!=='free'; }
   function syncSliders() {
     for (const [key] of SLIDERS) {
       const i = $(`ph_${key}`); i.value = String(params[key]);
@@ -65,76 +121,171 @@
   }
 
   async function openPath(p) {
-    info(t('ph.loading'));
-    const r = await api.photoRead(p);
-    if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
-    await openBlob(new Blob([r.bytes]), r.name);
+    if (busy||opening||picking) return;
+    opening=true;$('phOpen').disabled=true;
+    const generation = ++openGeneration;
+    try{
+      info(t('ph.loading'));
+      const r = await api.photoRead(p).catch(() => null);
+      if (generation !== openGeneration || busy) return;
+      if (!r || r.error) { info(r && r.error === 'too-large' ? t('ph.tooLarge') : t('ph.cantOpen')); return; }
+      await decodeBlob(new Blob([r.bytes]),r.name,generation,r.captureToken,r.captureDate);
+    }finally{opening=false;$('phOpen').disabled=false;}
   }
 
-  async function openBlob(blob, nm) {
+  async function openBlob(blob,nm){
+    if(busy||opening||picking)return;
+    opening=true;$('phOpen').disabled=true;
+    try{await decodeBlob(blob,nm,++openGeneration,null,null,true);}finally{opening=false;$('phOpen').disabled=false;}
+  }
+  async function decodeBlob(blob, nm, generation, token=null,date=null,fromDrop=false) {
+    if (busy) return;
+    if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
+    let candidate=null;
     try {
-      const b = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-      if (b.width * b.height > P.LIMITS.maxPixels) { b.close(); info(t('ph.tooLarge')); return; }
-      if (bmp) bmp.close();
-      bmp = b; name = nm || 'photo'; params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncSliders();
+      const prefix=new Uint8Array(await blob.slice(0,1024*1024).arrayBuffer());
+      const header=P.headerSize(prefix);
+      if(generation!==openGeneration||busy)return;
+      if(header&&!P.validImageSize(header.width,header.height)){info(t('ph.tooLarge'));return;}
+      if(fromDrop){
+        const result=await api.photoDateFromBlob(prefix).catch(()=>null);
+        if(generation!==openGeneration||busy)return;
+        token=result?.captureToken;date=result?.captureDate;
+      }
+      const b = candidate=await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      if (generation !== openGeneration || busy) return;
+      if (!P.validImageSize(b.width,b.height)) { info(t('ph.tooLarge')); return; }
+      // Build preview before replacing the current document.
       const sz = P.previewSize(b.width, b.height);
       const c = document.createElement('canvas'); c.width = sz.width; c.height = sz.height;
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0, sz.width, sz.height);
       const d = g.getImageData(0, 0, sz.width, sz.height);
+      c.width=0;c.height=0;
+      const previous=bmp;bmp=b;candidate=null;previous?.close();resetViewport();
+      captureToken=typeof token==='string'?token:null;captureDate=typeof date==='string'?date:null;$('phKeepDate').checked=false;syncCaptureDate();
+      name=nm||'photo';params=P.defaults();cropKey='none';$('phCrop').value='none';syncCrop();syncSliders();
       orig = { data: d.data, width: d.width, height: d.height };
-      preview = orig;
-      $('phDrop').classList.add('has-media');
+      preview = orig; history=P.createHistory({params,cropKey});comparing=false;updateHistory();
+      $('phDrop').classList.add('has-media');$('phCloseMedia').disabled=false;
       info(fmt(t('ph.opened'), { name, w: b.width, h: b.height, mp: (b.width * b.height / 1e6).toFixed(1) }));
       schedule();
-    } catch (_) { info(t('ph.cantOpen')); }
+    } catch (_) { if (generation === openGeneration && !busy) info(t('ph.cantOpen')); }finally{candidate?.close();}
   }
 
   // Centered crop of the wanted aspect ratio, in the orientation of the ORIGINAL (rotation happens after the crop).
   function cropParams() {
-    const e = CROPS.find((c) => c[0] === cropKey); if (!e || !e[1] || !orig) return null;
-    const turned = params.rotate === 90 || params.rotate === 270, want = turned ? 1 / e[1] : e[1], ar = orig.width / orig.height;
-    if (Math.abs(ar - want) < 0.001) return null;
-    return ar > want ? { x: (1 - want / ar) / 2, y: 0, w: want / ar, h: 1 } : { x: 0, y: (1 - ar / want) / 2, w: 1, h: ar / want };
+    if(!orig)return null;
+    if(cropKey==='free')return P.freeCrop(params.freeW??100,params.freeH??100,params.anchorX??50,params.anchorY??50);
+    const e = CROPS.find((c) => c[0] === cropKey); if (!e || !e[1]) return null;
+    return P.aspectCrop(bmp.width,bmp.height,e[1],params.rotate,params.anchorX??50,params.anchorY??50);
   }
   const full = () => ({ ...params, crop: cropParams() });
 
-  function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+  let previewDirty=false;
+  function photoVisible(){return !document.hidden&&$('tab-photo').classList.contains('active');}
+  function schedule(){previewDirty=true;if(!raf&&photoVisible())raf=requestAnimationFrame(()=>{raf=0;if(photoVisible()&&previewDirty){previewDirty=false;render();}});}
+  function syncPreviewVisibility(){
+    if(!photoVisible()){
+      if(raf)cancelAnimationFrame(raf);raf=0;
+      // Retain original bitmap, edit history and preview source; only drop
+      // the reconstructible rendered surface while the tab is hidden.
+      const canvas=$('phCanvas');
+      if(orig&&(canvas.width||canvas.height)){canvas.width=0;canvas.height=0;previewDirty=true;}
+    }else if(previewDirty)schedule();
+  }
+  window.addEventListener('waveframe:tab-selected',syncPreviewVisibility);
+  document.addEventListener('visibilitychange',syncPreviewVisibility);
   function render() {
     if (!orig) return;
     const out = comparing ? P.geometry(orig, { ...P.defaults(), rotate: params.rotate, flipH: params.flipH, flipV: params.flipV, crop: cropParams() }) : P.process(orig, full());
-    const c = $('phCanvas'); c.width = out.width; c.height = out.height;
-    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    const c = $('phCanvas'); if(c.width!==out.width||c.height!==out.height){c.width=out.width;c.height=out.height;}
+    c.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);updateViewport();
     drawHist(out.data);
-    const o = P.outputSize(bmp.width, bmp.height, full());
+    exportSize();
+    const dimensions=P.outputSize(bmp.width,bmp.height,full());
+    const o=P.resizeOutput(dimensions.width,dimensions.height,Number($('phResize').value));
     $('phSave').title = fmt(t('ph.outputSize'), { w: o.width, h: o.height });
   }
   function drawHist(data) {
-    const c = $('phHist'), g = c.getContext('2d'), bins = P.histogram(data);
-    let max = 1; for (let i = 1; i < 255; i++) max = Math.max(max, bins[i]);
-    g.clearRect(0, 0, c.width, c.height);
-    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c6cf0';
-    for (let i = 0; i < 256; i++) { const h = Math.round(Math.min(1, bins[i] / max) * (c.height - 2)); g.fillRect(i, c.height - h, 1, h); }
+    const c=$('phHist'),g=c.getContext('2d'),stats=P.colorHistogram(data);
+    const mode=$('phHistMode').value,channels=mode==='rgb'?[[stats.red,'#ef5350'],[stats.green,'#4caf50'],[stats.blue,'#42a5f5']]:[[stats.luma,getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#7c6cf0']];
+    let max=1;for(const [bins] of channels)for(let i=1;i<255;i++)max=Math.max(max,bins[i]);
+    g.clearRect(0,0,c.width,c.height);g.globalAlpha=mode==='rgb'?.65:1;
+    for(const [bins,color] of channels){g.fillStyle=color;for(let i=0;i<256;i++){const height=Math.round(Math.min(1,bins[i]/max)*(c.height-2));g.fillRect(i,c.height-height,1,height);}}
+    g.globalAlpha=1;
+    const pct=n=>stats.total?(100*n/stats.total).toFixed(1)+'%':'—';
+    $('phClipping').textContent=t('ph.nearBlack')+': '+pct(stats.shadow)+' · '+t('ph.nearSaturation')+': '+pct(stats.highlight);
   }
 
+  function processExport(img,snapshot,maxEdge,signal) {
+    if(signal?.aborted)return Promise.reject(Error('cancelled'));
+    return new Promise((resolve,reject)=>{
+      const worker=new Worker('photo-worker.js');
+      let timer,finished=false;
+      const finish=(err,value)=>{if(finished)return;finished=true;clearTimeout(timer);signal?.removeEventListener('abort',cancel);worker.terminate();err?reject(err):resolve(value);};
+      const cancel=()=>finish(Error('cancelled'));signal?.addEventListener('abort',cancel,{once:true});
+      timer=setTimeout(()=>finish(Error('photo-timeout')),120000);
+      worker.onerror=()=>finish(Error('photo-worker'));
+      worker.onmessage=({data:r})=>{if(!r?.ok||!P.validImageSize(r.width,r.height)||!(r.buffer instanceof ArrayBuffer)||r.buffer.byteLength!==r.width*r.height*4){finish(Error(r?.error||'photo-worker'));return;}finish(null,{width:r.width,height:r.height,data:new Uint8ClampedArray(r.buffer)});};
+      try{worker.postMessage({width:img.width,height:img.height,buffer:img.data.buffer,params:snapshot,maxEdge},[img.data.buffer]);}catch(e){finish(e);}
+    });
+  }
+  // Shared production export and test path: release all temporary canvas
+  // surfaces on success, encoder failure, or unsupported output format.
+  async function encodeExport(out,f,q,maxEdge=0,matte='#ffffff'){
+    if(!Object.hasOwn(P.OUT_FORMATS,f)||!P.validImageSize(out.width,out.height)||
+       !(out.data instanceof Uint8ClampedArray)||out.data.length!==out.width*out.height*4)throw Error('photo-output');
+    const size=P.resizeOutput(out.width,out.height,maxEdge);
+    const oc=document.createElement('canvas');let target=oc;
+    try{
+      oc.width=out.width;oc.height=out.height;
+      oc.getContext('2d').putImageData(new ImageData(out.data,out.width,out.height),0,0);
+      if(size.width!==out.width||size.height!==out.height){
+        target=document.createElement('canvas');target.width=size.width;target.height=size.height;
+        const ctx=target.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(oc,0,0,size.width,size.height);
+        oc.width=0;oc.height=0;
+      }
+      if(f==='jpeg'){
+        const ctx=target.getContext('2d');ctx.globalCompositeOperation='destination-over';
+        ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(matte)?matte:'#ffffff';
+        ctx.fillRect(0,0,target.width,target.height);ctx.globalCompositeOperation='source-over';
+      }
+      const quality=Number.isFinite(q)?Math.max(0,Math.min(1,q)):.92;
+      const blob=await new Promise(res=>target.toBlob(res,P.OUT_FORMATS[f].mime,quality));
+      if(!blob||blob.type!==P.OUT_FORMATS[f].mime)throw Error('photo-encode');
+      return {blob,size};
+    }finally{oc.width=0;oc.height=0;if(target!==oc){target.width=0;target.height=0;}}
+  }
+  function exportSize(){if(!bmp)return;const s=P.outputSize(bmp.width,bmp.height,full()),o=P.resizeOutput(s.width,s.height,Number($('phResize').value));$('phDimensions').textContent=o.width+' × '+o.height+' px';}
   async function save() {
-    if (!bmp || busy) return;
-    busy = true; $('phSave').disabled = true; info(t('ph.processing'));
+    if (!bmp || busy || opening || picking) return;
+    busy = true; ++openGeneration;
+    const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value),matte=$('phMatte').value;
+    const keepDate=$('phKeepDate').checked&&!$('phKeepDate').disabled?captureToken:null;
+    if(!P.exportBudget(source.width,source.height,snapshot,maxEdge)){busy=false;info(t('ph.tooLarge'));return;}
+    const controller=exportController=new AbortController();exportPhase='processing';
+    const check=()=>{if(controller.signal.aborted)throw Error('cancelled');};
+    $('phSave').disabled=true;$('phCancelExport').hidden=false;$('phCancelExport').disabled=false;info(t('ph.processing'));
     await new Promise((r) => setTimeout(r, 30)); // let the message paint before the heavy work
     try {
-      const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
-      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0);
-      const d = g.getImageData(0, 0, c.width, c.height);
-      const out = P.process({ data: d.data, width: d.width, height: d.height }, full());
-      const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
-      oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-      const f = $('phFormat').value, q = Number($('phQuality').value) / 100;
-      const blob = await new Promise((res) => oc.toBlob(res, P.OUT_FORMATS[f].mime, q));
-      if (!blob) { info(t('ph.saveFailed')); return; }
-      const r = await api.photoSave({ format: f, name, bytes: await blob.arrayBuffer() });
-      info(r && r.ok ? fmt(t('ph.saved'), { w: out.width, h: out.height }) : r && r.canceled ? '' : t('ph.saveFailed'));
-    } catch (_) { info(t('ph.saveFailed')); } finally { busy = false; $('phSave').disabled = false; }
+      check();const plan=P.exportReadPlan(source.width,source.height,snapshot);
+      const c=document.createElement('canvas');let pixels;
+      try{
+        c.width=plan.width;c.height=plan.height;
+        const g=c.getContext('2d',{willReadFrequently:true});
+        g.drawImage(source,plan.x,plan.y,plan.width,plan.height,0,0,plan.width,plan.height);
+        pixels=g.getImageData(0,0,c.width,c.height);
+      }finally{c.width=0;c.height=0;}
+      check();const out=await processExport(pixels,plan.params,maxEdge,controller.signal);
+      check();const {blob,size}=await encodeExport(out,f,q,maxEdge,matte);
+      check();const bytes=await blob.arrayBuffer();check();
+      exportPhase='saving';$('phCancelExport').disabled=true;
+      const r=await api.photoSave({format:f,name:sourceName,bytes,captureToken:keepDate});
+      info(r?.ok?fmt(t('ph.saved'),{w:size.width,h:size.height}):r?.canceled?'':r?.code==='exists'?'Choose a new filename / Επιλέξτε νέο όνομα αρχείου':r?.code==='capture-date-unavailable'?'Capture date unavailable / Μη διαθέσιμη ημερομηνία λήψης':t('ph.saveFailed'));
+    }catch(error){info(controller.signal.aborted?'Export cancelled / Ακυρώθηκε η εξαγωγή':t('ph.saveFailed'));}
+    finally{busy=false;exportController=null;exportPhase='idle';$('phSave').disabled=false;$('phCancelExport').hidden=true;$('phCancelExport').disabled=false;}
   }
 
-  window.WaveframePhotoUi = { show() { build(); }, open: (p) => { build(); return openPath(p); } };
+  window.WaveframePhotoUi = { processExport, encodeExport, show() { build(); }, open: (p) => { build(); return openPath(p); } };
   build();
 })();

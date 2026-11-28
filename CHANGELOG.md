@@ -1,5 +1,95 @@
 # Changelog
 
+## 3.0.0-rc.1 — Release candidate (test only)
+- Freeze the 7ac8b212 development baseline (9/9 successful GitHub workflows) and expose the actual prerelease version throughout the application via package metadata. Existing product identity and plugin 1.0.0.0 retained.
+- Includes local audio/video desktop controls, demand-driven core, bounded photo EXIF export, safer media text and playlist reads, library and metadata controls, subtitle and codec tests, provider and conversion work documented in the master roadmap.
+- RC binaries are unsigned test artifacts, not a stable release. All new RC tests and physical/extended acceptance remain explicit gates.
+
+## Unreleased — Ultra Mega Pass 20B.14
+- EQ bank, bass shelf, presence and stereo-width matrix use independent on-demand live branches. Neutral values and bypass release their processing nodes after a short crossfade; selected settings are preserved. Keep neutral stereo speaker conversion, output limiter, offline render and video EQ unchanged. Six real renderer assertions cover selective activation, bypass, restore and release. New Windows verification pending; the EQ bank still uses all ten bands when any is nonzero.
+
+## Unreleased — Ultra Mega Pass 20B.13
+- Allocate real-time compressor, convolution and waveshaper processors only for selected nonzero effects in the active Web Audio route. Release disconnected processors after a short wet-path fade; cancel stale release on re-enable, preserve preferences during master/external/worklet bypass. Offline export and output safety limiter unchanged. Real renderer assertions for rapid toggles, bypass, restore, reset and zero mix. Prior demand-driven startup CI passed 282/282; startup idle CPU 0.13%. Latest results pending.
+
+## Unreleased — Ultra Mega Pass 20B.12
+- Music ownership parks video playback, releasing ticket/session/decoder and video DSP; retains selected item, subtitle edits, in-memory position and FX preference for explicit resume. Suspend unused music AudioContext after 1.5 s, resume when used. Video resume checkpoint timer runs only during playback; hidden photo preview and converter preview queue pause when leaving their tabs. Explicit conversion/export jobs continue. New renderer tests for video park/resume. CI pending.
+
+## Unreleased — Ultra Mega Pass 20B.11 demand-driven activation
+- Defer live AudioContext and DSP graph until audio playback/mic/test tone/explicit worklet use; preferences remain state-only while inactive, offline conversion stays independent. Defer dependency scan to settings and archive/codec/probe helpers to their respective operations. Add cold-renderer and first-activation assertions. Fix stale static crash-log assertion to track the bounded writer without weakening runtime limits. Hourly workflow changed to manual to avoid duplicate jobs on every PR update; three existing runs remain. New CI pending.
+
+## Unreleased — Ultra Mega Pass 20B.10
+- Converter shutdown closes admission to new work, cancels active FFmpeg/auxiliary jobs and allows up to four seconds for cleanup before exit. Cancellation is rechecked after preparation and before publication; audio/video probes and thumbnails have separate bounded admission. Per-job progress notifications limited to roughly 10/s plus terminal completion, with no pending-message buffer. Previous 20B.8 CI passed 278 tests and renderer release checks; hourly runs still executing. New shutdown behavior pending Windows CI.
+
+## Unreleased — Ultra Mega Pass 20B.9
+- Conversion WAV/predecode and two-pass statistics use isolated owned scratch directories with bounded cleanup retries; no broad deletion of user or legacy temp files. Bound crash log writes, suppress duplicate reports, stop appending on rotation failure. Debounce accent preference writes and skip unchanged appearance settings. Add scratch/log/preference regressions. Hour-long 20B.8 Windows soak is running; newest changes await CI.
+
+## Unreleased — Ultra Mega Pass 20B.8
+- Explicit close media controls: photo close confirms discarded edits and releases bitmap, canvas and history; video close disposes session, media element, ticket and DSP context without deleting playlist. Serialize video DSP context replacement. Add feature guide entries and renderer regressions. Dedicated hour-long Windows resource soak workflow (1,200 cycles), separate from normal CI. Previous 278/278 and 20/20 playback verified; new workflow not yet complete.
+
+## Unreleased — Ultra Mega Pass 20B.7 anti-pile-up
+- One metadata scan with revision coalescing, a bounded 64-key serial queue, deduplicated active requests and cancellation of removed tracks. Remember missing covers, bound returned tag text, prevent concurrent main metadata reads. Manual Windows CI soak choice 20/120/1200 cycles; bounded test stdout and failure diagnostics. Prior 20B.5 Windows CI 275/275 and 20/20 real playback advancement, idle CPU 0.29%; current changes and extended soak not yet verified.
+
+## Unreleased — Ultra Mega Pass 20B.6 anti-pile-up
+- Serialize video preview probes and thumbnails, coalesce refreshes and discard removed-item results. Bound transient music artwork and converter thumbnails to 16 MiB estimated string storage each; evicted artwork is re-read when playing a track. Allow completed converter rows to be removed independently. Prevent concurrent photo decode/read/export. Preserve user files and playlists; no forced memory purge. New CI pending.
+
+## Unreleased — Ultra Mega Pass 20B.5 / 20C.4
+- 20B.4 measured idle CPU 0.60% vs 8.56% on separate Windows runners; 275 unit/real-conversion tests passed, eight specialist workflows passed. Real soak playback time advanced 14/20 despite 20/20 source switches. Await direct play promise (including rejection and supersession), explicitly reload replacement media, and require confirmed current source in soak. Log per-cycle diagnostics for remaining stalls. Defer convolution impulse and exciter curve until first enable. New CI pending; do not treat playback failure as resolved.
+
+## Unreleased — Ultra Mega Pass 20B.4 / 20C.3
+- Event-driven audio visualizer and equalizer background: render a static idle frame, resume with audio; no recurring hue timer for idle equalizer, hidden or disabled backgrounds. Decorative backgrounds keep their animation. Cache theme colors, avoid unchanged canvas reallocations and duplicate now-playing IPC. Explicit audio resume on microphone/test tone. Add idle frame scheduling regression to resource soak. Measured improvement pending.
+
+## Unreleased — Ultra Mega Pass 20C.2
+- Add isolated opt-in 60-second audio/tab soak (20 real local generated media switches, five removals, final resource cleanup) and post-soak metrics; six repeat conversions verify decoded outputs and staging cleanup. Cancel pending crossfade before removing loaded items, preserve active selection. General and installer CI are keyed by commit to avoid cancellation across development passes. Soak and CI results pending.
+
+## Unreleased — Ultra Mega Pass 20B.3 / 20C.1
+- Test-only Windows process tree profiling alongside Electron samples, with cumulative I/O transfer counters and optional GPU engine maximum; unavailable measurements explicitly reported. Deduplicate concurrent encoder discovery, cap encoder cache and discovery output, terminate auxiliary FFmpeg subprocesses on quit. Real two-process FFmpeg cancellation regression test. These are not physical SSD write metrics or full GPU utilization; long soak and results pending.
+
+## Unreleased — Ultra Mega Pass 20B.2
+- Cancel tracked converter jobs and shared FFmpeg runs on app shutdown; request subtitle worker/batch cancellation. Release removed playlist media from paused slots; cancel renderer animation scheduling while hidden. Add opt-in five-sample startup/post-selftest Electron resource reporting and CI artifact. External child processes, disk writes, GPU usage and long-duration soak testing still need dedicated measurements.
+
+## Unreleased — Ultra Mega Pass 20A.1 / 20B.1
+- Serialized and cached metadata reads per playlist item, coalesced playlist renders and persisted changes after quiet time, bounded retained album art, deduplicated converter settings writes, skipped invisible meter and inactive seek updates. Live loudness analysis only when enabled, one active/latest pending, local files up to 32 MiB and 10 minutes; skips streams to avoid full download. Windows resource measurements and regression tests pending.
+
+## Unreleased — Ultra Mega Pass 19E.2 / 19F.1
+- Eight more finder/help/welcome strings in 20 languages; five music metadata feature entries translated into French, German, Spanish and Italian (20 complete localized entries). Mark fallback language in markup. Refined finder layout with clear search, themed cards and responsive toolbar; Help search styling and accurate installer history. OpsisUI repository unavailable, so existing theme tokens retained. Full translations and visual acceptance pending.
+
+## Unreleased — Ultra Mega Pass 19D.3 / 19E.1
+- Cancel pending video source opening when music takes over; stop native handoff instead of leaving external audio active; release microphone source connection; stop both audio slots and alternate sources on sleep/stop. Reuse existing translated control labels as searchable aliases in Help and feature finder. Correct Windows native realpath comparisons in conversion tests, and build the required DSP adapter in public subtitle CI. Full native process exit timing and complete guide translation remain pending.
+
+## Unreleased — Ultra Mega Pass 19D.2
+- Stop alternate audio sources when selecting a music track, pause Chromium video when selecting audio sources, prevent overlapping custom dialogs from losing the first resolver, update in-app history and welcome guide. Native arbitration and modal feedback for suppressed messages remain pending.
+
+## Unreleased — Ultra Mega Pass 19C–19D.1
+- Expanded guide to 90 routes and recorded source control inventory. Scoped shortcuts to owning playback tab; preserve native keyboard activation in controls and dialogs. Cancel stale microphone permission results and stop alternate sound sources when video begins, including successful native handoff. Full native/HTML source arbitration still pending.
+
+## Unreleased — Ultra Mega Pass 19B.1
+- Localized seven core finder labels in all 20 existing languages; grouped Help results, keyboard-accessible file chooser and wrapped metadata toolbar. Added two unit tests and three real-renderer finder checks. Full feature descriptions still Greek/English; CI pending.
+
+## Unreleased — Ultra Mega Pass 19B
+- Expanded feature catalog to 68 groups, including lazy converter controls, with shared Help search, existing translated tab labels, contextual opening of subtitle panels, stale-navigation guard and scrollable welcome pages. Full descriptions still Greek/English; visual tests pending.
+
+## Unreleased — Ultra Mega Pass 19A.1
+- Visible contextual feature finder with category selector and keyboard focus; no right-click interception. Converter accepts ArrayBuffer WAV payloads again. CI fixtures use canonical temporary directories on Windows to avoid short-path alias mismatches without weakening production file-path validation. Retest pending.
+
+## Unreleased — Ultra Mega Pass 19A
+- Shared searchable feature guide with 26 entries, direct navigation to existing tabs/controls, Help catalog and development history, and eight-page welcome guide updates. No media action runs when navigating. Greek/English text with English fallback; full 20-language and visual accessibility checks remain pending.
+
+## Unreleased — Ultra Mega Pass 18H.1
+- Optional acoustic identification via installed FFmpeg Chromaprint and AcoustID POST, requiring explicit consent, configured application key and review. No audio upload. Provider response fixture added; real provider and compatible FFmpeg validation pending.
+
+## Unreleased — Ultra Mega Pass 18I (batch controls)
+- Batch preview, bounded progress and cooperative cancellation between files; prevent overlapping metadata dialogs; optional remembered filename suggestions for display only, no silent writes on import; cap displayed embedded cover images.
+
+## Unreleased — Ultra Mega Pass 18H (format foundation)
+- Native lossless FLAC Vorbis comment completion, preserving STREAMINFO, pictures and encoded audio; MP3 and FLAC composer, lyricist and album artist fields; added fixture tests. No fingerprint recognition yet.
+
+## Unreleased — Ultra Mega Pass 18G
+- Explicit MusicBrainz search from existing tags or Artist - Title names; one-second request spacing, bounded response, native candidate review and separate write confirmation. Cover Art Archive link for chosen release, no automatic artwork embedding. No audio or path uploaded.
+
+## Unreleased — Ultra Mega Pass 18F
+- Installer lifecycle CI uses existing Inno Setup 7 script instead of synthetic NSIS; same AppId and legacy migration, no release publication. Synthetic upgrade 2.4.2 to 3.0.0 remains a test, not a released upgrade.
+- MP3 missing-tag completion: on-demand fields or batch filename inference, original backups, lossless frame insertion, refuses unsupported ID3 layouts; no internet lookup or writes during playback by default. Windows CI and real-file validation pending.
+
 ## 2.4.2 — Opsis family: plugin bridge, documentation
 - **`opsis-plugin/`** (new, 1.0.0): a small .NET plugin (net11.0-windows, plugin contract `OpsisNewsCrawler.Plugin.Abstractions` 1.0.0.0, SHA-256 `514f2a3e…`, requires Opsis 2.8) that shows the Media Suite as a page, a widget and a tray entry inside Opsis and launches the installed app; shown only when the Suite is installed. Opsis keeps enabling its own "Audio management" tab by itself. There is no "now playing" link: the Suite exposes none. The launcher only starts the real `Opsis Media Suite.exe` under Program Files or LocalAppDataPrograms (a registry path elsewhere is ignored). 12 unit tests; loading checked with Opsis against a temporary `OPSIS_APPDATA` (a real Opsis release was not tested).
 - **Family status** (documentation only): Opsis 2.8.0, Opsis News Crawler 0.28.x, Chronikologio 1.1.0, Opsis.UI 0.6.0. The News Crawler exports M3U playlists; the Suite's Video tab imports M3U, and plays only the files and web addresses its player supports (it does not play every source).

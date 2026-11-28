@@ -24,6 +24,11 @@
       <p class="help-actions"><button class="help-btn" id="helpWelcome">▶ Οδηγός καλωσορίσματος</button> <button class="help-btn" id="helpFamily">Η οικογένεια Opsis</button></p>
       <p>Ένας επαγγελματικός ενισχυτής ήχου με πραγματικό Web Audio engine. Ο οδηγός αυτός καλύπτει όλες τις καρτέλες της εφαρμογής· τον ίδιο σύντομο, εικονογραφημένο οδηγό μπορείς να τον ξαναδείς όποτε θες από Ρυθμίσεις → Σχετικά → «Προβολή οδηγού».</p>
 
+      <h2 id="featureHelpTitle">Κατάλογος δυνατοτήτων / Feature guide</h2>
+      <p id="featureHelpIntro"></p>
+      <label id="featureHelpSearchLabel" for="featureHelpSearch">Αναζήτηση / Search</label>
+      <input id="featureHelpSearch" type="search" />
+      <p id="featureHelpStatus" role="status"></p><div id="featureHelpList"></div>
       <h2>Αναπαραγωγή</h2>
       <p>Η καρτέλα Αναπαραγωγή είναι το κύριο σημείο εκκίνησης. Φόρτωσε αρχείο (📁), URL, μικρόφωνο ή δοκιμαστικό τόνο, και χρησιμοποίησε τα κουμπιά αναπαραγωγής/προηγούμενο/επόμενο — τα ίδια κουμπιά είναι διαθέσιμα και από τα πλήκτρα πολυμέσων του πληκτρολογίου σου και από την προεπισκόπηση στη γραμμή εργασιών των Windows, όπου φαίνεται και το κομμάτι που παίζει. Πάτησε «Λίστα αναπαραγωγής» πάνω δεξιά στο visualizer για να ανοίξεις/κλείσεις τη λίστα κομματιών· η εικόνα άλμπουμ και τα μεταδεδομένα (καλλιτέχνης/άλμπουμ) εμφανίζονται αυτόματα όταν υπάρχουν. Η ομαλή μετάβαση (crossfade) ρυθμίζει το πέρασμα μεταξύ κομματιών.</p>
 
@@ -52,6 +57,7 @@
     </section>
 
     <section id="help-changelog" class="help-pane">
+      <div class="changelog-entry"><div class="changelog-version">3.0 — Unreleased development</div><ul id="featureHistory"></ul></div>
       <div class="changelog-entry">
         <div class="changelog-version">v2.4.2</div>
         <ul id="changelogV242"></ul>
@@ -249,6 +255,8 @@
 
   <script src="i18n.js"></script>
   <script src="licenses.js"></script>
+  <script src="path-identity.js"></script>
+<script src="feature-guide.js"></script>
   <script src="help.js"></script>
 </body>
 </html>

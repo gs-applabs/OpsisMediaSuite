@@ -17,7 +17,7 @@ function findFfmpeg() {
 }
 const FFMPEG = findFfmpeg();
 const skip = FFMPEG ? false : 'ffmpeg not available';
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-'));
+const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-')));
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 const ff = (args) => execFileSync(FFMPEG, ['-hide_banner', '-v', 'error', '-y', ...args], { stdio: 'ignore' });
@@ -50,7 +50,7 @@ test('encoders are detected; this ffmpeg can encode H.264 in some way', { skip }
 
 test('web preset (H.264, 720p max, AAC) -> decodes, h264, never upscaled, next to the source', { skip }, async () => {
   const r = await encode({ preset: 'webSmall' }, new Set([sw264()]));
-  assert.equal(path.dirname(r.output), dir);
+  assert.equal(fs.realpathSync.native(path.dirname(r.output)), fs.realpathSync.native(dir));
   assert.match(path.basename(r.output), /^clip-video\.mp4$/);
   const { dec, info } = await check(r.output);
   assert.equal(info.video.codec, 'h264');
@@ -158,7 +158,7 @@ test('output folder: created on demand and collisions are numbered, the source i
   const e = new Set([sw264()]);
   const one = await (await EV.encodeVideo({ ffmpegPath: FFMPEG, input: SRC, options: v.options, available: e, outDir: target })).promise;
   const two = await (await EV.encodeVideo({ ffmpegPath: FFMPEG, input: SRC, options: v.options, available: e, outDir: target })).promise;
-  assert.equal(path.dirname(one.output), target);
+  assert.equal(fs.realpathSync.native(path.dirname(one.output)), fs.realpathSync.native(target));
   assert.equal(path.basename(one.output), 'clip-out.mp4');
   assert.equal(path.basename(two.output), 'clip-out (1).mp4');
   assert.ok(before.equals(fs.readFileSync(SRC)), 'the original is unchanged');
@@ -177,4 +177,30 @@ test('thumbnail: a PNG data URL of one frame', { skip }, async () => {
   assert.match(t, /^data:image\/png;base64,/);
   assert.ok(t.length > 500);
   assert.equal(await EV.thumbnail(FFMPEG, path.join(dir, 'nope.mp4'), 1), null);
+});
+
+
+test('real filtered video export decodes with gamma, sharpen and deinterlace',{skip},async()=>{const encoder=sw264();if(!encoder)return;const r=await encode({preset:'webSmall',gamma:1.2,sharpen:.3,deinterlace:true,suffix:'-filters'},new Set([encoder]));assert.equal((await EA.verifyDecodes(FFMPEG,r.output)).ok,true);});
+
+
+test('real remux preserves both audio streams and original codecs',{skip},async()=>{const before=await EV.probeVideo(FFMPEG,SRC);const r=await encode({operation:'remux',suffix:'-remux'},new Set());const after=(await check(r.output)).info;assert.equal(after.video.codec,before.video.codec);assert.deepEqual(after.audio.map(x=>x.codec),before.audio.map(x=>x.codec));assert.equal(after.audio.length,2);});
+test('real poster, contact sheet and bounded PNG sequence',{skip},async()=>{for(const operation of ['poster','contact','sequence']){const r=await encode({operation,frameInterval:1,frameCount:2,suffix:'-'+operation},new Set());const b=fs.readFileSync(r.output);assert.deepEqual([...b.subarray(0,8)],[137,80,78,71,13,10,26,10]);const w=b.readUInt32BE(16),h=b.readUInt32BE(20);assert.ok(w>0&&h>0);if(operation==='contact'){assert.equal(w,2560);assert.equal(h,1080);}if(operation==='sequence'){assert.equal(r.outputCount,2);assert.equal(fs.readdirSync(path.dirname(r.output)).length,2);assert.ok(w<=640&&h<=360);}}});
+
+test('audio extraction can add a local cover before publication without source or backup changes',{skip},async()=>{
+ const data=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1sAAAAASUVORK5CYII=','base64');
+ const before=fs.readFileSync(SRC);
+ const dir=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'opsis-export-cover-'));
+ try{
+  const mm=await import('music-metadata'),outputs=[];
+  for(const format of ['mp3','flac','m4a','opus']){
+   const validated=V.validateOptions({audioOnly:true,audioOnlyFormat:format,suffix:'-cover'});
+   const job=await EV.encodeVideo({ffmpegPath:FFMPEG,input:SRC,options:validated.options,available:new Set(),outDir:dir,outputCover:{data}});
+   const result=await job.promise;assert.equal(result.coverStatus,'added',format);
+   const meta=await mm.parseFile(result.output);
+   assert.ok(meta.common.picture.some(p=>Buffer.from(p.data).equals(data)),format);
+   outputs.push(path.basename(result.output));
+  }
+  assert.deepEqual(fs.readFileSync(SRC),before);
+  assert.deepEqual(fs.readdirSync(dir).sort(),outputs.sort());
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

@@ -1,0 +1,79 @@
+'use strict';
+// Local energy/activity alignment. Not speech recognition: sound effects/music
+// can look like dialogue. Reject ambiguous fits and present suggestions only.
+const {spawn}=require('node:child_process');
+const STEP=.1, RATE=8000, FRAME=800, MAX_SECONDS=1800;
+// Streaming 100 ms frames: retain one partial frame and compact energy only.
+function createActivityAccumulator(maxBytes=RATE*2*MAX_SECONDS+1600){
+ const energy=new Float64Array(Math.floor(maxBytes/(FRAME*2))),frame=Buffer.alloc(FRAME*2);
+ let total=0,used=0,n=0;
+ function add(bytes){
+  if(!Buffer.isBuffer(bytes)||total+bytes.length>maxBytes)throw Error('audio-limit');total+=bytes.length;
+  for(let at=0;at<bytes.length;){
+   const take=Math.min(frame.length-used,bytes.length-at);bytes.copy(frame,used,at,at+take);used+=take;at+=take;
+   if(used===frame.length){
+    let sum=0,diff=0,prev=0;for(let j=0;j<FRAME;j++){const v=frame.readInt16LE(j*2)/32768;sum+=v*v;diff+=(v-prev)*(v-prev);prev=v;}
+    energy[n++]=Math.log10(1e-8+Math.sqrt(sum/FRAME)*.65+Math.sqrt(diff/FRAME)*.35);used=0;
+   }
+  }
+ }
+ function finish(){
+  if(n<100)return null;
+  const values=energy.subarray(0,n),sorted=Float64Array.from(values).sort(),floor=sorted[Math.floor(n*.2)],high=sorted[Math.floor(n*.95)];
+  if(high-floor<.35)return null;
+  const threshold=floor+Math.max(.18,(high-floor)*.35),activity=Uint8Array.from(values,x=>x>threshold?1:0);
+  const duty=activity.reduce((a,b)=>a+b,0)/n;return duty>.05&&duty<.85?activity:null;
+ }
+ return {add,finish,diagnostics:()=>({bytes:total,frames:n,retainedBytes:energy.byteLength+frame.length})};
+}
+function activityFromPcm(bytes){const accumulator=createActivityAccumulator();accumulator.add(bytes);return accumulator.finish();}
+function estimate(activity,cues,{maxShift=30,step=STEP,cancelled=()=>false}={}){
+ if(!activity||activity.length<100||activity.length>18000||!Array.isArray(cues)||cues.length<5||step!==STEP)return {ok:false,code:'insufficient-activity'};
+ const n=activity.length, prefix=new Int32Array(n+1);
+ for(let i=0;i<n;i++)prefix[i+1]=prefix[i]+(activity[i]?1:0);
+ const duty=prefix[n]/n;if(duty<.05||duty>.85)return {ok:false,code:'insufficient-activity'};
+ const valid=cues.slice(0,20000).filter(c=>c&&Number.isFinite(c.start)&&Number.isFinite(c.end)&&c.start>=0&&c.end>c.start&&c.end<=MAX_SECONDS+60);
+ if(valid.length<5)return {ok:false,code:'insufficient-cues'};
+ const scales=[1,24/25,25/24,23.976/25,25/23.976,23.976/24,24/23.976];
+ const shift=Math.min(300,Math.max(1,Math.round(Number(maxShift||30)/step))), scores=[];
+ for(const scale of scales){
+  // Merge overlapping subtitle intervals once for each candidate rate.
+  const ranges=valid.map(c=>[Math.round(c.start*scale/step),Math.round(c.end*scale/step)]).sort((a,b)=>a[0]-b[0]),merged=[];
+  for(const [a,b] of ranges){if(b<=a)continue;const last=merged.at(-1);if(last&&a<=last[1])last[1]=Math.max(last[1],b);else merged.push([a,b]);}
+  for(let offset=-shift;offset<=shift;offset++){
+   if(cancelled())return {ok:false,code:'cancelled'};
+   let frames=0,overlap=0,count=0;
+   for(const [a,b] of merged){const x=Math.max(0,a+offset),y=Math.min(n,b+offset);if(y<=x)continue;frames+=y-x;overlap+=prefix[y]-prefix[x];count++;}
+   if(count<5||frames<30||frames>n*.85)continue;
+   const predicted=frames/n;
+   const score=(overlap/n-predicted*duty)/Math.sqrt(predicted*(1-predicted)*duty*(1-duty));
+   if(Number.isFinite(score))scores.push({scale,delay:offset*step,score,coverage:frames*step});
+  }
+ }
+ scores.sort((a,b)=>b.score-a.score);const best=scores[0];
+ if(!best||best.score<.45)return {ok:false,code:'weak-match'};
+ const rival=scores.find(c=>Math.abs(c.delay-best.delay)>.7||Math.abs(c.scale-best.scale)*n*step>1.5);
+ const margin=rival?best.score-rival.score:best.score;
+ // A low score or boundary hit is not credible evidence of dialogue alignment.
+ if(margin<.08||Math.abs(best.delay)>=shift*step-.5)return {ok:false,code:'ambiguous-match'};
+ return {ok:true,scale:best.scale,delay:Math.round(best.delay*1000)/1000,score:Math.round(best.score*1000)/1000,margin:Math.round(margin*1000)/1000,analyzedSeconds:n*step,method:'audio-activity'};
+}
+function extractActivity(ffmpeg,file,seconds=MAX_SECONDS,{audioIndex=0,signal}={}){
+ if(!Number.isInteger(audioIndex)||audioIndex<0||audioIndex>63)return Promise.reject(Error('bad-audio-index'));
+ if(signal?.aborted)return Promise.reject(Error('cancelled'));
+ seconds=Math.max(10,Math.min(MAX_SECONDS,Number(seconds)||MAX_SECONDS));
+ return new Promise((resolve,reject)=>{
+  const args=['-nostdin','-hide_banner','-v','error','-protocol_whitelist','file,pipe','-i',file,'-map','0:a:'+audioIndex,'-vn','-sn','-dn','-t',String(seconds),'-ac','1','-ar',String(RATE),'-f','s16le','pipe:1'];
+  const p=spawn(ffmpeg,args,{shell:false,windowsHide:true,stdio:['ignore','pipe','ignore']});
+  const accumulator=createActivityAccumulator(Math.ceil(seconds*RATE*2+1600));let settled=false,stopError=null,stopTimer=null;
+  const done=(err,val)=>{if(settled)return;settled=true;clearTimeout(timer);clearTimeout(stopTimer);signal?.removeEventListener('abort',cancel);err?reject(err):resolve(val);};
+  const stop=code=>{if(settled||stopError)return;stopError=code;try{p.kill();}catch{}stopTimer=setTimeout(()=>done(Error('audio-stop-unconfirmed')),4000);};
+  const cancel=()=>stop('cancelled');
+  const timer=setTimeout(()=>stop('audio-timeout'),120000);
+  signal?.addEventListener('abort',cancel,{once:true});
+  p.stdout.on('data',b=>{if(settled||stopError)return;try{accumulator.add(b);}catch{stop('audio-limit');}});
+  p.once('error',()=>done(Error('audio-unavailable')));
+  p.once('close',code=>{if(settled)return;if(stopError)return done(Error(stopError));if(code!==0)return done(Error('audio-decode'));try{done(null,accumulator.finish());}catch(e){done(e);}});
+ });
+}
+module.exports={activityFromPcm,createActivityAccumulator,estimate,extractActivity};

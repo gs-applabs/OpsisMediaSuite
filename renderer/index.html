@@ -2,7 +2,7 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data:; media-src 'self' blob: http: https: wfmedia:; connect-src 'self' blob: http: https:;" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data:; media-src 'self' blob: http: https: wfmedia:; connect-src 'self' blob: http: https:;" />
 <title>Opsis Media Suite</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
@@ -56,6 +56,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span data-i18n="tab.settings">Settings</span>
       </button>
+      <button class="small-btn" id="featureGuideQuick" type="button" aria-label="Find features / Εύρεση λειτουργιών" title="Find features / Εύρεση λειτουργιών">⌕ <span id="featureGuideQuickLabel">Εύρεση</span></button>
     </nav>
 
     <main class="tab-content">
@@ -98,7 +99,7 @@
         </div>
 
         <div class="sources">
-          <label class="source-btn">
+          <label class="source-btn" id="fileInputLabel" tabindex="0" role="button" aria-label="Open audio files" data-i18n-aria="player.upload">
             <input type="file" id="fileInput" accept="audio/*" multiple hidden />
             📁 <span data-i18n="player.upload">Ανέβασμα αρχείων</span>
           </label>
@@ -115,6 +116,10 @@
               <input type="range" id="crossfade" min="0" max="12" step="0.5" value="0" />
             </div>
           </div>
+          <div class="playlist-drawer-header metadata-tools"><button class="small-btn" id="metadataAuto">Auto tags / Αυτόματα tags (MP3 / FLAC / WAV / M4A / OGG / OPUS*)</button><button class="small-btn" id="metadataManual">Edit tags / Συμπλήρωση tags (MP3 / FLAC / WAV / M4A / OGG / OPUS*)</button><button class="small-btn" id="metadataOnline">MusicBrainz</button><button class="small-btn" id="metadataFingerprint">AcoustID / Αποτύπωμα</button><button class="small-btn" id="metadataCover">Add cover / Εξώφυλλο</button><button class="small-btn" id="metadataCancel" hidden>Cancel / Ακύρωση</button></div>
+          <div class="playlist-drawer-header"><label><input id="metadataInferDisplay" type="checkbox"> Filename suggestions / Προτάσεις από όνομα (display only / μόνο προβολή)</label><span id="metadataProgress" role="status" aria-live="polite"></span></div>
+          <div class="playlist-drawer-header metadata-tools"><label for="playlistSearch">Search / Αναζήτηση</label><input id="playlistSearch" type="search" maxlength="160" placeholder="Artist, title, album / Καλλιτέχνης, τίτλος, άλμπουμ"><button class="small-btn" id="playlistSearchClear">Clear / Καθαρισμός</button><button class="small-btn" id="playlistFolder">Folder / Φάκελος</button><button class="small-btn" id="playlistFolderCancel" hidden>Cancel scan / Ακύρωση σάρωσης</button><label><input id="playlistDuplicates" type="checkbox"> Duplicate paths / Διπλές διαδρομές</label><span id="playlistSearchCount" role="status" aria-live="polite"></span></div>
+          <div class="playlist-drawer-header metadata-tools"><label for="playlistGroupField">Συλλογές / Collections</label><select id="playlistGroupField"><option value="">Όλα / All</option><option value="artist">Καλλιτέχνης / Artist</option><option value="album">Άλμπουμ / Album</option><option value="genre">Είδος / Genre</option></select><select id="playlistGroupValue" disabled aria-label="Συλλογή / Collection"><option value="">Όλα / All</option></select></div>
           <ul id="playlist" class="playlist"></ul>
           <p class="empty-hint" id="playlistEmptyHint" data-i18n="player.playlistEmpty">Η playlist είναι άδεια. Πρόσθεσε αρχεία ή σύρε τα εδώ.</p>
           <div class="playlist-resize-handle" id="playlistResizeHandle" title="Σύρε για αλλαγή μεγέθους">⋯</div>
@@ -134,6 +139,15 @@
               <button class="switch active" id="swMasterEnable"></button>
             </div>
           </div>
+        </div>
+        <div class="panel" id="fxSoundNotice" hidden>
+          <p class="hint" id="fxSoundStatus" role="status"></p>
+          <label>DSP <select id="fxSoundMode" aria-label="Live DSP routing policy"><option value="native" data-i18n="enhance.dspNative">Εφέ OPSIS</option><option value="external" data-i18n="enhance.dspExternal">Εξωτερική επεξεργασία — παράκαμψη</option><option value="auto" data-i18n="enhance.dspAuto">Αυτόματη παράκαμψη για FxSound</option></select></label>
+          <button type="button" class="small-btn" id="fxSoundBypass" data-i18n="enhance.dspBypass">Παράκαμψη ζωντανών εφέ</button>
+          <button type="button" class="small-btn" id="experimentalWorklet" hidden>Experimental DSP / Πειραματικός DSP</button>
+          <p id="experimentalWorkletStatus" class="hint" hidden role="status"></p>
+          <button type="button" class="small-btn" id="audioEndpointInventory" data-i18n="enhance.audioDevices">Συσκευές ήχου Windows</button>
+          <pre id="audioEndpointReport" class="hint" hidden role="status"></pre>
         </div>
         <div class="enhance-grid">
           <div class="enhance-col">
@@ -191,17 +205,19 @@
             </div>
             <div class="panel">
               <h2 data-i18n="enhance.advanced">Προηγμένα Εφέ</h2>
+              <div class="switch-row"><label for="fxPresence" data-i18n="enhance.voicePresence">Καθαρότητα φωνής</label><input id="fxPresence" type="range" min="0" max="100" step="1" value="0"><output id="fxPresenceValue" for="fxPresence">0.0 dB</output></div>
+              <div class="switch-row"><label for="fxBalance">Stereo balance / Ισορροπία</label><input id="fxBalance" type="range" min="-100" max="100" step="1" value="0"><output id="fxBalanceValue" for="fxBalance">0</output></div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.compressor">Συμπιεστής</div><div class="switch-sub" data-i18n="enhance.compressorSub">Δυναμικός έλεγχος έντασης — Νυχτερινή λειτουργία &amp; Αυτόματο κέρδος</div></div>
-                <button class="switch" id="swCompressor"></button>
+                <button class="switch" id="swCompressor"></button><label for="fxCompressorMode">Mode / Λειτουργία</label><select id="fxCompressorMode"><option value="gentle">Gentle / Ήπια</option><option value="standard" selected>Standard</option><option value="night">Night / Νύχτα</option></select>
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.reverb">Αντήχηση / Ατμόσφαιρα</div><div class="switch-sub" data-i18n="enhance.reverbSub">Χωρική αντήχηση — Κινηματογραφική &amp; Αίθουσας</div></div>
-                <button class="switch" id="swReverb"></button>
+                <button class="switch" id="swReverb"></button><label for="fx_reverbAmount">Mix</label><input id="fx_reverbAmount" type="range" min="0" max="100" value="100"><output id="fx_reverbValue">100%</output>
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.exciter">Διεγέρτης Αρμονικών / Πιστότητα</div><div class="switch-sub" data-i18n="enhance.exciterSub">Αντιγραφή αρμονικών — Ζωντάνια και καθαρότητα</div></div>
-                <button class="switch" id="swExciter"></button>
+                <button class="switch" id="swExciter"></button><label for="fx_exciterAmount">Mix</label><input id="fx_exciterAmount" type="range" min="0" max="100" value="100"><output id="fx_exciterValue">100%</output>
               </div>
               <div class="switch-row">
                 <div><div class="switch-title" data-i18n="enhance.normalize">Εξομάλυνση Έντασης</div><div class="switch-sub" data-i18n="enhance.normalizeSub">Ίδια αντιληπτή ένταση σε όλα τα κομμάτια, αυτόματα</div></div>
@@ -234,7 +250,8 @@
                 <div class="vp-open">
                   <button class="small-btn" id="vpOpen" data-i18n="vp.openFiles">Άνοιγμα αρχείων</button>
                   <button class="small-btn" id="vpOpenFolder" data-i18n="vp.openFolder">Φάκελος</button>
-                  <button class="small-btn" id="vpOpenUrl" data-i18n="vp.openUrl">Διεύθυνση URL</button>
+                  <button class="small-btn" id="vpOpenUrl" data-i18n="vp.openUrl">Διεύθυνση URL</button><label><input type="checkbox" id="vpReconnect"> Reconnect (3 attempts) / Επανασύνδεση</label><button class="small-btn" id="vpPasteUrl">Paste URL / Επικόλληση URL</button>
+                  <button class="small-btn" id="vpCloseMedia">Close / Κλείσιμο</button>
                 </div>
               </div>
               <div class="vp-frame" id="vpFrame">
@@ -243,7 +260,7 @@
               </div>
               <div class="time-row vp-timerow">
                 <input type="range" id="vpSeek" min="0" max="1000" value="0" step="1" />
-                <span id="vpTime" class="vp-time">0:00 / 0:00</span>
+                <button id="vpTime" type="button" class="vp-time small-btn" aria-label="Toggle elapsed or remaining time / Εναλλαγή χρόνου">0:00 / 0:00</button>
               </div>
               <div class="transport vp-transport">
                 <button id="vpPrev">⏮</button>
@@ -278,7 +295,7 @@
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpFramePrev">◂|</button>
                   <button class="small-btn" id="vpFrameNext">|▸</button>
-                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button>
+                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button><button class="small-btn" id="vpABExport">A–B to converter / A–B στη μετατροπή</button><button class="small-btn" id="vpSleepVideo">Video sleep / Χρονοδιακόπτης</button><button class="small-btn" id="vpChapters">MKV chapters / Κεφάλαια</button><select id="vpChapterSelect" aria-label="Chapter / Κεφάλαιο" hidden></select><button class="small-btn" id="vpGoTime">Go to time / Μετάβαση σε χρόνο</button><button class="small-btn" id="vpPlaybackStats">Playback stats / Στατιστικά</button>
                 </div>
               </section>
               <section class="panel vp-card" aria-labelledby="vpGPic">
@@ -290,7 +307,8 @@
                   <button class="small-btn" id="vpRot" data-i18n="ph.rotR">↷ 90°</button>
                   <button class="small-btn" id="vpFlipH" data-i18n="ph.flipH">Αναστροφή ↔</button>
                   <button class="small-btn" id="vpFlipV" data-i18n="ph.flipV">Αναστροφή ↕</button>
-                  <button class="small-btn" id="vpPicReset" data-i18n="ph.reset">Επαναφορά</button>
+                  <button class="small-btn" id="vpPicReset" data-i18n="ph.reset">Επαναφορά</button><button class="small-btn" id="vpCopyFrame">Copy frame / Αντιγραφή καρέ</button>
+                </div><div class="vp-bar vp-row"><label>View / Προβολή <select id="vpViewMode"><option value="contain">Fit / Προσαρμογή</option><option value="cover">Crop / Περικοπή</option><option value="fill">Stretch / Τέντωμα</option></select></label><label>Zoom <input id="vpZoom" type="range" min="100" max="200" value="100" step="5"></label><button class="small-btn" id="vpPip">Picture-in-Picture</button>
                 </div>
               </section>
               <section class="panel vp-card" aria-labelledby="vpGSound">
@@ -304,14 +322,53 @@
                 <h3 id="vpGSub" data-i18n="vp.subtitles">Υπότιτλοι</h3>
                 <div class="vp-bar vp-row">
                   <label class="vp-inline"><span data-i18n="vp.subtitles">Υπότιτλοι</span>
-                    <select id="vpSubTrack"></select></label>
+                    <select id="vpSubTrack"></select></label><label>Preferred / Προτίμηση <select id="vpSubPreferredLanguage" aria-label="Preferred subtitle language"><option value="el">Ελληνικά</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="es">Español</option></select></label>
                   <button class="small-btn" id="vpSubLoad" data-i18n="vp.subLoad">Φόρτωση αρχείου…</button>
+                  <button class="small-btn" id="vpSubOnlineToggle" data-i18n="vp.onlineSubs">Λήψη υποτίτλων</button>
+                  <button class="small-btn" id="vpSubSaveSyncedBeside" data-i18n="vp.saveSynced">Αποθήκευση δίπλα στο βίντεο</button><button class="small-btn" id="vpSubSaveSrt" data-i18n="vp.saveSrt">Συγχρονισμένο SRT</button><button class="small-btn" id="vpSubSaveVtt" data-i18n="vp.saveVtt">Συγχρονισμένο VTT</button>
                 </div>
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpSubMinus" aria-label="-0.5 s">−0,5″</button>
                   <span class="vp-delay" id="vpSubDelay" aria-live="polite">0 s</span>
+                  <button class="small-btn" id="vpSubReset" aria-label="Reset subtitle delay / Μηδενισμός καθυστέρησης">0 s</button>
+                  <label>MicroDVD FPS <select id="vpMicroFps" aria-label="MicroDVD source FPS"><option value="0">Header / Auto</option><option value="23.976">23.976</option><option value="24">24</option><option value="25">25</option><option value="29.97">29.97</option><option value="30">30</option></select></label>
+                  <label>FPS <select id="vpSubFps" aria-label="Subtitle frame rate conversion"><option value="1">1:1</option><option value="0.95904">23.976 → 25</option><option value="1.042709375">25 → 23.976</option><option value="0.96">24 → 25</option><option value="1.0416666667">25 → 24</option><option value="custom" hidden>Custom drift</option></select></label>
                   <button class="small-btn" id="vpSubPlus" aria-label="+0.5 s">+0,5″</button>
                 </div>
+                <div id="vpSubOnline" hidden>
+                  <div class="vp-field"><label for="vpSubProvider" data-i18n="vp.provider">Πάροχος</label><select id="vpSubProvider"><option value="opensubtitles">OpenSubtitles</option><option value="subdl">SubDL</option><option value="both" data-i18n="vp.bothApis">Και οι δύο πάροχοι</option></select></div>
+                  <p class="hint">SubDL uses its own API key and sends the title and language, not the video. / Χρησιμοποιήστε το ξεχωριστό API key του SubDL.</p>
+                  <p class="hint">OpenSubtitles.com — sends title, language and API credentials to the provider. Credentials stay in memory. Optional fingerprint sends only a 64-bit hash, not the video. / Προαιρετικά αποστέλλεται μόνο το αποτύπωμα, όχι το βίντεο.</p>
+                  <div class="vp-field"><label for="vpSubKey">API key</label><input id="vpSubKey" type="password" maxlength="256" autocomplete="off"></div>
+                  <div class="vp-field" id="vpSubBothKeyRow" hidden><label for="vpSubBothKey">SubDL API key (both mode)</label><input id="vpSubBothKey" type="password" maxlength="256" autocomplete="off"></div>
+                  <div class="vp-field"><label for="vpSubUser">Username (optional)</label><input id="vpSubUser" maxlength="256" autocomplete="off"></div>
+                  <div class="vp-field"><label for="vpSubPassword">Password (optional)</label><input id="vpSubPassword" type="password" maxlength="512" autocomplete="off"></div>
+                  <div class="vp-field"><label for="vpSubQuery">Title / Τίτλος</label><input id="vpSubQuery" maxlength="160" type="text"></div>
+                  <div class="vp-bar vp-row"><label><span data-i18n="settings.language">Γλώσσα</span> <select id="vpSubLanguage"><option value="el">Ελληνικά</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="es">Español</option><option value="pt">Português</option><option value="ru">Русский</option><option value="tr">Türkçe</option><option value="pl">Polski</option><option value="nl">Nederlands</option><option value="sv">Svenska</option><option value="da">Dansk</option><option value="no">Norsk</option><option value="fi">Suomi</option><option value="cs">Čeština</option><option value="sk">Slovenčina</option><option value="hu">Magyar</option><option value="ro">Română</option><option value="uk">Українська</option></select></label><button class="small-btn" id="vpSubSearch">Search</button><button class="small-btn" id="vpSubDisconnect">Disconnect</button></div>
+                  <div class="vp-field"><label><input id="vpSubHash" type="checkbox"> Match video fingerprint (optional) / Αντιστοίχιση αποτυπώματος</label></div>
+                  <div class="vp-field"><label for="vpSubResults">Results / Αποτελέσματα</label><select id="vpSubResults"></select></div>
+                  <label><input id="vpSubSaveBeside" type="checkbox" checked> Save beside video / Αποθήκευση δίπλα στο βίντεο</label>
+                  <button class="small-btn" id="vpSubDownload" disabled data-i18n="vp.downloadDisplay">Λήψη και εμφάνιση</button>
+                  <div class="vp-bar vp-row"><button class="small-btn" id="vpSubs4Series">Subs4Series (browser)</button><button class="small-btn" id="vpSubs4Free">Subs4Free (browser)</button><button class="small-btn" id="vpSubImportBeside" data-i18n="vp.importDownloaded">Εισαγωγή λήψης</button></div>
+                  <p class="hint">Complete any verification in your browser. Import ZIP or SRT/VTT/ASS/SSA directly. RAR requires installed 7-Zip 25.01+ and confirmation. / Εισαγωγή ZIP ή υποτίτλου. Για RAR απαιτείται εγκατεστημένο 7-Zip 25.01+ και επιβεβαίωση.</p>
+                  <div class="vp-bar vp-row"><button class="small-btn" id="vpSubAudit" data-i18n="vp.checkPlaylist">Έλεγχος λίστας</button><label><input type="checkbox" id="vpSubAuditEmbedded"> Include MKV track tags (up to 20) / Ενσωματωμένοι υπότιτλοι MKV</label><select id="vpSubAuditResults" aria-label="Videos requiring subtitles"></select><button class="small-btn" id="vpSubAuditOpen" disabled>Open selected / Άνοιγμα</button></div>
+                  <p class="hint" id="vpSubAuditStatus" role="status"></p>
+                  <div class="vp-bar vp-row"><label>Start at item / Από θέση <input type="number" id="vpSubBatchOffset" min="1" max="2000" step="1" value="1"></label><button class="small-btn" id="vpSubBatchStart" data-i18n="vp.searchSeason">Αναζήτηση σεζόν</button><button class="small-btn" id="vpSubBatchCancel" disabled data-i18n="common.cancel">Ακύρωση</button><label><input type="checkbox" id="vpSubBatchAuto"> Save single exact OpenSubtitles hash match / Αυτόματη λήψη ακριβούς hash</label></div>
+                  <p class="hint">Greek only, up to 10 approved episodes per run. Existing or uncertain local subtitles are skipped. / Έως 10 εγκεκριμένα επεισόδια, χωρίς παράλληλες λήψεις.</p>
+                  <select id="vpSubBatchResults" aria-label="Season subtitle results"></select><button class="small-btn" id="vpSubBatchOpen" disabled data-i18n="vp.reviewEpisode">Έλεγχος επεισοδίου</button><p class="hint" id="vpSubBatchStatus" role="status"></p>
+                  <div class="vp-bar vp-row"><button class="small-btn" id="vpSubEmbeddedList" data-i18n="vp.listMkv">Ροές MKV</button><select id="vpSubEmbeddedTracks" aria-label="Embedded subtitle track"></select><button class="small-btn" id="vpSubEmbeddedExtract" disabled data-i18n="vp.extractSrt">Εξαγωγή SRT</button></div><p class="hint" id="vpSubEmbeddedStatus" role="status"></p>
+                  <p class="hint" id="vpSubOnlineStatus" role="status"></p>
+                </div>
+                <div class="vp-bar vp-row"><label>Delay (s) <input id="vpSubDelayExact" type="number" min="-3600" max="3600" step="0.05" value="0"></label><button class="small-btn" id="vpSubSyncHere">Align selected cue to video time</button><label>Page / Σελίδα <select id="vpSubCuePage" aria-label="Subtitle cue page"></select></label><select id="vpSubCue" aria-label="Subtitle cue to synchronize"></select></div>
+                <div class="vp-bar vp-row"><button class="small-btn" id="vpSubAnchorA">Mark A</button><button class="small-btn" id="vpSubAnchorB">Mark B &amp; sync</button><button class="small-btn" id="vpSubAnchorReset">Reset markers</button><span class="hint" id="vpSubAnchorStatus" role="status"></span></div>
+                <div class="vp-bar vp-row"><button class="small-btn" id="vpSubAutoSync" data-i18n="vp.suggestSync">Πρόταση συγχρονισμού</button><label>Audio stream # <input id="vpSubAudioIndex" type="number" min="1" max="64" step="1" value="1"></label><button class="small-btn" id="vpSubAutoCancel" disabled data-i18n="common.cancel">Ακύρωση</button><button class="small-btn" id="vpSubApplySync" disabled>Apply suggestion</button><span class="hint" id="vpSubAutoStatus" role="status"></span></div>
+                <details id="vpSubEditor">
+                  <summary data-i18n="vp.editCue">Επεξεργασία φράσης</summary>
+                  <p class="hint">Original cue timing (before global sync). Edits create a separate subtitle track.</p>
+                  <div class="vp-bar vp-row"><label>Start (s) <input id="vpSubEditStart" type="number" min="0" step="0.001"></label><label>End (s) <input id="vpSubEditEnd" type="number" min="0" step="0.001"></label></div>
+                  <div class="vp-field"><label for="vpSubEditText">Text / Κείμενο</label><textarea id="vpSubEditText" rows="3" maxlength="4000"></textarea></div>
+                  <div class="vp-bar vp-row"><button class="small-btn" id="vpSubEditApply" disabled>Apply cue edit</button><button class="small-btn" id="vpSubEditUndo" disabled>Undo last edit</button><span class="hint" id="vpSubEditStatus" role="status"></span></div>
+                </details>
                 <div class="vp-field"><label for="vpSubSize" data-i18n="vp.subSize">Μέγεθος</label><input type="range" id="vpSubSize" min="8" max="48" step="1" value="16" /></div>
                 <div class="vp-bar vp-row">
                   <label class="vp-inline"><span data-i18n="vp.subColor">Χρώμα</span>
@@ -322,6 +379,13 @@
                 <h3 id="vpGAdv" data-i18n="vp.groupAdvanced">Προχωρημένα</h3>
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpInfo" data-i18n="vp.info">Πληροφορίες αρχείου</button>
+                  <button class="small-btn" id="vpCodecs" data-i18n="vp.codecManager">Διαχείριση codecs</button><button class="small-btn" id="vpGpuDiagnostics" data-i18n="vp.gpuDiagnostics">Διαγνωστικά GPU</button><button class="small-btn" id="vpResourceDiagnostics" data-i18n="vp.resourceDiagnostics">Διαγνωστικά CPU / RAM</button>
+                  <label><span data-i18n="vp.decoder">Αποκωδικοποιητής LibVLC</span> <select id="vpNativeDecode"><option value="auto" data-i18n="vp.decoderAuto">Αυτόματα</option><option value="d3d11va">D3D11VA</option><option value="dxva2">DXVA2</option><option value="none" data-i18n="vp.decoderSoftware">CPU / Λογισμικό</option></select></label>
+                  <button class="small-btn" id="vpNative" hidden>LibVLC (Native window)</button><button class="small-btn" id="vpNativeEmbed" hidden>LibVLC (embedded experimental) / Ενσωματωμένη προβολή</button>
+                  <button class="small-btn" id="vpDirectShow" hidden>DirectShow (LAV experimental)</button>
+                  <button class="small-btn" id="vpMediaFoundation" hidden>Media Foundation (experimental)</button>
+                  <button class="small-btn" id="vpNativeStop" hidden data-i18n="vp.closeNative">Κλείσιμο native player</button>
+                  <label id="vpNativeFallbackLabel" hidden><input type="checkbox" id="vpNativeFallback"> LibVLC fallback (separate window)</label>
                 </div>
                 <p class="hint" data-i18n="vp.shortcuts">Πλήκτρα: διάστημα = αναπαραγωγή/παύση, ←/→ = ±5 s (Shift ±30 s), ↑/↓ = ένταση, M = σίγαση, F = πλήρης οθόνη, N/P = επόμενο/προηγούμενο, B = σελιδοδείκτης, L = επανάληψη A-B, S = στιγμιότυπο, . και , = καρέ-καρέ.</p>
               </section>
@@ -333,7 +397,8 @@
             <div class="vp-bar vp-row">
               <button class="small-btn" id="vpClear" data-i18n="vp.clear">Εκκαθάριση</button>
               <button class="small-btn" id="vpSavePl" data-i18n="vp.savePl">Αποθήκευση λίστας</button>
-              <button class="small-btn" id="vpImportM3u" data-i18n="vp.importM3u">Εισαγωγή M3U</button>
+              <button class="small-btn" id="vpImportM3u" data-i18n="vp.importM3u">Εισαγωγή M3U</button><button class="small-btn" id="vpExportM3u">Export M3U / Εξαγωγή M3U</button>
+            </div><div class="vp-bar vp-row"><button class="small-btn" id="vpSort">Sort A–Z / Ταξινόμηση</button><button class="small-btn" id="vpMoveUp" aria-label="Move current up / Μετακίνηση πάνω">↑</button><button class="small-btn" id="vpMoveDown" aria-label="Move current down / Μετακίνηση κάτω">↓</button><button class="small-btn" id="vpReveal">Show in folder / Στον φάκελο</button><button class="small-btn" id="vpCopyPath">Copy path / Αντιγραφή διαδρομής</button>
             </div>
             <div class="vp-bar vp-row">
               <label class="vp-inline"><span data-i18n="vp.savedLists">Αποθηκευμένες λίστες</span>
@@ -358,12 +423,17 @@
           <div class="panel ph-stage">
             <h2 data-i18n="ph.title">Βελτίωση φωτογραφιών</h2>
             <div class="ph-drop" id="phDrop">
-              <canvas id="phCanvas" class="ph-canvas"></canvas>
+              <canvas id="phCanvas" class="ph-canvas" tabindex="0" aria-label="Προεπισκόπηση φωτογραφίας / Photo preview"></canvas>
               <p class="vp-empty" id="phEmpty" data-i18n="ph.empty">Άνοιξε ή σύρε εδώ μια φωτογραφία</p>
             </div>
             <div class="vp-bar">
               <button class="small-btn" id="phOpen" data-i18n="ph.open">Άνοιγμα</button>
+              <button class="small-btn" id="phCloseMedia" disabled>Close / Κλείσιμο</button>
+              <label class="vp-inline" for="phZoom">Μεγέθυνση / Zoom <input type="range" id="phZoom" min="100" max="300" step="10" value="100" disabled /><output id="phZoomValue" for="phZoom">100%</output></label><button class="small-btn" id="phZoomReset" disabled>100%</button>
               <button class="small-btn" id="phAuto" data-i18n="ph.auto">Αυτόματη βελτίωση</button>
+              <label><span data-i18n="ph.look">Φίλτρο</span> <select id="phLook"><option value="neutral" data-i18n="ph.lookNeutral">Ουδέτερο</option><option value="portrait" data-i18n="ph.lookPortrait">Πορτρέτο</option><option value="landscape" data-i18n="ph.lookLandscape">Τοπίο</option><option value="monochrome" data-i18n="ph.lookMono">Ασπρόμαυρο</option><option value="vintage" data-i18n="ph.lookVintage">Ρετρό</option><option value="document" data-i18n="ph.lookDocument">Έγγραφο</option></select></label><label><span data-i18n="ph.strength">Ένταση %</span> <input id="phLookStrength" type="number" min="0" max="100" step="5" value="100"></label><button class="small-btn" id="phLookApply" data-i18n="ph.applyLook">Εφαρμογή φίλτρου</button>
+              <button class="small-btn" id="phUndo" disabled data-i18n="ph.undo" data-i18n-aria="ph.undo">Αναίρεση</button>
+              <button class="small-btn" id="phRedo" disabled data-i18n="ph.redo" data-i18n-aria="ph.redo">Επανάληψη</button>
               <button class="small-btn" id="phReset" data-i18n="ph.reset">Επαναφορά</button>
               <button class="small-btn" id="phCompare" data-i18n="ph.compare">Πριν (κράτα πατημένο)</button>
               <button class="small-btn" id="phRotL" data-i18n="ph.rotL">↶ 90°</button>
@@ -373,7 +443,10 @@
               <label class="vp-inline"><span data-i18n="ph.crop">Περικοπή</span>
                 <select id="phCrop"></select></label>
             </div>
-            <canvas id="phHist" class="ph-hist" width="256" height="64" role="img" aria-label="Histogram"></canvas>
+            <div class="vp-bar"><label>Crop X <input id="phCropX" type="range" min="0" max="100" value="50"></label><label>Crop Y <input id="phCropY" type="range" min="0" max="100" value="50"></label><label><span data-i18n="ph.histogram">Ιστόγραμμα</span> <select id="phHistMode"><option value="luma" data-i18n="ph.luma">Φωτεινότητα</option><option value="rgb">RGB</option></select></label></div>
+            <div class="vp-bar" id="phFreeCrop" hidden><label class="vp-inline" for="phFreeW">Πλάτος / Width % <input id="phFreeW" type="range" min="1" max="100" step="1" value="100" disabled></label><label class="vp-inline" for="phFreeH">Ύψος / Height % <input id="phFreeH" type="range" min="1" max="100" step="1" value="100" disabled></label></div>
+            <p class="hint" id="phClipping"></p>
+            <canvas id="phHist" class="ph-hist" width="256" height="64" role="img" data-i18n-aria="ph.histogram" aria-label="Ιστόγραμμα"></canvas>
             <p class="hint" id="phInfo" role="status" aria-live="polite"></p>
           </div>
           <div class="panel ph-controls" id="phControls">
@@ -386,12 +459,24 @@
               <label class="vp-inline" id="phQualityField"><span data-i18n="ph.quality">Ποιότητα</span>
                 <input type="range" id="phQuality" min="50" max="100" step="1" value="92" /></label>
             </div>
-            <button class="small-btn" id="phSave" data-i18n="ph.save">Αποθήκευση στην αρχική ανάλυση…</button>
+            <label class="vp-inline" id="phMatteField"><span data-i18n="ph.matte">Φόντο JPEG</span> <input type="color" id="phMatte" value="#ffffff"></label>
+            <div class="vp-bar"><label class="vp-inline"><span data-i18n="ph.maxEdge">Μέγιστη πλευρά</span> <select id="phResize"><option value="0" data-i18n="ph.original">Αρχική</option><option value="4096">4096 px</option><option value="2048">2048 px</option><option value="1280">1280 px</option><option value="640">640 px</option></select></label><span id="phDimensions" class="hint" aria-live="polite"></span></div>
+            <label class="vp-inline"><input type="checkbox" id="phKeepDate" disabled /> Διατήρηση μόνο ημερομηνίας λήψης / Keep capture date only (JPEG/PNG/WebP)</label><span id="phCaptureDate" class="hint" aria-live="polite"></span>
+            <button class="small-btn" id="phSave" data-i18n="ph.save">Αποθήκευση στην αρχική ανάλυση…</button><button class="small-btn" id="phCancelExport" hidden>Cancel export / Ακύρωση εξαγωγής</button>
           </div>
         </div>
       </section>
 
       <section id="tab-settings" class="tab-pane">
+        <div class="panel" id="featureGuidePanel">
+          <h2 id="featureGuideTitle">Εύρεση λειτουργιών / Find features</h2>
+          <p class="hint" id="featureGuideHint"></p>
+          <div class="feature-guide-toolbar"><input type="search" id="featureGuideQuery" class="input-modal-field" aria-labelledby="featureGuideTitle" placeholder="Metadata, codecs, υπότιτλοι…" />
+          <button type="button" class="small-btn" id="featureGuideClear" aria-label="Clear search">×</button>
+          <div class="feature-guide-filter"><label id="featureGuideGroupLabel" for="featureGuideGroup">Κατηγορία / Category</label> <select id="featureGuideGroup"></select></div></div>
+          <div id="featureGuideResults" class="feature-guide-results"></div>
+          <p id="featureGuideStatus" class="hint" role="status"></p>
+        </div>
         <div class="panel" id="depsPanel">
           <h2 data-i18n="settings.deps">Πρόσθετα εξαρτήματα</h2>
           <div class="dep-row">
@@ -475,6 +560,8 @@
         </div>
         <div class="panel">
           <h2 data-i18n="settings.systemTitle">Σύστημα</h2>
+          <div class="settings-btn-row"><button id="btnMediaFlyout" class="small-btn" type="button">Media Flyout / Πλωτός έλεγχος</button></div>
+          <div class="switch-row"><div><div class="switch-title">Automatic local flyout / Αυτόματη εμφάνιση</div><div class="switch-sub">On new playback title / Σε νέο τίτλο αναπαραγωγής</div></div><button id="swMediaFlyout" class="switch" aria-label="Automatic local flyout / Αυτόματη εμφάνιση"></button></div>
           <div class="switch-row">
             <div><div class="switch-title" data-i18n="settings.trackNotif">Ειδοποιήσεις τραγουδιού</div><div class="switch-sub" data-i18n="settings.trackNotifSub">Ειδοποίηση Windows όταν αλλάζει το κομμάτι</div></div>
             <button class="switch active" id="swTrackNotif"></button>
@@ -569,6 +656,10 @@
   <script src="i18n.js"></script>
   <script src="backgrounds.js"></script>
   <script src="audiolib.js"></script>
+  <script src="dsp-routing.js"></script>
+  <script src="path-identity.js"></script>
+  <script src="feature-guide.js"></script>
+  <script src="backup.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

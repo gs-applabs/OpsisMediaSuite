@@ -8,13 +8,14 @@
 
 (function () {
   const C = window.WaveframeConv;
+  const pathKey=window.OpsisPathIdentity.key;
   const api = window.waveframe;
   const OPT_KEY = 'waveframe.conv.opts';
   const root = document.getElementById('tab-converter');
   const $ = (id) => document.getElementById(id);
   let files = [];
-  let running = null;
-  let seq = 0;
+  let running = null,starting=false,languagePending=false;
+  let seq = 0,activeDspSession=null;
 
   const h = (tag, props = {}, kids = []) => {
     const e = document.createElement(tag);
@@ -50,7 +51,47 @@
     if (start >= end) throw Object.assign(new Error('trim'), { code: 'trim' });
     const len = end - start;
     let chs = [];
-    if (o.effects) {
+    if(o.effects&&o.nativeDsp===true){
+      if(decoded.numberOfChannels>2||rateOut<44100||rateOut>96000||len/sr>300)throw Object.assign(new Error('Experimental native DSP: mono/stereo, 44.1–96 kHz, max 5 minutes'),{code:'native-dsp-format'});
+      const frames=Math.round(len/sr*rateOut);
+      if(!frames||frames>rateOut*300||frames*8>128*1024*1024)throw new Error('Native DSP: 128 MiB PCM limit');
+      // Same-rate input is read directly from the decoded channel views.
+      // For resampling use the original buffer with a trim offset, then reuse
+      // the private resampled output as destination. Never mutate the source.
+      let l,rr,inputOffset=0,output;
+      if(rateOut===sr){
+        l=decoded.getChannelData(0);rr=decoded.getChannelData(decoded.numberOfChannels===1?0:1);
+        inputOffset=start;output=[new Float32Array(frames),new Float32Array(frames)];
+      }else{
+        const ctx=new OfflineAudioContext(2,frames,rateOut);
+        const src=ctx.createBufferSource();src.buffer=decoded;src.connect(ctx.destination);
+        src.start(0,start/sr,len/sr);
+        const dry=await ctx.startRendering();
+        l=dry.getChannelData(0);rr=dry.getChannelData(1);output=[l,rr];
+      }
+      if(hooks.cancelled?.())throw Object.assign(new Error('cancelled'),{code:'cancelled'});
+      const cfg=o.nativeDspConfig||WaveframeAudio.nativeDspConfigV2(engine.state,'native',false);
+      const opened=await api.nativeDspOpen(rateOut,2,frames,cfg);
+      if(!opened?.ok)throw new Error(opened?.code||'native-dsp-failed');
+      const session=opened.session;activeDspSession=session;
+      try{
+        if(opened.blockFrames!==32768)throw new Error('native-dsp-protocol');
+        chs=output;
+        for(let offset=0;offset<frames;offset+=opened.blockFrames){
+          if(hooks.cancelled?.())throw Object.assign(new Error('cancelled'),{code:'cancelled'});
+          const count=Math.min(opened.blockFrames,frames-offset),pcm=new Uint8Array(count*8),view=new DataView(pcm.buffer);
+          for(let i=0;i<count;i++){view.setFloat32(i*8,l[inputOffset+offset+i],true);view.setFloat32(i*8+4,rr[inputOffset+offset+i],true);}
+          const result=await api.nativeDspChunk(session,pcm);
+          if(hooks.cancelled?.())throw Object.assign(new Error('cancelled'),{code:'cancelled'});
+          if(!result?.ok||!(result.pcm instanceof Uint8Array)||result.pcm.byteLength!==pcm.byteLength)throw new Error(result?.code||'native-dsp-failed');
+          const out=new DataView(result.pcm.buffer,result.pcm.byteOffset,result.pcm.byteLength);
+          for(let i=0;i<count;i++){chs[0][offset+i]=out.getFloat32(i*8,true);chs[1][offset+i]=out.getFloat32(i*8+4,true);}
+          hooks.progress?.((offset+count)/frames);
+        }
+        const done=await api.nativeDspFinish(session);
+        if(!done?.ok)throw new Error(done?.code||'native-dsp-failed');
+      }finally{if(activeDspSession===session)activeDspSession=null;await api.nativeDspCancel(session).catch(()=>{});}
+    } else if (o.effects) {
       const tb = new AudioBuffer({ length: len, numberOfChannels: decoded.numberOfChannels, sampleRate: sr });
       for (let c = 0; c < decoded.numberOfChannels; c++) tb.copyToChannel(decoded.getChannelData(c).subarray(start, end), c);
       const rendered = await engine.renderOffline(tb, { tempo: 1, rate: rateOut }); // the Enhancer's live chain, at normal speed
@@ -74,7 +115,7 @@
       for (const ch of chs) for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > peak) peak = a; }
       const safe = C.peakSafeGainDb(C.targetGainDb(lufs, o.targetLufs), peak);
       gainDb = safe.gainDb; limited = safe.limited;
-      if (gainDb !== 0) { const g = Math.pow(10, gainDb / 20); for (const ch of chs) for (let i = 0; i < ch.length; i++) ch[i] *= g; }
+      if (gainDb !== 0) C.applyGainDb(chs,gainDb);
     }
     return { channels: chs, sampleRate: rateOut, lufs, gainDb, limited };
   }
@@ -93,6 +134,7 @@
     }
     const info = ctx.ffmpeg && !isTrack ? await api.convProbe(item.path) : null;
     if (info && !info.hasAudio) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
+    if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
     ctx.report(0.05);
     let read;
     if (isTrack) {
@@ -100,9 +142,12 @@
       read = { bytes: new Uint8Array(t0.file ? await t0.file.arrayBuffer() : await (await fetch(t0.url)).arrayBuffer()) };
     } else read = await api.convRead(item.path);
     if (!read || read.tooLarge) throw Object.assign(new Error('file too large to process in memory'), { code: 'too-large' });
+    if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
     let decoded;
     try { decoded = await decode(read.bytes, info && info.sampleRate); }
     catch (_) {
+      if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
+      read=null;
       const pre = ctx.ffmpeg && !isTrack ? await api.convPredecode(item.path, info && info.sampleRate) : null; // WMA, AIFF, video containers ...
       if (!pre) throw Object.assign(new Error('decode-failed'), { code: 'decode-failed' });
       decoded = await decode(pre.bytes, info && info.sampleRate);
@@ -110,11 +155,12 @@
     read = null;
     if (ctx.cancelled()) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
     ctx.report(0.25);
-    const p = await processBuffer(decoded, o);
+    const p = await processBuffer(decoded, o,{cancelled:ctx.cancelled,progress:f=>ctx.report(.25+.25*f)});
     if (ctx.cancelled()) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
     ctx.report(0.5);
     const depth = o.format === 'wav' ? o.depth : 24;
     const wav = C.writeWav(p.channels, p.sampleRate, depth);
+    if(ctx.cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});
     ctx.setBase(0.5);
     const r = await api.convEncode({ id, ...(isTrack ? { name: item.name } : { path: item.path }), wav: new Uint8Array(wav), options: o, duration: p.channels[0].length / p.sampleRate, ...out });
     if (!r.ok) throw Object.assign(new Error(r.error || r.code), { code: r.code });
@@ -142,7 +188,7 @@
   const FORMAT_LABEL = { mp3: 'MP3', flac: 'FLAC', wav: 'WAV', aac: 'AAC (M4A)', ogg: 'OGG Vorbis', opus: 'Opus', aiff: 'AIFF', alac: 'ALAC (M4A)', wma: 'WMA' };
 
   function loadSaved() { try { return JSON.parse(localStorage.getItem(OPT_KEY) || '{}'); } catch (_) { return {}; } }
-  function save(o) { try { localStorage.setItem(OPT_KEY, JSON.stringify(o)); } catch (_) { /* storage unavailable */ } }
+  function save(o) { try { const encoded=JSON.stringify(o);if(localStorage.getItem(OPT_KEY)!==encoded)localStorage.setItem(OPT_KEY,encoded); } catch (_) { /* storage unavailable */ } }
 
   function select(id, options, value) {
     const s = h('select', { id });
@@ -181,6 +227,9 @@
     const norm = h('input', { id: 'convNorm', type: 'checkbox', checked: !!saved.normalize });
     const target = h('input', { id: 'convTarget', type: 'number', min: -40, max: -5, step: 1, value: saved.targetLufs });
     const fx = h('input', { id: 'convFx', type: 'checkbox', checked: !!saved.effects });
+    const nativeFx=h('input',{id:'convNativeDsp',type:'checkbox',checked:false,disabled:true});
+    const nativeRow=h('label',{class:'conv-check',hidden:true},[nativeFx,h('span',{text:'Native DSP (experimental / πειραματικό, ≤5 min / 128 MiB, mono/stereo)'})]);
+    api.nativeDspAvailable().then(ok=>{nativeRow.hidden=!ok;nativeFx.disabled=!ok||!fx.checked;}).catch(()=>{});
     const suffix = h('input', { id: 'convSuffix', type: 'text', maxLength: 40, value: saved.suffix });
 
     const presets = h('div', { class: 'conv-presets' }, PRESETS.map((p) => h('button', { class: 'small-btn', 'data-i18n': `conv.preset.${p.key}`, text: t(`conv.preset.${p.key}`), onclick: () => applyPreset(p) })));
@@ -198,6 +247,7 @@
       outRow,
       h('label', { class: 'conv-check' }, [norm, h('span', { 'data-i18n': 'conv.normalize', text: t('conv.normalize') }), h('span', { class: 'conv-inline' }, [h('span', { 'data-i18n': 'conv.target', text: t('conv.target') }), target])]),
       h('label', { class: 'conv-check' }, [fx, h('span', { 'data-i18n': 'conv.effects', text: t('conv.effects') })]),
+      nativeRow,
       h('p', { class: 'hint', id: 'convNote', 'data-i18n': 'conv.processedNote', text: t('conv.processedNote') }),
     );
     const bStart = h('button', { class: 'export-btn', id: 'convStart', 'data-i18n': 'conv.start', text: t('conv.start') });
@@ -224,11 +274,12 @@
       for (const o of bitrateSel.options) o.hidden = bitrates.length > 0 && !bitrates.includes(+o.value);
       if (bitrates.length && !bitrates.includes(+bitrateSel.value)) bitrateSel.value = String(bitrates.includes(192) ? 192 : bitrates[Math.floor(bitrates.length / 2)]);
       $('convNote').classList.toggle('dep-hidden', !(norm.checked || fx.checked));
+      nativeFx.disabled=nativeRow.hidden||!fx.checked;if(!fx.checked)nativeFx.checked=false;
     };
-    const syncOut = () => { outRow.classList.toggle('dep-hidden', outSel.value !== 'custom'); localStorage.setItem('waveframe.destMode', outSel.value); };
+    const syncOut = () => { outRow.classList.toggle('dep-hidden', outSel.value !== 'custom'); if(localStorage.getItem('waveframe.destMode')!==outSel.value)localStorage.setItem('waveframe.destMode', outSel.value); };
     outSel.addEventListener('change', syncOut); syncOut();
     outPick.addEventListener('click', async () => {
-      const r = await api.chooseFolder();
+      const r = await api.convChooseFolder();
       if (r && !r.canceled) { outPath.textContent = r.folderPath; localStorage.setItem('waveframe.destFolder', r.folderPath); }
     });
     btnPlaylist.addEventListener('click', () => addTracks());
@@ -236,14 +287,14 @@
     syncVisibility();
 
     btnAdd.addEventListener('click', async () => addPaths(await api.convPick()));
-    btnClear.addEventListener('click', () => { if (!running) { files = []; renderList(); } });
+    btnClear.addEventListener('click', () => { if (!running&&!starting) { files = []; renderList(); } });
     drop.addEventListener('click', async () => addPaths(await api.convPick()));
     drop.addEventListener('keydown', async (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addPaths(await api.convPick()); } });
     for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-    drop.addEventListener('drop', (e) => {
+    drop.addEventListener('drop', async (e) => {
       e.preventDefault(); drop.classList.remove('over');
-      addPaths([...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean));
+      addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[]));
     });
     bStart.addEventListener('click', start);
     bCancel.addEventListener('click', cancel);
@@ -251,6 +302,7 @@
   }
 
   function addTracks() {
+    if(starting||running)return;
     const list = typeof playlist !== 'undefined' ? playlist : [];
     for (const t0 of list) {
       if (!files.some((f) => f.track === t0)) files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'track', track: t0, name: t0.name || 'track', path: '', state: 'wait', pct: 0 });
@@ -259,8 +311,11 @@
   }
 
   function addPaths(paths) {
+    if(starting||running)return;
+    const seen=new Set(files.map(f=>pathKey(f.path)).filter(Boolean));
     for (const p of paths || []) {
-      if (typeof p === 'string' && !files.some((f) => f.path === p)) files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'file', path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0 });
+      const key=pathKey(p);if(!key||seen.has(key))continue;seen.add(key);
+      files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'file', path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0 });
     }
     renderList();
   }
@@ -278,7 +333,7 @@
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `bar-${f.id}` })]),
       ]);
       if (f.state === 'done' && f.out) row.append(h('button', { class: 'small-btn', text: t('conv.reveal'), onclick: () => api.convReveal(f.out) }));
-      else if (!running) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { files = files.filter((x) => x !== f); renderList(); } }));
+      if (!running&&!starting) row.append(h('button', { class: 'small-btn', text: t('conv.remove'), onclick: () => { if(starting||running)return;files = files.filter((x) => x !== f); renderList(); } }));
       list.append(row);
       const bar = $(`bar-${f.id}`);
       if (bar) bar.style.width = `${Math.round((f.state === 'done' ? 1 : f.pct) * 100)}%`;
@@ -306,12 +361,29 @@
   }
 
   async function start() {
-    if (running) return;
+    if(running||starting)return;
+    starting=true;
+    const startButton=$('convStart');startButton.disabled=true;
+    try{await startQueue();}
+    catch(e){$('convStatus').textContent=String(e?.message||e).slice(0,200);}
+    finally{
+      starting=false;running=null;current=null;
+      $('convStart').disabled=false;
+      $('convStart').classList.remove('dep-hidden');$('convCancel').classList.add('dep-hidden');renderList();
+      refreshLanguageWhenIdle();
+    }
+  }
+  async function startQueue() {
     const status = $('convStatus');
     if (!files.length) { status.textContent = t('conv.needFiles'); return; }
     const v = C.validateOptions(collect());
     if (!v.ok) { status.textContent = fmt(t('conv.invalid'), { what: v.errors.join(', ') }); return; }
-    const o = v.options;
+    const o = {...v.options};
+    const outMode=$('convOut').value,outDir=localStorage.getItem('waveframe.destFolder')||'';
+    if(o.effects&&$('convNativeDsp').checked&&!$('convNativeDsp').disabled){
+      o.nativeDsp=true;
+      o.nativeDspConfig=WaveframeAudio.nativeDspConfigV2(engine.state,'native',false);
+    }
     const warn = v.warnings.map((w) => t(w === 'rate-forced' ? 'conv.warn.rateForced' : 'conv.warn.rateClamped')).join(' ');
     let st = await api.convStatus();
     if (o.format !== 'wav' && !st.ffmpeg) {
@@ -320,13 +392,13 @@
       if (!r.ok) { status.textContent = r.declined ? t('conv.ffmpegDeclined') : fmt(t('conv.ffmpegFailed'), { why: r.error || '' }); return; }
       st = await api.convStatus();
     }
-    if ($('convOut').value === 'custom' && !localStorage.getItem('waveframe.destFolder')) { status.textContent = t('conv.out.needFolder'); return; }
+    if (outMode === 'custom' && !outDir) { status.textContent = t('conv.out.needFolder'); return; }
     for (const f of files) { f.state = 'wait'; f.pct = 0; f.err = ''; f.note = ''; f.out = ''; }
     $('convStart').classList.add('dep-hidden'); $('convCancel').classList.remove('dep-hidden'); $('convTrack').classList.remove('dep-hidden');
     status.textContent = warn;
     const queue = C.createQueue(files, async (item, qctx) => {
       current = item; base = 0; item.state = 'work'; renderList();
-      const ctx = { outMode: $('convOut').value, outDir: localStorage.getItem('waveframe.destFolder') || '', ffmpeg: st.ffmpeg, cancelled: qctx.cancelled, report: (p) => { item.pct = p; qctx.report(p); const b = $(`bar-${item.id}`); if (b) b.style.width = `${Math.round(p * 100)}%`; }, setBase: (b) => { base = b; } };
+      const ctx = { outMode, outDir, ffmpeg: st.ffmpeg, cancelled: qctx.cancelled, report: (p) => { item.pct = p; qctx.report(p); const b = $(`bar-${item.id}`); if (b) b.style.width = `${Math.round(p * 100)}%`; }, setBase: (b) => { base = b; } };
       try {
         const r = await convertFile(item, o, ctx);
         item.state = 'done'; item.out = r.output;
@@ -340,6 +412,7 @@
     }, (p) => { $('convFill').style.width = `${Math.round(p.overall * 100)}%`; });
     running = queue;
     const results = await queue.start();
+    for(const result of results)if(result.status==='cancelled'&&result.item.state!=='done')result.item.state='cancelled';
     running = null; current = null;
     $('convStart').classList.remove('dep-hidden'); $('convCancel').classList.add('dep-hidden');
     const ok = results.filter((r) => r.status === 'done').length;
@@ -350,13 +423,20 @@
   function cancel() {
     if (!running) return;
     running.cancel();
+    if(activeDspSession)api.nativeDspCancel(activeDspSession).catch(()=>{});
     if (current) api.convCancel(current.id);
   }
 
   build();
   api.onConvProgress(onProgress);
-  document.addEventListener('waveframe:language-changed', () => { if (!running) { if ($('convFormat')) collect(); build(); } });
+  // Both cards share the same root. Never rebuild it during either queue.
+  function refreshLanguageWhenIdle(){
+    if(!languagePending||running||starting||window.WaveframeVideoUi?.busy())return;
+    languagePending=false;if($('convFormat'))collect();build();
+  }
+  document.addEventListener('waveframe:language-changed',()=>{languagePending=true;refreshLanguageWhenIdle();});
+  document.addEventListener('waveframe:converter-idle',refreshLanguageWhenIdle);
   // addPaths / showRunning are exposed for the layout self-test (every language x zoom, with files in the list and while converting)
   function showRunning(on) { $('convStart').classList.toggle('dep-hidden', on); $('convCancel').classList.toggle('dep-hidden', !on); $('convTrack').classList.toggle('dep-hidden', !on); }
-  window.WaveframeConverter = { processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { files = []; renderList(); } };
+  window.WaveframeConverter = { busy:()=>!!(running||starting), processBuffer, convertFile, parseTime, decode, addPaths, showRunning, clearFiles: () => { if(starting||running)return;files = []; renderList(); } };
 })();

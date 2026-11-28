@@ -330,3 +330,18 @@ test('repository rename: waveframe and OpsisMediaSuite are the same repository f
   assert.ok(tr, 'a release whose URLs carry the new repository name is accepted when asked for by the old name');
   assert.equal(S.pickInstaller(tr, S.validateCatalogue(embedded).apps.find((a) => a.id === 'waveframe')).name, 'OpsisMediaSuite-Setup-2.3.1.exe', 'the portable exe is never picked');
 });
+
+test('shared state writer preserves previous bytes and cleans only owned scratch on failure',()=>{
+ const {atomicWrite}=require('../atomic-write'),dir=tmp(),file=path.join(dir,'state.json');
+ try{
+  fs.writeFileSync(file,'old');fs.writeFileSync(file+'.tmp','unrelated');
+  const io=Object.create(fs);io.renameSync=()=>{throw Error('simulated publish failure');};
+  assert.throws(()=>atomicWrite(file,'new',{io}),/publish failure/);
+  assert.equal(fs.readFileSync(file,'utf8'),'old');
+  assert.deepEqual(fs.readdirSync(dir).sort(),['state.json','state.json.tmp']);
+  atomicWrite(file,'new');assert.equal(fs.readFileSync(file,'utf8'),'new');
+  const link=path.join(dir,'linked.json');fs.linkSync(file,link);
+  assert.throws(()=>atomicWrite(file,'bad'),/unsafe-state-destination/);
+  assert.equal(fs.readFileSync(link,'utf8'),'new');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

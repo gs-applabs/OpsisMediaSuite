@@ -146,6 +146,13 @@
     return chs.length === 1 ? [chs[0], chs[0]] : [chs[0], chs[1]];
   }
 
+  // Mono duplication intentionally shares one array; apply a gain only once
+  // per channel array. Converter-produced arrays are either identical or disjoint.
+  function applyGainDb(chs, db) {
+    const gain=Math.pow(10,db/20);
+    for(const ch of new Set(chs))for(let i=0;i<ch.length;i++)ch[i]*=gain;
+  }
+
   /* ---------- ffmpeg arguments ---------- */
 
   function codecArgs(o) {
@@ -200,15 +207,23 @@
 
   // run(item, { report(pct 0..1), cancelled() }) -> Promise<any>. Resolves to [{ item, status: done|error|cancelled, result?, error? }].
   function createQueue(items, run, onProgress) {
-    let cancelled = false;
-    const results = [];
-    const notify = (i, pct) => { if (onProgress) onProgress({ index: i, itemPct: pct, overall: items.length ? (i + pct) / items.length : 1 }); };
+    items=Array.from(items);
+    let cancelled=false,started=false,highest=0;
+    const results=[];
+    const notify=(i,pct)=>{
+      if(!Number.isFinite(pct))return;
+      const overall=items.length?(i+pct)/items.length:1;
+      if(overall<highest)return;
+      highest=overall;
+      if(onProgress)onProgress({index:i,itemPct:pct,overall});
+    };
     return {
       cancel() { cancelled = true; },
       get isCancelled() { return cancelled; },
       async start() {
+        if(started)throw Error('queue-already-started');started=true;
         for (let i = 0; i < items.length; i++) {
-          if (cancelled) { results.push({ item: items[i], status: 'cancelled' }); continue; }
+          if (cancelled) { results.push({ item: items[i], status: 'cancelled' });notify(i,1);continue; }
           notify(i, 0);
           try {
             const result = await run(items[i], { report: (p) => notify(i, Math.max(0, Math.min(1, p))), cancelled: () => cancelled });
@@ -221,5 +236,5 @@
     };
   }
 
-  return { RATES, FORMATS, DEFAULTS, sanitizeSuffix, validateOptions, buildOutputPath, targetGainDb, peakSafeGainDb, mapChannels, writeWav, readWav, buildFfmpegArgs, parseFfmpegTime, parseProbe, createQueue };
+  return { RATES, FORMATS, DEFAULTS, sanitizeSuffix, validateOptions, buildOutputPath, targetGainDb, peakSafeGainDb, mapChannels, applyGainDb, writeWav, readWav, buildFfmpegArgs, parseFfmpegTime, parseProbe, createQueue };
 });

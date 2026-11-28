@@ -1,0 +1,67 @@
+name: K-Lite Mega isolated codec CI
+on:
+  push:
+    branches: ['feat/photo-tools-fxsound-coexistence']
+    paths: ['.github/workflows/codec-pack-ci.yml','codec-inventory.js','native-player/DirectShowHost.cs','native-player/NativeCommands.cs']
+  pull_request:
+    paths: ['.github/workflows/codec-pack-ci.yml','codec-inventory.js','native-player/**','renderer/videoplayer.js']
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  klite:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check codec inventory syntax before installation
+        run: node --check codec-inventory.js
+      - name: Install K-Lite Mega and FFmpeg on disposable VM only
+        shell: pwsh
+        run: |
+          choco install k-litecodecpackmega --version=20.1.0 --no-progress -y
+          if ($LASTEXITCODE) { throw 'K-Lite install failed' }
+          ./.github/scripts/ensure-ffmpeg.ps1
+      - name: Record actual registry inventory
+        shell: pwsh
+        run: |
+          # Independent evidence: Chocolatey install succeeded, and the actual
+          # machine x64 LAV registrations must exist. Product label is advisory.
+          choco list --exact k-litecodecpackmega | Tee-Object installed-pack.txt
+          node -e "require('./codec-inventory').inventory().then(r=>{console.log(JSON.stringify(r,null,2));const roles=new Set(r.lav.filter(x=>x.hive==='LocalMachine'&&x.machine==='x64'&&x.status==='identity-review-required').map(x=>x.role));if(r.status!=='ok'||!['source','video','audio'].every(x=>roles.has(x)))process.exitCode=1;})" | Tee-Object codec-inventory.json
+          if ($LASTEXITCODE) { throw 'LAV registry inventory failed' }
+          Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'K-Lite' -or $_.PSChildName -match 'K-Lite|KLCodec' } | Select-Object DisplayName,DisplayVersion,PSChildName | ConvertTo-Json | Set-Content pack-registry.json
+      - name: Build CI-only native codec test host
+        run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -p:CodecTest=true -o native-player/publish-ci
+      - name: Generate H.264/AAC fixture and run explicit LAV graph
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=5 -f lavfi -i sine=frequency=440:duration=5 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest fixture.mkv
+          if ($LASTEXITCODE) { throw 'fixture failed' }
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish-ci/Opsis.NativePlayer.exe) -ArgumentList @('--lav-selftest', ('"' + (Resolve-Path fixture.mkv).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput lav-result.json -RedirectStandardError lav-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'LAV timeout' }
+          Get-Content lav-result.json,lav-error.log
+          if ($p.ExitCode -ne 0) { throw "LAV test failed: $($p.ExitCode)" }
+      - name: Validate LAV graph evidence before publishing
+        shell: pwsh
+        run: |
+          if (!(Test-Path lav-result.json) -or !(Get-Item lav-result.json).Length) { throw 'missing LAV evidence' }
+          Get-FileHash fixture.mkv -Algorithm SHA256 | Format-List
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: klite-codec-evidence
+          path: |
+            codec-inventory.json
+            installed-pack.txt
+            pack-registry.json
+            lav-result.json
+            lav-error.log

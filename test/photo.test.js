@@ -105,3 +105,170 @@ test('preview size keeps the aspect ratio and never upscales; histogram counts e
   assert.equal(P.previewSize(800, 600, 1500).scale, 1);
   const h = P.histogram(flat(10, 5, 5).data); assert.equal(h[10], 25); assert.equal(h.reduce((a, b) => a + b, 0), 25);
 });
+
+test('creative photo controls preserve alpha, source and neutral output', () => {
+  const P = require('../renderer/photolib.js');
+  const img = {data: new Uint8ClampedArray([80,100,120,99, 120,80,40,255]), width:2,height:1};
+  const source = Array.from(img.data);
+  assert.deepEqual(Array.from(P.process(img,P.defaults()).data),source);
+  const out=P.process(img,{vibrance:75,sepia:50});
+  assert.notDeepEqual(Array.from(out.data),source);
+  assert.equal(out.data[3],99); assert.equal(out.data[7],255);
+  assert.deepEqual(Array.from(img.data),source);
+  const uniform={data:new Uint8ClampedArray(5*5*4).fill(200),width:5,height:5};
+  const v=P.process(uniform,{vignette:100});
+  assert.ok(v.data[0]<v.data[(2*5+2)*4]); assert.equal(v.data[3],200);
+});
+
+test('parameter history is bounded, independent and clears redo after new edits',()=>{
+ const h=P.createHistory({x:0},3);h.push({x:1});h.push({x:2});h.push({x:3});
+ assert.equal(h.undo().x,2);assert.equal(h.undo().x,1);assert.equal(h.canUndo(),false);
+ const v=h.current();v.x=99;assert.equal(h.current().x,1);h.push({x:4});assert.equal(h.canRedo(),false);
+});
+test('auto enhance preserves geometry and creative adjustments',()=>{
+ const p=P.applyAuto(flat(8,8,90),{...P.defaults(),rotate:90,flipH:true,vignette:70});
+ assert.equal(p.rotate,90);assert.equal(p.flipH,true);assert.equal(p.vignette,70);
+});
+
+test('resize output preserves aspect ratio, never upscales and validates budget',()=>{
+ assert.deepEqual(P.resizeOutput(4000,3000,2048),{width:2048,height:1536});
+ assert.deepEqual(P.resizeOutput(100,50,2048),{width:100,height:50});
+ assert.equal(P.exportBudget(8000,10000,{},0),false);
+ assert.equal(P.exportBudget(4000,3000,{},2048),true);
+ assert.equal(P.exportBudget(0,10,{},0),false);
+});
+
+test('RGB channels and clarity preserve alpha and source data',()=>{
+ const img={width:3,height:1,data:new Uint8ClampedArray([80,80,80,90,120,120,120,100,80,80,80,110])};
+ const c=P.process(img,{...P.defaults(),red:100,blue:-100});
+ assert.equal(c.data[0],120);assert.equal(c.data[2],40);assert.equal(c.data[3],90);assert.equal(img.data[0],80);
+ const crisp=P.process(img,{...P.defaults(),clarity:100});
+ assert.ok(crisp.data[4]>120);assert.equal(crisp.data[7],100);
+ assert.deepEqual(P.process(img,P.defaults()).data,img.data);
+});
+
+test('photo looks retain geometry and blend from neutral',()=>{const p={...P.defaults(),rotate:90,flipH:true,crop:{x:.1,y:.1,w:.5,h:.5}};const q=P.applyLook(p,'monochrome',50);assert.equal(q.saturation,-50);assert.equal(q.rotate,90);assert.equal(q.flipH,true);assert.deepEqual(q.crop,p.crop);assert.equal(p.saturation,0);assert.equal(P.applyLook(q,'portrait',0).contrast,0);});
+
+test('RGB histogram ignores transparent pixels and crop anchors stay inside original',()=>{const r=P.colorHistogram(new Uint8ClampedArray([0,0,0,255,255,0,0,255,0,0,255,0]));assert.equal(r.total,2);assert.equal(r.shadow,1);assert.equal(r.highlight,1);assert.equal(r.blue[255],0);const c=P.aspectCrop(400,200,1,0,100,50);assert.deepEqual(c,{x:.5,y:0,w:.5,h:1});assert.equal(P.aspectCrop(400,200,1,0,0,50).x,0);});
+
+test('crop output size always agrees with actual pixels on odd dimensions and near edges',()=>{for(const width of [3,5,9,13])for(const height of [3,7,11])for(const rotate of [0,90,180,270]){const data=new Uint8ClampedArray(width*height*4),params={...P.defaults(),rotate,crop:{x:.5,y:.5,w:.5,h:.5}};const out=P.geometry({width,height,data},params),size=P.outputSize(width,height,params);assert.equal(out.width,size.width);assert.equal(out.height,size.height);assert.equal(out.data.length,size.width*size.height*4);}});
+
+test('image header preflight catches oversized PNG and reads GIF/JPEG dimensions',()=>{const png=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(png);png.write('IHDR',12);png.writeUInt32BE(20000,16);png.writeUInt32BE(20000,20);assert.deepEqual(P.headerSize(png),{width:20000,height:20000});assert.equal(P.validImageSize(20000,20000),false);const gif=Buffer.from('47494638396140003000','hex');assert.deepEqual(P.headerSize(gif),{width:64,height:48});const jpg=Buffer.from('ffd8ffc0000b080030004001011100','hex');assert.deepEqual(P.headerSize(jpg),{width:64,height:48});assert.equal(P.headerSize(Buffer.alloc(4)),null);});
+
+
+test('history limits are clamped and export rejects extreme single-axis images',()=>{
+ const h=P.createHistory({x:0},0);h.push({x:1});assert.equal(h.canUndo(),false);assert.deepEqual(h.current(),{x:1});
+ assert.equal(P.exportBudget(40000,10,P.defaults(),1024),false);
+});
+
+
+test('export readback crop preserves exact full-resolution pixels and geometry',()=>{
+ const width=13,height=9,data=Uint8ClampedArray.from({length:width*height*4},(_,i)=>i%256);
+ for(const rotate of [0,90,180,270]){
+  const params={...P.defaults(),crop:{x:.37,y:.21,w:.5,h:.6},rotate,flipH:true,exposure:.3,denoise:20,sharpen:30,clarity:10};
+  const plan=P.exportReadPlan(width,height,params),cropped=new Uint8ClampedArray(plan.width*plan.height*4);
+  for(let y=0;y<plan.height;y++)cropped.set(data.subarray(((plan.y+y)*width+plan.x)*4,((plan.y+y)*width+plan.x+plan.width)*4),y*plan.width*4);
+  assert.deepEqual(P.process({width:plan.width,height:plan.height,data:cropped},plan.params),P.process({width,height,data},params));
+ }
+ assert.equal(P.exportBudget(8000,10000,{...P.defaults(),crop:{x:0,y:0,w:.2,h:.2}},2048),true);
+ assert.equal(P.exportBudget(8000,10000,P.defaults(),0),false);
+});
+
+test('recovered capture date helper writes a single minimal EXIF date in JPEG and PNG',()=>{
+ const assert=require('node:assert/strict'),M=require('../photo-metadata');
+ const date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const png=Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000049454e44ae426082','hex');
+ for(const [format,bytes] of [['jpeg',jpeg],['png',png]]){
+  assert.equal(M.captureDate(bytes),null);
+  const out=M.attachCaptureDate(bytes,format,date);
+  assert.notEqual(out,bytes);assert.equal(M.captureDate(out),date);
+  assert.equal(M.attachCaptureDate(out,format,date),out);
+  assert.equal(M.attachCaptureDate(bytes,format,'bad'),bytes);
+ }
+ assert.equal(M.captureDate(Buffer.alloc(2)),null);
+ assert.equal(M.captureDate(null),null);
+});
+
+test('preview-only zoom clamps pan and never changes image dimensions',()=>{
+ assert.deepEqual(P.previewViewport(2,500,-500,300,200,400,300),{scale:2,x:100,y:-50});
+ assert.deepEqual(P.previewViewport(1,500,-500,300,200,400,300),{scale:1,x:0,y:0});
+ assert.deepEqual(P.previewViewport(99,0,0,300,200,400,300),{scale:3,x:0,y:0});
+});
+
+test('free crop uses bounded source-relative dimensions and the existing export path',()=>{
+ assert.deepEqual(P.freeCrop(50,25,100,0),{x:.5,y:0,w:.5,h:.25});
+ assert.equal(P.freeCrop(100,100),null);
+ assert.deepEqual(P.freeCrop(0,200,100,50),{x:.99,y:0,w:.01,h:1});
+ const crop=P.freeCrop(50,50,100,100),plan=P.exportReadPlan(800,600,{crop,rotate:90});
+ assert.equal(plan.x,400);assert.equal(plan.y,300);assert.equal(plan.width,400);assert.equal(plan.height,300);
+ assert.deepEqual(P.outputSize(800,600,{crop,rotate:90}),{width:300,height:400});
+});
+
+
+test('photo capture date reads bounded WebP EXIF and copies only date to JPEG/PNG',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const tagged=M.attachCaptureDate(jpeg,'jpeg',date),tiff=tagged.subarray(12,tagged.length-2);
+ function webp(payload){
+  const riff=Buffer.alloc(12),chunk=Buffer.alloc(8+payload.length+(payload.length&1));
+  riff.write('RIFF');riff.writeUInt32LE(4+chunk.length,4);riff.write('WEBP',8);
+  chunk.write('EXIF');chunk.writeUInt32LE(payload.length,4);payload.copy(chunk,8);
+  return Buffer.concat([riff,chunk]);
+ }
+ for(const payload of [tiff,Buffer.concat([Buffer.from('Exif\0\0'),tiff])]){
+  const source=webp(payload);
+  assert.equal(M.captureDate(source),date);
+  assert.equal(M.captureDate(source.subarray(0,source.length-2)),null);
+  const target=M.attachCaptureDate(jpeg,'jpeg',M.captureDate(source));
+  assert.equal(M.captureDate(target),date);
+  assert.equal(M.attachCaptureDate(source,'webp',date),source);
+  const invalid=Buffer.from(source);invalid.writeUInt32LE(0xffffffff,16);
+  assert.equal(M.captureDate(invalid),null);
+ }
+});
+
+
+test('picked WebP date after large pixel payload is located by bounded chunk jumps',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const tiff=M.attachCaptureDate(jpeg,'jpeg',date).subarray(12,-2);
+ const image=Buffer.alloc(8+2*1024*1024);image.write('VP8 ');image.writeUInt32LE(image.length-8,4);
+ const ex=Buffer.alloc(8+tiff.length);ex.write('EXIF');ex.writeUInt32LE(tiff.length,4);tiff.copy(ex,8);
+ const riff=Buffer.alloc(12);riff.write('RIFF');riff.writeUInt32LE(4+image.length+ex.length,4);riff.write('WEBP',8);
+ const source=Buffer.concat([riff,image,ex]);
+ assert.equal(M.captureDate(source),date);
+ assert.equal(M.captureDate(source.subarray(0,1024*1024)),null);
+ const corrupt=Buffer.from(source);corrupt.writeUInt32LE(0xffffffff,16);assert.equal(M.captureDate(corrupt),null);
+});
+
+
+test('static WebP date export preserves compressed pixels and validates RIFF layout',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30';
+ function chunk(name,data){const b=Buffer.alloc(8+data.length+(data.length&1));b.write(name);b.writeUInt32LE(data.length,4);data.copy(b,8);return b;}
+ function riff(...chunks){const h=Buffer.alloc(12);h.write('RIFF');h.writeUInt32LE(4+chunks.reduce((n,x)=>n+x.length,0),4);h.write('WEBP',8);return Buffer.concat([h,...chunks]);}
+ const lossy=Buffer.from([0,0,0,0x9d,1,0x2a,32,0,24,0]),lossless=Buffer.alloc(5);lossless[0]=0x2f;lossless.writeUInt32LE(31|(23<<14)|0x10000000,1);
+ for(const [type,payload,alpha] of [['VP8 ',lossy,false],['VP8L',lossless,true]]){
+  const pixels=chunk(type,payload),source=riff(pixels),out=M.attachCaptureDate(source,'webp',date);
+  assert.notEqual(out,source);assert.equal(M.captureDate(out),date);assert.equal(out.readUInt32LE(4),out.length-8);
+  assert.equal(out[20],alpha?0x18:8);assert.equal(out.readUIntLE(24,3),31);assert.equal(out.readUIntLE(27,3),23);
+  assert.deepEqual(out.subarray(30,30+pixels.length),pixels);assert.equal(M.attachCaptureDate(out,'webp',date),out);
+  const broken=Buffer.from(source);broken.writeUInt32LE(999,16);assert.equal(M.attachCaptureDate(broken,'webp',date),broken);
+  const foreign=riff(pixels,chunk('XMP ',Buffer.from('private')));assert.equal(M.attachCaptureDate(foreign,'webp',date),foreign);
+ }
+ const ext=Buffer.alloc(10);ext[0]=0x10;ext.writeUIntLE(31,4,3);ext.writeUIntLE(23,7,3);
+ const alpha=chunk('ALPH',Buffer.from([0,1])),pixels=chunk('VP8 ',lossy),source=riff(chunk('VP8X',ext),alpha,pixels);
+ const out=M.attachCaptureDate(source,'webp',date);assert.equal(M.captureDate(out),date);assert.equal(out[20],0x18);assert.deepEqual(out.subarray(30,30+alpha.length+pixels.length),Buffer.concat([alpha,pixels]));
+});
+
+
+test('static WebP date export retains the bounded encoder ICC profile and its feature flag',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30';
+ function chunk(name,data){const b=Buffer.alloc(8+data.length+(data.length&1));b.write(name);b.writeUInt32LE(data.length,4);data.copy(b,8);return b;}
+ function riff(...chunks){const h=Buffer.alloc(12);h.write('RIFF');h.writeUInt32LE(4+chunks.reduce((n,x)=>n+x.length,0),4);h.write('WEBP',8);return Buffer.concat([h,...chunks]);}
+ const ext=Buffer.alloc(10);ext[0]=0x30;ext.writeUIntLE(3,4,3);ext.writeUIntLE(2,7,3);
+ const icc=Buffer.alloc(128);icc.writeUInt32BE(128);icc.write('acsp',36);
+ const pixels=chunk('VP8 ',Buffer.from([0,0,0,0x9d,1,0x2a,4,0,3,0])),alpha=chunk('ALPH',Buffer.from([0,1]));
+ const source=riff(chunk('VP8X',ext),chunk('ICCP',icc),alpha,pixels),out=M.attachCaptureDate(source,'webp',date);
+ assert.notEqual(out,source);assert.equal(out[20],0x38);assert.equal(M.captureDate(out),date);
+ assert.deepEqual(out.subarray(30,source.length),source.subarray(30));
+ const bad=Buffer.from(source);bad.write('oops',30+8+36);assert.equal(M.attachCaptureDate(bad,'webp',date),bad);
+ const mismatch=Buffer.from(source);mismatch[20]=0x10;assert.equal(M.attachCaptureDate(mismatch,'webp',date),mismatch);
+});

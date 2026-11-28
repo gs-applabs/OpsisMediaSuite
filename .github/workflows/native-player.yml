@@ -1,0 +1,143 @@
+name: Native playback host CI
+on:
+  push:
+    branches: [master]
+    paths: ['native-player/**', 'native-host.js', 'test/native-pipe-fixture.js', '.github/scripts/ensure-ffmpeg.ps1', '.github/workflows/native-player.yml']
+  pull_request:
+    paths: ['native-player/**', 'native-host.js', 'test/native-pipe-fixture.js', '.github/scripts/ensure-ffmpeg.ps1', '.github/workflows/native-player.yml']
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore and audit native dependencies
+        shell: pwsh
+        run: |
+          dotnet restore native-player/Opsis.NativePlayer.csproj -r win-x64
+          if ($LASTEXITCODE) { throw 'restore failed' }
+          dotnet list native-player/Opsis.NativePlayer.csproj package --vulnerable --include-transitive 2>&1 | Tee-Object audit.txt
+          if ($LASTEXITCODE -or (Select-String -Path audit.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet)) { throw 'native dependency audit failed' }
+      - name: Build native host
+        run: dotnet publish native-player/Opsis.NativePlayer.csproj -c Release -r win-x64 --self-contained true -o native-player/publish
+      - name: Read-only Core Audio render endpoint inventory
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--audio-endpoints') -PassThru -RedirectStandardOutput audio-endpoint-result.json -RedirectStandardError audio-endpoint-error.log
+          if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'audio inventory timeout' }
+          Get-Content audio-endpoint-result.json,audio-endpoint-error.log
+          $r = Get-Content audio-endpoint-result.json -Raw | ConvertFrom-Json
+          if ($p.ExitCode -ne 0 -or -not $r.ok -or $r.rolesKnown.Count -ne 3 -or $r.rows.Count -gt 64) { throw 'audio endpoint inventory failed' }
+      - name: Embedded Win32 viewport attachment and bounds self-test
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--embed-selftest') -PassThru -RedirectStandardOutput embed-result.json -RedirectStandardError embed-error.log
+          if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'viewport timeout' }
+          Get-Content embed-result.json,embed-error.log
+          if ($p.ExitCode -ne 0) { throw "viewport test failed: $($p.ExitCode)" }
+      - name: Generate real multitrack MKV
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          Set-Content -Encoding utf8 -Path fixture.srt -Value @('1','00:00:00,200 --> 00:00:04,000','Καλημέρα')
+          ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=5 -f lavfi -i sine=frequency=440:duration=5 -f lavfi -i sine=frequency=880:duration=5 -i fixture.srt -map 0:v -map 1:a -map 2:a -map 3:s -c:v libx264 -pix_fmt yuv420p -c:a aac -c:s srt fixture.mkv
+          if ($LASTEXITCODE) { throw 'fixture failed' }
+      - name: Real LibVLC playback and track selection
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--selftest', ('"' + (Resolve-Path fixture.mkv).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput native-result.json -RedirectStandardError native-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'native timeout' }
+          Get-Content native-result.json,native-error.log
+          if ($p.ExitCode -ne 0) { throw "native test failed: $($p.ExitCode)" }
+      - name: Explicit software decoding fallback
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--selftest', ('"' + (Resolve-Path fixture.mkv).Path + '"'), '--decode-mode', 'none') -PassThru -NoNewWindow -RedirectStandardOutput software-result.json -RedirectStandardError software-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'software decoding timeout' }
+          Get-Content software-result.json,software-error.log
+          if ($p.ExitCode -ne 0) { throw "software decode failed: $($p.ExitCode)" }
+      - name: Real LibVLC command parsing and seek
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--selftest-control', ('"' + (Resolve-Path fixture.mkv).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput control-result.json -RedirectStandardError control-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'native command timeout' }
+          Get-Content control-result.json,control-error.log
+          if ($p.ExitCode -ne 0) { throw "native command test failed: $($p.ExitCode)" }
+      - name: Real redirected native pipe commands and acknowledgments
+        run: node test/native-pipe-fixture.js
+      - name: Real LibVLC external synchronized SRT
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -i fixture.mkv -map 0:v -map 0:a:0 -c copy no-sub.mkv
+          if ($LASTEXITCODE) { throw 'no-sub fixture failed' }
+          Set-Content -Encoding utf8 -Path synced.srt -Value @('1','00:00:01,200 --> 00:00:04,000','Συγχρονισμένος υπότιτλος')
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--selftest-sub', ('"' + (Resolve-Path no-sub.mkv).Path + '"'), ('"' + (Resolve-Path synced.srt).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput external-sub-result.json -RedirectStandardError external-sub-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'external subtitle timeout' }
+          Get-Content external-sub-result.json,external-sub-error.log
+          if ($p.ExitCode -ne 0) { throw "external subtitle test failed: $($p.ExitCode)" }
+      - name: Explicit DirectShow graph test (Windows built-in filters)
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i sine=frequency=440:duration=3 -c:a pcm_s16le fixture.wav
+          if ($LASTEXITCODE) { throw 'WAV fixture failed' }
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--directshow-selftest', ('"' + (Resolve-Path fixture.wav).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput directshow-result.json -RedirectStandardError directshow-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'DirectShow timeout' }
+          Get-Content directshow-result.json,directshow-error.log
+          if ($p.ExitCode -ne 0) { throw "DirectShow test failed: $($p.ExitCode)" }
+      - name: DirectShow real redirected command pipe
+        env:
+          OPSIS_PIPE_ENGINE: directshow
+        run: node test/native-pipe-fixture.js
+      - name: Media Foundation real PCM and NV12 decoding
+        shell: pwsh
+        run: |
+          ffmpeg -hide_banner -v error -y -f lavfi -i testsrc2=size=320x180:rate=25:duration=3 -f lavfi -i sine=frequency=440:duration=3 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart -shortest mf-fixture.mp4
+          if ($LASTEXITCODE) { throw 'MF fixture failed' }
+          foreach ($case in @(@{mode='--mf-audio-selftest';file='fixture.wav';name='mf-wav'},@{mode='--mf-selftest';file='mf-fixture.mp4';name='mf-mp4'})) {
+            $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @($case.mode, ('"' + (Resolve-Path $case.file).Path + '"')) -PassThru -NoNewWindow -RedirectStandardOutput ($case.name+'-result.json') -RedirectStandardError ($case.name+'-error.log')
+            if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'MF timeout' }
+            Get-Content ($case.name+'-result.json'),($case.name+'-error.log')
+            if ($p.ExitCode -ne 0) { throw "MF decode failed: $($p.ExitCode)" }
+          }
+      - name: Experimental Media Foundation playback and transport
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Resolve-Path native-player/publish/Opsis.NativePlayer.exe) -ArgumentList @('--mf-play-selftest', ('"' + (Resolve-Path mf-fixture.mp4).Path + '"')) -PassThru -RedirectStandardOutput mf-play-result.json -RedirectStandardError mf-play-error.log
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'MF playback timeout' }
+          Get-Content mf-play-result.json,mf-play-error.log
+          if ($p.ExitCode -ne 0) { throw "MF playback test failed: $($p.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-host-test-evidence
+          path: |
+            audit.txt
+            audio-endpoint-result.json
+            audio-endpoint-error.log
+            embed-result.json
+            embed-error.log
+            native-result.json
+            software-result.json
+            software-error.log
+            native-error.log
+            control-result.json
+            pipe-result.json
+            directshow-pipe-result.json
+            control-error.log
+            external-sub-result.json
+            external-sub-error.log
+            directshow-result.json
+            directshow-error.log
+            mf-*-result.json
+            mf-*-error.log

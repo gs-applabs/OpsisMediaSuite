@@ -1,0 +1,27 @@
+name: OPSIS Audio DSP CI
+on:
+  pull_request:
+    paths: ['native-dsp/**', '.github/workflows/native-dsp.yml']
+  push:
+    branches: [master]
+    paths: ['native-dsp/**', '.github/workflows/native-dsp.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  dsp:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: cmake -S native-dsp -B native-dsp-build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build native-dsp-build --config Release
+      - run: ctest --test-dir native-dsp-build -C Release --verbose

@@ -1,0 +1,108 @@
+'use strict';
+
+const WaveframeBackup = (() => {
+  const keys = [
+    'accentColor', 'automaticFlyout', 'fxSoundMode', 'metadata.inferDisplay', 'video.nativeDecoder', 'video.remainingTime', 'video.subSaveBeside', 'bg', 'btnStyle', 'conv.opts', 'destFolder', 'destMode', 'hueMode', 'hueValue',
+    'lang', 'lastDarkSkin', 'layout', 'lockFlyout', 'notifyUpdates', 'playlist', 'playlistHeight', 'preferManagedFfmpeg', 'skin',
+    'taskbarWidget', 'taskbarWidgetCoverBackground', 'taskbarWidgetMinimizedOnly', 'taskbarWidgetOffset',
+    'taskbarWidgetPosition', 'trackNotifications', 'tutorialSeen', 'userPresets', 'vid.opts', 'vidDestFolder',
+    'vidDestMode', 'video.bookmarks', 'video.playlists', 'video.queue', 'video.recent', 'video.repeat',
+    'video.resume', 'video.speed', 'video.subs', 'visMode',
+  ].map((key) => 'waveframe.' + key);
+  const allowed = new Set(keys);
+  const outputFolders = new Set(['waveframe.destFolder', 'waveframe.vidDestFolder']);
+  const maxBytes = 8 * 1024 * 1024;
+  // Match actual persisted value encodings, not display labels.
+  const literalEnums={
+    'waveframe.fxSoundMode':['native','external','auto'],
+    'waveframe.automaticFlyout':['0','1'],
+    'waveframe.metadata.inferDisplay':['true','false'],
+    'waveframe.destMode':['default','source','custom'],
+    'waveframe.vidDestMode':['default','source','custom'],
+    'waveframe.notifyUpdates':['0','1'],
+    'waveframe.trackNotifications':['0','1'],
+  };
+
+  const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+  const strings = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+  // Use the same validation for startup/rendering and imported settings.
+  function validPreset(item){
+    if(!isRecord(item)||typeof item.name!=='string'||!item.name.trim()||item.name.length>512||!Array.isArray(item.bands)||item.bands.length!==10||!item.bands.every(x=>Number.isFinite(x)&&Math.abs(x)<=24))return false;
+    for(const k of ['bassBoost','presence','balance','reverbAmount','exciterAmount','volumeBoost','surround'])if(item[k]!==undefined&&!Number.isFinite(item[k]))return false;
+    for(const k of ['compressor','reverb','exciter'])if(item[k]!==undefined&&typeof item[k]!=='boolean')return false;
+    return item.compressorMode===undefined||typeof item.compressorMode==='string';
+  }
+  const schemas = {
+    'waveframe.playlist': (list) => Array.isArray(list) && list.every((item) =>
+      isRecord(item) && typeof item.name === 'string' &&
+      (typeof item.path === 'string' || typeof item.url === 'string')),
+    'waveframe.userPresets': list => Array.isArray(list)&&list.every(validPreset),
+    'waveframe.video.bookmarks': (list) => Array.isArray(list) && list.every((item) =>
+      isRecord(item) && typeof item.path === 'string' && Number.isFinite(item.ms)),
+    'waveframe.video.playlists': (item) => isRecord(item) && Object.values(item).every(strings),
+    'waveframe.video.recent': strings,
+    'waveframe.video.queue': strings,
+    'waveframe.video.resume': (item) => isRecord(item) && Object.values(item).every(v=>Number.isFinite(v)&&v>=0),
+    'waveframe.video.subs': (item) => isRecord(item) && (item.languages == null || strings(item.languages)),
+    'waveframe.video.speed': v => Number.isFinite(v)&&v>=0.25&&v<=4,
+    'waveframe.video.nativeDecoder': v=>['auto','d3d11va','dxva2','none'].includes(v),
+    'waveframe.video.repeat': v=>['off','list','file','shuffle'].includes(v),
+    'waveframe.video.remainingTime': v=>typeof v==='boolean',
+    'waveframe.video.subSaveBeside': v=>typeof v==='boolean',
+    'waveframe.conv.opts': isRecord,
+    'waveframe.vid.opts': isRecord,
+  };
+
+  function validStoredValue(key, value) {
+    if (typeof value !== 'string' || value.length >= 5 * 1024 * 1024) return false;
+    if (outputFolders.has(key) && value && (value.length > 32767 || !/^[a-z]:[\\/]/i.test(value) || /[\u0000-\u001f\u007f:]/.test(value.slice(2)))) return false;
+    if(Object.hasOwn(literalEnums,key)&&!literalEnums[key].includes(value))return false;
+    if (!Object.hasOwn(schemas, key)) return true;
+    try { return schemas[key](JSON.parse(value)); } catch { return false; }
+  }
+
+  function collect(storage) {
+    return Object.fromEntries(keys.map((key) => [key, storage.getItem(key)]).filter(([key, value]) => value !== null && validStoredValue(key,value)));
+  }
+
+  function sanitize(data) {
+    if (!isRecord(data)) return null;
+    const entries = Object.entries(data).filter(([key]) => allowed.has(key));
+    if (entries.some(([key, value]) => !validStoredValue(key, value))) return null;
+    const clean = Object.fromEntries(entries);
+    if (new TextEncoder().encode(JSON.stringify(clean,null,2)).byteLength > maxBytes) return null;
+    return clean;
+  }
+  function restore(storage, data) {
+    const clean=sanitize(data);if(!clean)return false;
+    const entries=Object.entries(clean);
+    const applied = [];
+    try {
+      for (const [key, value] of entries) {
+        const original = storage.getItem(key);
+        if(original===value)continue;
+        storage.setItem(key, value);
+        applied.push([key, original]);
+      }
+      return true;
+    } catch {
+      for (const [key, value] of applied.reverse()) {
+        try { if (value === null) storage.removeItem(key); else storage.setItem(key, value); } catch { /* storage may have become unavailable */ }
+      }
+      return false;
+    }
+  }
+
+  // A successful import is authoritative until this renderer reloads.
+  // Pending UI/timer/unload saves must not overwrite restored keys.
+  const reloadKeys=new Set();
+  function restoreForReload(storage,data){
+    const clean=sanitize(data);if(!clean||!restore(storage,clean))return false;
+    for(const key of Object.keys(clean))reloadKeys.add(key);
+    return true;
+  }
+  const canPersist=key=>!reloadKeys.has(key);
+  return { collect, restore, restoreForReload, canPersist, sanitize, validPreset, keys:Object.freeze([...keys]) };
+})();
+
+if (typeof module !== 'undefined') module.exports = WaveframeBackup;

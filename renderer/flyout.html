@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
+<title>Opsis Media Suite</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="flyout.css">
+</head>
+<body class="media-flyout">
+<main class="flyout-card">
+<header><strong>Opsis Media Suite</strong><button id="dismiss" type="button" aria-label="Close / Κλείσιμο">×</button></header>
+<div id="source" class="flyout-source"></div>
+<div id="title" class="flyout-title" role="status" aria-live="polite"></div>
+<div class="flyout-progress"><output id="elapsed">0:00</output><input id="seek" type="range" min="0" max="1000" value="0" disabled aria-label="Seek"><output id="duration">0:00</output></div>
+<div class="flyout-controls">
+<button id="prev" type="button" aria-label="Previous">⏮</button>
+<button id="playpause" type="button" aria-label="Play">▶</button>
+<button id="next" type="button" aria-label="Next">⏭</button>
+<button id="stop" type="button" aria-label="Stop">■</button>
+</div>
+<div class="flyout-volume"><button id="mute" type="button" aria-label="Mute" disabled>🔊</button><input id="volume" type="range" min="0" max="100" value="80" disabled aria-label="Volume"><output id="volume-level">80%</output></div>
+</main>
+<script src="flyout.js"></script>
+</body>
+</html>

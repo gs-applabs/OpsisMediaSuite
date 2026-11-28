@@ -1,2 +1,6 @@
 # Fake credentials used as test fixtures in a test file that was later deleted (MPP importer, 2026-11-10); not real secrets.
 963bc44eca4ba790b9984111d2e0a23c9390f4fa:test/mpp-import.test.js:generic-api-key:12
+
+# Public Inno Setup release asset SHA-256, verified against the pinned installer workflow. Exact historical documentation findings only.
+d17a2a6aeb6edd7d36c3d8ae0bab1537b4b4ccee:docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md:generic-api-key:35
+d17a2a6aeb6edd7d36c3d8ae0bab1537b4b4ccee:docs/START-HERE-HANDOFF-EL.md:generic-api-key:132
