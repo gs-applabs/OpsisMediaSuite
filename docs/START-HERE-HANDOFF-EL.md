@@ -95,3 +95,9 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - OV-12 EXTEND: existing bounded date reader accepts complete WebP RIFF EXIF chunk inside first MiB (bare TIFF or Exif prefix), reuses existing opt-in token and JPEG/PNG export, updates guide. WebP output, EXIF beyond prefix and drag/drop date remain open. No GPS copy, new IPC or parallel pipeline. Synthetic fixtures, not a real decoder certification.
 - Base f0f2b109: seven successful workflows; General and Inno pending at inspection. No new tests executed in connector; new CI required. Static tree inventory complete (nontruncated); individual source review targeted, not exhaustive. All R6 01–16 remain active and certification/release gates unchanged. No merge/release.
 
+
+### R6-04.3 / 02.4 — συμπλήρωση EXIF και lifecycle ανοίγματος φωτογραφίας (base 8ea811a8)
+- OV-12 EXTEND: existing WebP date parser skips compressed chunks by length with 4096-header / 1 MiB EXIF bounds; picker already transfers the bounded full image, now uses a zero-copy Buffer view to find late EXIF. JPEG/PNG prefix bounds unchanged. Dropped browser File shares existing date-only parser and token store through a trusted, max-1-MiB byte-only IPC; no disk grant or caller path. No new editor, no GPS copying, WebP output and late drop EXIF still open.
+- FIX: prevent overlapping photo picker dialogs, block photo close/save/drop while picker is pending, stop drop bubbling into the global music handler; release guards on cancel/error. Existing decoder/export/history unchanged.
+- Added parser and IPC regression fixtures for late EXIF, malformed length, bounded view, denied sender/path, valid token, exclusive export and original preservation. Synthetic fixtures, not real decoder/UI certification. Base f0f2b109 8/9 PASS (installer in progress), base 8ea811a8 2/9 PASS at first inspection, seven in progress. New CI pending. All R6 groups remain tracked; no merge/release.
+

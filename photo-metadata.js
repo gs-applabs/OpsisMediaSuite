@@ -17,16 +17,18 @@ function findExif(bytes) {
       p += 12 + length;
     }
   } else if (end >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
-    // Read only a complete EXIF chunk in the bounded prefix. RIFF size includes
-    // the WEBP FourCC and chunks, but excludes the first eight bytes.
+    // Skip compressed image payloads by chunk length, without copying or
+    // scanning pixel data. A caller may supply a prefix or the complete file.
+    // Bound the number of chunk headers and the EXIF payload itself.
     const declaredEnd = 8 + bytes.readUInt32LE(4);
     if (declaredEnd < 12) return null;
-    const boundary = Math.min(end, declaredEnd);
-    for (let p = 12; p + 8 <= boundary;) {
+    const boundary = Math.min(bytes.length, declaredEnd);
+    for (let p = 12, count = 0; p + 8 <= boundary && count++ < 4096;) {
       const length = bytes.readUInt32LE(p + 4);
       const next = p + 8 + length + (length & 1);
       if (next > boundary) break;
       if (bytes.toString('ascii', p, p + 4) === 'EXIF') {
+        if (length > 1024 * 1024) return null;
         const chunk = bytes.subarray(p + 8, p + 8 + length);
         return chunk.subarray(0, 6).equals(exif) ? chunk.subarray(6) : chunk;
       }

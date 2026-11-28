@@ -225,3 +225,16 @@ test('photo capture date reads bounded WebP EXIF and copies only date to JPEG/PN
   assert.equal(M.captureDate(invalid),null);
  }
 });
+
+
+test('picked WebP date after large pixel payload is located by bounded chunk jumps',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const tiff=M.attachCaptureDate(jpeg,'jpeg',date).subarray(12,-2);
+ const image=Buffer.alloc(8+2*1024*1024);image.write('VP8 ');image.writeUInt32LE(image.length-8,4);
+ const ex=Buffer.alloc(8+tiff.length);ex.write('EXIF');ex.writeUInt32LE(tiff.length,4);tiff.copy(ex,8);
+ const riff=Buffer.alloc(12);riff.write('RIFF');riff.writeUInt32LE(4+image.length+ex.length,4);riff.write('WEBP',8);
+ const source=Buffer.concat([riff,image,ex]);
+ assert.equal(M.captureDate(source),date);
+ assert.equal(M.captureDate(source.subarray(0,1024*1024)),null);
+ const corrupt=Buffer.from(source);corrupt.writeUInt32LE(0xffffffff,16);assert.equal(M.captureDate(corrupt),null);
+});

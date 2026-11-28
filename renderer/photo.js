@@ -14,7 +14,7 @@
   const CROPS = [['none', null], ['free', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
-  let openGeneration = 0,opening=false,exportController=null,exportPhase='idle',captureToken=null,captureDate=null;
+  let openGeneration = 0,opening=false,picking=false,exportController=null,exportPhase='idle',captureToken=null,captureDate=null;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
   let history=P.createHistory({params,cropKey}),view={scale:1,x:0,y:0},pan=null;
@@ -44,7 +44,14 @@
       row.append(label, input, out); box.append(row);
     }
     for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k==='free'?'Ελεύθερη / Free':k; $('phCrop').append(o); }
-    $('phOpen').addEventListener('click', async () => { if(opening||busy)return;const p = await api.photoPick(); if (p) openPath(p); });
+    $('phOpen').addEventListener('click', async () => {
+      if(opening||busy||picking)return;
+      picking=true;$('phOpen').disabled=true;
+      let p=null;
+      try{p=await api.photoPick();}catch{info(t('ph.cantOpen'));}
+      finally{picking=false;$('phOpen').disabled=false;}
+      if(p)await openPath(p);
+    });
     $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params={...P.applyLook(params,$('phLook').value,Number($('phLookStrength').value)),anchorX:params.anchorX,anchorY:params.anchorY,freeW:params.freeW,freeH:params.freeH};syncSliders();checkpoint();schedule();});
     $('phAuto').addEventListener('click', () => { if (!preview) return; params = {...P.applyAuto(preview,params),anchorX:params.anchorX,anchorY:params.anchorY,freeW:params.freeW,freeH:params.freeH}; syncSliders(); checkpoint(); schedule(); });
     $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders(); checkpoint(); schedule(); });
@@ -73,18 +80,18 @@
     $('phSave').addEventListener('click', save);
     $('phCancelExport').addEventListener('click',()=>{if(exportPhase==='processing')exportController?.abort();});
     $('phCloseMedia').addEventListener('click',async()=>{
-      if(!bmp||busy||opening)return;
+      if(!bmp||busy||opening||picking)return;
       const current=bmp;
       const greek=document.documentElement.lang==='el';
       if(!await showConfirmDialog(greek?'Κλείσιμο φωτογραφίας':'Close photo',greek?'Οι μη αποθηκευμένες αλλαγές θα χαθούν. Το αρχικό αρχείο δεν επηρεάζεται.':'Unsaved edits will be discarded. The original file is unaffected.'))return;
-      if(bmp===current&&!busy&&!opening)releasePhoto();
+      if(bmp===current&&!busy&&!opening&&!picking)releasePhoto();
     });
     $('phResize').addEventListener('change',exportSize);
     const drop = $('phDrop');
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
     drop.addEventListener('drop', (e) => {
-      e.preventDefault(); drop.classList.remove('drag');
+      e.preventDefault(); e.stopPropagation(); drop.classList.remove('drag');
       const f = e.dataTransfer.files[0]; if (!f) return;
       // A real drag/drop File is already authorized by the browser. Do not
       // turn its path into a general-purpose filesystem read capability.
@@ -114,7 +121,7 @@
   }
 
   async function openPath(p) {
-    if (busy||opening) return;
+    if (busy||opening||picking) return;
     opening=true;$('phOpen').disabled=true;
     const generation = ++openGeneration;
     try{
@@ -127,18 +134,24 @@
   }
 
   async function openBlob(blob,nm){
-    if(busy||opening)return;
+    if(busy||opening||picking)return;
     opening=true;$('phOpen').disabled=true;
-    try{await decodeBlob(blob,nm,++openGeneration);}finally{opening=false;$('phOpen').disabled=false;}
+    try{await decodeBlob(blob,nm,++openGeneration,null,null,true);}finally{opening=false;$('phOpen').disabled=false;}
   }
-  async function decodeBlob(blob, nm, generation, token=null,date=null) {
+  async function decodeBlob(blob, nm, generation, token=null,date=null,fromDrop=false) {
     if (busy) return;
     if (blob.size > P.LIMITS.maxFileBytes) { info(t('ph.tooLarge')); return; }
     let candidate=null;
     try {
-      const header=P.headerSize(new Uint8Array(await blob.slice(0,1024*1024).arrayBuffer()));
+      const prefix=new Uint8Array(await blob.slice(0,1024*1024).arrayBuffer());
+      const header=P.headerSize(prefix);
       if(generation!==openGeneration||busy)return;
       if(header&&!P.validImageSize(header.width,header.height)){info(t('ph.tooLarge'));return;}
+      if(fromDrop){
+        const result=await api.photoDateFromBlob(prefix).catch(()=>null);
+        if(generation!==openGeneration||busy)return;
+        token=result?.captureToken;date=result?.captureDate;
+      }
       const b = candidate=await createImageBitmap(blob, { imageOrientation: 'from-image' });
       if (generation !== openGeneration || busy) return;
       if (!P.validImageSize(b.width,b.height)) { info(t('ph.tooLarge')); return; }
@@ -245,7 +258,7 @@
   }
   function exportSize(){if(!bmp)return;const s=P.outputSize(bmp.width,bmp.height,full()),o=P.resizeOutput(s.width,s.height,Number($('phResize').value));$('phDimensions').textContent=o.width+' × '+o.height+' px';}
   async function save() {
-    if (!bmp || busy || opening) return;
+    if (!bmp || busy || opening || picking) return;
     busy = true; ++openGeneration;
     const snapshot = full(), source = bmp, sourceName = name, f = $('phFormat').value, q = Number($('phQuality').value) / 100, maxEdge=Number($('phResize').value),matte=$('phMatte').value;
     const keepDate=$('phKeepDate').checked&&!$('phKeepDate').disabled?captureToken:null;

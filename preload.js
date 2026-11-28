@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vpExists: (list) => ipcRenderer.invoke('vp:exists', list),
   photoPick: () => ipcRenderer.invoke('photo:pick'),
   photoRead: (p) => ipcRenderer.invoke('photo:read', p),
+  photoDateFromBlob: (bytes) => ipcRenderer.invoke('photo:date-from-blob', bytes),
   photoSave: (req) => ipcRenderer.invoke('photo:save', req),
   vpPickM3u: () => ipcRenderer.invoke('vp:pick-m3u'),
   vpExportM3u: items=>ipcRenderer.invoke('vp:export-m3u',items),

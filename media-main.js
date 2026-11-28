@@ -473,12 +473,28 @@ function init({ getMainWin, resolveFfmpegPath }) {
   const imageGrants=new Set();
   const imageTypes=new Set(IMG_EXTS);
   function approveImage(p){const f=allowedFile(p,imageTypes);if(!f)return null;if(imageGrants.size>=128)imageGrants.delete(imageGrants.values().next().value);imageGrants.add(f);return f;}
-  let imageReadBusy=false,imageSaveBusy=false;
+  let imageReadBusy=false,imageSaveBusy=false,imagePickBusy=false;
   const captureDates=new Map(); // tiny per-read grants, never source images or paths
+  function issueCaptureDate(bytes){
+    const captureDate=require('./photo-metadata').captureDate(bytes);
+    let captureToken=null;
+    if(captureDate){captureToken=randomBytes(16).toString('hex');if(captureDates.size>=8)captureDates.delete(captureDates.keys().next().value);captureDates.set(captureToken,captureDate);}
+    return {captureDate,captureToken};
+  }
   ipcMain.handle('photo:pick', async (e) => {
-    if (!trusted(e)) return null;
-    const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Images', extensions: IMG_EXTS }] });
-    return r.canceled||!trusted(e)?null:approveImage(r.filePaths[0]);
+    if (!trusted(e)||imagePickBusy) return null;
+    imagePickBusy=true;
+    try{
+      const r = await dialog.showOpenDialog(getMainWin(), { properties: ['openFile'], filters: [{ name: 'Images', extensions: IMG_EXTS }] });
+      return r.canceled||!trusted(e)?null:approveImage(r.filePaths[0]);
+    }finally{imagePickBusy=false;}
+  });
+  // Browser-authorized dropped File: accept only its bounded header bytes,
+  // never a path or a filesystem grant. Use the same date parser/token store.
+  ipcMain.handle('photo:date-from-blob',(e,bytes)=>{
+    if(!trusted(e)||!(bytes instanceof ArrayBuffer||ArrayBuffer.isView(bytes))||!bytes.byteLength||bytes.byteLength>1024*1024)return null;
+    const header=bytes instanceof ArrayBuffer?Buffer.from(bytes):Buffer.from(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+    return issueCaptureDate(header);
   });
   ipcMain.handle('photo:read', async (e, p) => {
     if (!trusted(e) || imageReadBusy) return null;
@@ -497,10 +513,9 @@ function init({ getMainWin, resolveFfmpegPath }) {
       let offset=0;
       while(offset<b.length){const r=await handle.read(b,offset,b.length-offset,offset);if(!r.bytesRead)return null;offset+=r.bytesRead;}
       const after=await handle.stat();if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)return null;
-      const captureDate=require('./photo-metadata').captureDate(header.subarray(0,n));
-      let captureToken=null;
-      if(captureDate){captureToken=randomBytes(16).toString('hex');if(captureDates.size>=8)captureDates.delete(captureDates.keys().next().value);captureDates.set(captureToken,captureDate);}
-      return {name:path.basename(f),bytes,captureDate,captureToken};
+      // The buffer is already allocated for the renderer. The Buffer view
+      // does not duplicate it; WebP can have EXIF after compressed pixels.
+      return {name:path.basename(f),bytes,...issueCaptureDate(Buffer.from(bytes))};
     }catch(_){return null;}finally{try{if(handle)await handle.close();}catch{}imageReadBusy=false;}
   });
   ipcMain.handle('photo:save', async (e, req) => {

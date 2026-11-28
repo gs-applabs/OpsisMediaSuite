@@ -70,3 +70,31 @@ test('photo export refuses existing destinations and removes only owned scratch'
   assert.deepEqual([...fs.readFileSync(target)],[1,2,3]);assert.deepEqual(fs.readdirSync(dir).sort(),['new.png','original.png']);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('dropped photo header uses the shared date token without granting arbitrary file reads',async()=>{
+ const dir=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'opsis-photo-date-'))),sender={mainFrame:{}},e={sender,senderFrame:sender.mainFrame};
+ M.init({getMainWin:()=>({isDestroyed:()=>false,webContents:sender}),resolveFfmpegPath:()=>null});
+ const P=require('../photo-metadata'),date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const original=P.attachCaptureDate(jpeg,'jpeg',date),source=path.join(dir,'source.jpg');
+ try{
+  fs.writeFileSync(source,original);
+  const issue=handlers['photo:date-from-blob'],save=handlers['photo:save'];
+  assert.equal(issue(e,source),null);
+  assert.equal(issue(e,new Uint8Array(1024*1024+1)),null);
+  assert.equal(issue({sender,senderFrame:{}},original),null);
+  const padded=Buffer.concat([Buffer.alloc(9),original,Buffer.alloc(9)]);
+  const result=issue(e,padded.subarray(9,9+original.length));
+  assert.equal(result.captureDate,date);assert.match(result.captureToken,/^[a-f0-9]{32}$/);
+  assert.equal(await handlers['photo:read'](e,source),null);
+  target=path.join(dir,'edited.jpg');
+  assert.equal((await save(e,{format:'jpeg',name:'source',bytes:jpeg,captureToken:result.captureToken})).ok,true);
+  assert.equal(P.captureDate(fs.readFileSync(target)),date);
+  assert.deepEqual(fs.readFileSync(source),original);
+  target=path.join(dir,'denied.jpg');
+  assert.equal((await save(e,{format:'jpeg',bytes:jpeg,captureToken:'0'.repeat(32)})).code,'capture-date-unavailable');
+  assert.equal(fs.existsSync(target),false);
+  openTarget=source;const picked=await handlers['photo:pick'](e);const read=await handlers['photo:read'](e,picked);
+  assert.equal(read.captureDate,date);assert.match(read.captureToken,/^[a-f0-9]{32}$/);
+ }finally{openTarget=null;fs.rmSync(dir,{recursive:true,force:true});}
+});
