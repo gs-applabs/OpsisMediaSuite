@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.6A
+28 Νοεμβρίου 2026 • ULTRA 3D.6B
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.6A. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.6B. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.6B: real Electron DOM keyboard and synthetic drag/drop events, external drop rejection, converter A-B preparation/control/queue isolation checks without FFmpeg start; queue-only existing admission API; reject empty/network transfer input. Base c5d0506 five CI PASS, four running at inspection. New CI pending; actual active playback reorder and full player A-B dialog transfer remain open, then network playback R4. No release.
+
 3D.6A: fixed escaped digit regex rejecting numeric sleep input, pure validation, aria-pressed state, stale modal guard, real Electron dialog arm/invalid/cancel/close checks in self-test. Base 3D.5B five CI PASS, four running at inspection; 3D.5A four PASS, three cancelled, two running. New CI pending. Next actual playlist reorder and A-B renderer regression, then remaining 3D R4. No release.
 
 3D.5B: explicit local Chromium A-B transfer to existing MKV remux controls, no auto-start, no mixed queue mutation; one optional 1–480 min video-only close timer, 0 cancels, cleared on full stop/unload. No app/OS exit or interruption of other tools. Guide 112 entries, pure range test. New CI pending; 3D.5A CI 2 PASS, 7 running at inspection. Next renderer interaction tests, app exit feasibility with independent jobs, remaining 3D R4.

@@ -1049,6 +1049,7 @@
   window.WaveframeVideoPlayer = {
     show() { build(); },
     open(p) { build(); addPaths([p], true); },
+    enqueue(paths) { build(); addPaths(paths, false); },
     pause() {
       if(!built)return;
       if(handoff){stopNative();return;}

@@ -27,6 +27,10 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.6B — playlist and converter regression (28 Νοεμβρίου 2026)
+- Base `c5d050667a682ef4847191b73fe9e95783d43249`: five workflows PASS, four running at inspection.
+- Seven added Electron self-test assertions: actual DOM keyboard/synthetic drag/drop, external drop rejection, invalid/remote range, one-file remux preparation, exact controls and no auto-start, queue isolation. Queue-only admission reuses addPaths; no media opened by fixture. No physical drag, active video identity or end-to-end A-B dialog certification. New CI pending. No merge/release.
+
 ### ULTRA 3D.6A — video sleep correction and renderer acceptance (28 Νοεμβρίου 2026)
 - Base `6c4b93f27f6294f0bb255878fb922d72b6680e7a`: five CI PASS, four running at inspection. 3D.4 all nine PASS; 3D.5A four PASS, three cancelled, two running.
 - Found escaped digit regex in 3D.5B sleep input that rejects ordinary numbers. Extracted pure validation, added boundary tests, timer aria-pressed and stale dialog generation guard. Actual Electron self-test now clicks dialog, arms, rejects invalid without disarming, cancels and closes media. No new service, no app shutdown. New CI pending. Playlist/A-B real interaction and other 3D R4 items still open.

@@ -283,7 +283,7 @@
   }
 
   function prepareAB(path,range){
-    if(starting||running||!$('vidPanel')||typeof path!=='string'||!Number.isFinite(range?.start)||!Number.isFinite(range?.end)||range.start<0||range.end<=range.start||range.end>360000||items.some(x=>x.path!==path))return false;
+    if(starting||running||!$('vidPanel')||typeof path!=='string'||!path.trim()||/^[a-z][a-z0-9+.-]*:\/\//i.test(path)||!Number.isFinite(range?.start)||!Number.isFinite(range?.end)||range.start<0||range.end<=range.start||range.end>360000||items.some(x=>x.path!==path))return false;
     addPaths([path]);if(items.length!==1||items[0].path!==path)return false;
     mode='video';$('vidOperation').value='remux';$('vidTrimStart').value=String(range.start);$('vidTrimEnd').value=String(range.end);sync();return true;
   }
