@@ -561,10 +561,18 @@
     if(next===osMediaSignature)return;
     osMediaSignature=next;window.dispatchEvent(new Event('waveframe:video-media-state'));
   }
-  function mediaCommand(action){
+  function mediaProgress(){
+    if(!mediaState())return null;
+    const s=handoff?.status;
+    return handoff?{duration:(s?.durationMs||0)/1000,position:(s?.positionMs||0)/1000,volume:s?.volume,muted:s?.muted===true||s?.volume===0}:{duration:video.duration,position:video.currentTime,volume:video.volume*100,muted:video.muted};
+  }
+  function mediaCommand(action,value){
     const state=mediaState();if(!state)return false;
     if(action==='next'||action==='prev'){next(action==='next'?1:-1);return true;}
     if(action==='stop'){$('vpStop').click();return true;}
+    if(action==='mute'){$('vpMute').click();return true;}
+    if(action==='volume'&&Number.isInteger(value)&&value>=0&&value<=100){$('vpVolume').value=String(value);$('vpVolume').dispatchEvent(new Event('input'));$('vpVolume').dispatchEvent(new Event('change'));return true;}
+    if(action==='seek'&&Number.isInteger(value)&&value>=0&&value<=1000){const p=mediaProgress();if(!p||!Number.isFinite(p.duration)||p.duration<=0)return false;if(handoff)nativeCommand('seek',Math.round(p.duration*value));else seekTo(p.duration*value/1000);return true;}
     if(!['play','pause','playpause'].includes(action))return false;
     if(action!=='playpause'&&(!state.ready||state.playing===(action==='play')))return true;
     $('vpPlay').click();return true;
@@ -577,7 +585,7 @@
     const m = $('vpMute'), muted = handoff?!!handoff.status?.muted||handoff.status?.volume===0:video.muted || video.volume === 0;
     m.textContent = muted ? '🔇' : '🔊'; m.classList.toggle('active', muted);
     const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
-    publishMediaState();
+    publishMediaState();window.syncFlyoutProgress?.();
   }
   let remainingTime=get('waveframe.video.remainingTime',false)===true;
   function syncTime() {
@@ -585,6 +593,7 @@
     $('vpTime').textContent=VP.displayTime(c,d,remainingTime);
     $('vpSeek').disabled = !finite;
     if (!seeking) $('vpSeek').value = finite ? String(Math.round(c / d * 1000)) : '0';
+    window.syncFlyoutProgress?.();
   }
   let seeking = false;
   function seekTo(value) { if (Number.isFinite(value) && Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Math.max(0, Math.min(video.duration, value)); }
@@ -1087,7 +1096,7 @@
   }
 
   window.WaveframeVideoPlayer = { checkpointForBackup:()=>{if(built)saveResume();},
-    mediaState,mediaCommand,
+    mediaState,mediaCommand,mediaProgress,
     show() { build(); },
     open(p) { build(); addPaths([p], true); },
     enqueue(paths) { build(); addPaths(paths, false); },

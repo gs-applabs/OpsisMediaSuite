@@ -398,8 +398,8 @@ function createWindow() {
   // Local flyout is lazy, shares the existing media-key route, and has no
   // desktop watcher. Restore opt-in using the previous branch's setting key.
   let flyout=null,flyoutAuto=false,flyoutTitle='',flyoutLang='el';
-  let flyoutState={title:'',playing:false,owner:'audio'};
-  let flyoutLabels={audio:'Music',video:'Video',empty:'No track loaded',prev:'Previous',next:'Next',play:'Play',pause:'Pause',stop:'Stop',close:'Close'};
+  let flyoutState={title:'',playing:false,owner:'audio',progress:null};
+  let flyoutLabels={audio:'Music',video:'Video',empty:'No track loaded',prev:'Previous',next:'Next',play:'Play',pause:'Pause',stop:'Stop',close:'Close',seek:'Seek',volume:'Volume',mute:'Mute',unmute:'Unmute'};
   function openFlyout(manual){
     if(!flyout)flyout=require('./flyout-main').attachFlyout(win,()=>({...flyoutState,theme:currentTheme,lang:flyoutLang,labels:flyoutLabels}));
     return flyout.open(manual);
@@ -411,6 +411,12 @@ function createWindow() {
     flyoutAuto=data.automatic;flyoutLang=data.lang;flyoutLabels=Object.fromEntries(Object.keys(flyoutLabels).map(k=>[k,data.labels[k]]));
     if(!flyoutAuto)flyout?.closeAutomatic();
     flyout?.send();
+  });
+  ipcMain.on('flyout:progress',(event,data)=>{
+    if(!fromMain(event)||!flyout?.window())return;
+    const next=require('./flyout-policy').progress(data,flyoutState);
+    if(!next||JSON.stringify(next)===JSON.stringify(flyoutState.progress))return;
+    flyoutState.progress=next;flyout.send();
   });
   let lastNotifiedTitle = null;
   let trackNotificationsEnabled = true;
@@ -440,7 +446,8 @@ function createWindow() {
     const playing = payload.playing === true;
     const title = typeof payload.title === 'string' ? payload.title.slice(0, 300) : '';
     const owner=payload.owner==='video'?'video':'audio';
-    flyoutState={title,playing,owner};
+    const progress=flyoutState.title===title&&flyoutState.owner===owner?flyoutState.progress:null;
+    flyoutState={title,playing,owner,progress};
     const identity=title?owner+':'+title:'';
     if(flyoutAuto&&playing&&identity&&identity!==flyoutTitle)void openFlyout(false);
     if(playing||!title)flyoutTitle=identity;

@@ -1407,11 +1407,29 @@ function syncMediaSession() {
   const playback=state.playing?'playing':title?'paused':'none';
   if(session.playbackState!==playback)session.playbackState=playback;
 }
+let flyoutVisible=false,lastFlyoutProgress='';
+function syncFlyoutProgress(){
+ if(!flyoutVisible)return;
+ const media=currentOsMedia();if(!media.title)return;
+ const el=engine.activeEl;
+ const p=media.owner==='video'?window.WaveframeVideoPlayer?.mediaProgress?.():{
+   duration:engine.slots[engine.activeSlot].item===playlist[currentTrackIndex]?el.duration:0,
+   position:el.currentTime,volume:engine.state.volume*100,muted:engine.state.muted};
+ if(!p)return;
+ const duration=Number.isFinite(p.duration)&&p.duration>0&&p.duration<=604800?Math.ceil(p.duration):0;
+ const position=duration&&Number.isFinite(p.position)?Math.min(duration,Math.max(0,Math.floor(p.position))):0;
+ const volume=Number.isFinite(p.volume)?Math.max(0,Math.min(100,Math.round(p.volume))):0;
+ const data={owner:media.owner,title:media.title.slice(0,300),duration,position,volume,muted:p.muted===true};
+ const sig=JSON.stringify(data);if(sig===lastFlyoutProgress)return;
+ lastFlyoutProgress=sig;window.waveframe.updateFlyoutProgress(data);
+}
+window.waveframe.onFlyoutVisible(visible=>{flyoutVisible=visible===true;lastFlyoutProgress='';if(flyoutVisible)syncFlyoutProgress();});
 let lastNowPlaying='';
 function syncOsNowPlaying() {
   const {title,playing,owner}=currentOsMedia();
   const state=JSON.stringify([title,playing,owner]);
   if(state!==lastNowPlaying){lastNowPlaying=state;window.waveframe?.updateNowPlaying?.({title,playing,owner});}
+  syncFlyoutProgress();
 }
 function audioVisualActive(){return !!(engine.testOsc||engine.micStream||engine.slots.some(s=>!s.el.paused&&!s.el.ended));}
 let audioIdleTimer=0;
@@ -1434,6 +1452,7 @@ function fmtTime(s) {
 // No permanent transport polling: native media events and visibility/tab changes
 // are sufficient, including paused seeks and switching the crossfade's active slot.
 function syncTransportPosition(){
+  syncFlyoutProgress();
   if(document.hidden||!document.getElementById('tab-player').classList.contains('active'))return;
   const el=engine.activeEl;
   const valid=!!el&&Number.isFinite(el.duration)&&el.duration>0;
@@ -1467,16 +1486,21 @@ function syncPlayButton() {
   if (miniPlay) miniPlay.textContent = engine.activeEl.paused ? '▶' : '⏸';
   syncMediaSession();
 }
-function routeMediaCommand(action){
-  if(currentOsMedia().owner==='video'){
-    window.WaveframeVideoPlayer?.mediaCommand?.(action);
+function routeMediaCommand(action,value,target){
+  const media=currentOsMedia();
+  if(target&&(target.owner!==media.owner||target.title!==media.title.slice(0,300)))return;
+  if(media.owner==='video'){
+    window.WaveframeVideoPlayer?.mediaCommand?.(action,value);
     return;
   }
   if(action==='playpause'||action==='play'){
     if(action==='play'&&!engine.activeEl.paused)return;
     if(currentTrackIndex===-1&&playlist.length)playTrackAt(0);
     else (action==='play'?engine.play():engine.togglePlay()).then(syncPlayButton).catch(()=>{});
-  }else if(action==='pause'){engine.pauseActive();syncPlayButton();}
+  }else if(action==='seek'&&Number.isInteger(value)&&value>=0&&value<=1000&&Number.isFinite(engine.activeEl.duration)&&engine.activeEl.duration>0)engine.seekTo(value/1000);
+  else if(action==='volume'&&Number.isInteger(value)&&value>=0&&value<=100){els.volume.value=String(value);els.volume.dispatchEvent(new Event('input'));}
+  else if(action==='mute')els.btnMute.click();
+  else if(action==='pause'){engine.pauseActive();syncPlayButton();}
   else if(action==='next')goNext();
   else if(action==='prev')goPrev();
   else if(action==='stop'){engine.pauseActive();engine.stopAlternateSources();syncPlayButton();}
@@ -1613,8 +1637,9 @@ els.btnMute.addEventListener('click', () => {
   engine.setMuted(m);
   els.btnMute.classList.toggle('active', m);
   els.btnMute.textContent = m ? '🔇' : '🔊';
+  syncFlyoutProgress();
 });
-els.volume.addEventListener('input', () => engine.setVolume(parseInt(els.volume.value, 10) / 100));
+els.volume.addEventListener('input', () => {engine.setVolume(parseInt(els.volume.value, 10) / 100);syncFlyoutProgress();});
 
 /* ---- sleep timer: Off -> 15 -> 30 -> 45 -> 60 -> 90 min -> end of track -> Off. Fades the volume out over the last 10 s ---- */
 const SLEEP_STEPS = [0, 15, 30, 45, 60, 90, 'end'];
@@ -2363,7 +2388,7 @@ wireSwitch(swTrackNotif, (on) => {
 /* ---- local desktop playback flyout ---- */
 const swMediaFlyout=document.getElementById('swMediaFlyout'),btnMediaFlyout=document.getElementById('btnMediaFlyout');
 function pushFlyoutSettings(){
- const labels={audio:t('tab.player'),video:t('tab.video'),empty:t('player.noTrack'),prev:t('vp.prev'),next:t('vp.next'),play:t('vp.play'),pause:t('vp.pause'),stop:t('vp.stop'),close:t('splash.close')};
+ const labels={audio:t('tab.player'),video:t('tab.video'),empty:t('player.noTrack'),prev:t('vp.prev'),next:t('vp.next'),play:t('vp.play'),pause:t('vp.pause'),stop:t('vp.stop'),close:t('splash.close'),seek:t('vp.seek'),volume:t('vp.volume'),mute:t('vp.mute'),unmute:t('vp.unmute')};
  window.waveframe.setFlyoutSettings({automatic:swMediaFlyout.classList.contains('active'),lang:localStorage.getItem('waveframe.lang')||'el',labels});
 }
 wireSwitch(swMediaFlyout,on=>{OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.automaticFlyout',on?'1':'0');pushFlyoutSettings();},localStorage.getItem('waveframe.automaticFlyout')==='1');

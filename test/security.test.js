@@ -204,3 +204,13 @@ test('local flyout has scoped sender, finite auto-dismiss and no polling or medi
  assert.match(f,/setTimeout\(close,6500\)/);assert.doesNotMatch(f,/setInterval|spawn\(/);
  assert.doesNotMatch(html,/<audio|<video/);assert.doesNotMatch(p,/ipcRenderer.invoke|webUtils/);
 });
+
+
+test('flyout progress and variable commands are bounded and tied to current playback target',()=>{
+ const P=require('../flyout-policy'),state={owner:'audio',title:'Track'};
+ const good={...state,duration:100,position:25,volume:60,muted:false};
+ assert.deepEqual(P.progress(good,state),{duration:100,position:25,volume:60,muted:false});
+ for(const bad of [{...good,owner:'video'},{...good,title:'Other'},{...good,position:101},{...good,volume:Infinity},{...good,duration:604801},{...good,muted:'false'}])assert.equal(P.progress(bad,state),null);
+ assert.deepEqual(P.command({...state,action:'seek',value:400},state),{...state,action:'seek',value:400});
+ for(const bad of [{...state,action:'seek',value:1001},{...state,action:'volume',value:-1},{...state,action:'exec',value:0},{...state,title:'Stale',action:'mute'}])assert.equal(P.command(bad,state),null);
+});
