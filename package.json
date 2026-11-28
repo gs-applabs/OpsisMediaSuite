@@ -30,6 +30,8 @@
     },
     "files": [
       "main.js",
+      "flyout-main.js",
+      "flyout-preload.js",
       "preload.js",
       "splash-preload.js",
       "suite.js",

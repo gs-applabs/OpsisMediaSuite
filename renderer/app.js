@@ -1409,9 +1409,9 @@ function syncMediaSession() {
 }
 let lastNowPlaying='';
 function syncOsNowPlaying() {
-  const {title,playing}=currentOsMedia();
-  const state=JSON.stringify([title,playing]);
-  if(state!==lastNowPlaying){lastNowPlaying=state;window.waveframe?.updateNowPlaying?.({ title, playing });}
+  const {title,playing,owner}=currentOsMedia();
+  const state=JSON.stringify([title,playing,owner]);
+  if(state!==lastNowPlaying){lastNowPlaying=state;window.waveframe?.updateNowPlaying?.({title,playing,owner});}
 }
 function audioVisualActive(){return !!(engine.testOsc||engine.micStream||engine.slots.some(s=>!s.el.paused&&!s.el.ended));}
 let audioIdleTimer=0;
@@ -2359,6 +2359,17 @@ wireSwitch(swTrackNotif, (on) => {
   swTrackNotif.classList.toggle('active', enabled);
   window.waveframe.setTrackNotifications(enabled);
 }
+
+/* ---- local desktop playback flyout ---- */
+const swMediaFlyout=document.getElementById('swMediaFlyout'),btnMediaFlyout=document.getElementById('btnMediaFlyout');
+function pushFlyoutSettings(){
+ const labels={audio:t('tab.player'),video:t('tab.video'),empty:t('player.noTrack'),prev:t('vp.prev'),next:t('vp.next'),play:t('vp.play'),pause:t('vp.pause'),stop:t('vp.stop'),close:t('splash.close')};
+ window.waveframe.setFlyoutSettings({automatic:swMediaFlyout.classList.contains('active'),lang:localStorage.getItem('waveframe.lang')||'el',labels});
+}
+wireSwitch(swMediaFlyout,on=>{OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.automaticFlyout',on?'1':'0');pushFlyoutSettings();},localStorage.getItem('waveframe.automaticFlyout')==='1');
+btnMediaFlyout.addEventListener('click',()=>window.waveframe.openFlyout().catch(()=>{}));
+document.addEventListener('waveframe:language-changed',pushFlyoutSettings);
+pushFlyoutSettings();
 
 /* ---- auto-launch on login ---- */
 const swAutostart = document.getElementById('swAutostart');

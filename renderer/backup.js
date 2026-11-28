@@ -15,6 +15,7 @@ const WaveframeBackup = (() => {
   // Match actual persisted value encodings, not display labels.
   const literalEnums={
     'waveframe.fxSoundMode':['native','external','auto'],
+    'waveframe.automaticFlyout':['0','1'],
     'waveframe.metadata.inferDisplay':['true','false'],
     'waveframe.destMode':['default','source','custom'],
     'waveframe.vidDestMode':['default','source','custom'],

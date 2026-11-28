@@ -9,7 +9,7 @@ const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 test('every BrowserWindow keeps contextIsolation on, nodeIntegration off and the sandbox on', () => {
-  for (const f of ['main.js', 'suite-main.js']) {
+  for (const f of ['main.js', 'suite-main.js', 'flyout-main.js']) {
     const src = read(f);
     const wins = [...src.matchAll(/new BrowserWindow\(\{[\s\S]*?\n\s*\}\);/g)].map((m) => m[0]);
     assert.ok(wins.length >= 1, `${f}: no BrowserWindow found`);
@@ -22,7 +22,7 @@ test('every BrowserWindow keeps contextIsolation on, nodeIntegration off and the
 });
 
 test('every page has a strict CSP (no inline script/style, no eval, no plugins, no base/form hijack) and no inline style attributes', () => {
-  for (const f of ['index.html', 'help.html', 'splash.html']) {
+  for (const f of ['index.html', 'help.html', 'splash.html', 'flyout.html']) {
     const html = read(path.join('renderer', f));
     const csp = /Content-Security-Policy" content="([^"]+)"/.exec(html);
     assert.ok(csp, `${f}: no CSP`);
@@ -195,4 +195,12 @@ test('music import cancellation stays within the current on-demand folder job an
  assert.match(preload,/cancelMusicFolder: \(\) => ipcRenderer\.invoke\('music:cancel-folder'\)/);
  assert.match(html,/id="playlistFolderCancel" hidden/);
  assert.match(m,/const img=safe\?nativeImage\.createFromBuffer\(bytes\):null/);
+});
+
+test('local flyout has scoped sender, finite auto-dismiss and no polling or media engine',()=>{
+ const f=read('flyout-main.js'),p=read('flyout-preload.js'),html=read('renderer/flyout.html');
+ assert.match(f,/e.sender!==win.webContents/);assert.match(f,/e.senderFrame!==win.webContents.mainFrame/);
+ assert.match(f,/ipcMain.removeListener\('flyout:command',command\)/);
+ assert.match(f,/setTimeout\(close,6500\)/);assert.doesNotMatch(f,/setInterval|spawn\(/);
+ assert.doesNotMatch(html,/<audio|<video/);assert.doesNotMatch(p,/ipcRenderer.invoke|webUtils/);
 });

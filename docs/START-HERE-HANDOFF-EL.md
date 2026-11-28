@@ -141,3 +141,8 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - Added pure ownership and real renderer MP4 route/pause/play/park checks. Physical Windows SMTC/global shortcut and native-host parity still require tests. Flyout/mixer/Lock Toast/taskbar widget/settings and Opsis desktop overlap still open; do not mark complete.
 - d17a2a6a 1 PASS/8 queued or running at first inspection; b616cfbf 4 PASS, 3 cancelled, 2 in progress. No new release or merge. All 16 roadmap groups retained.
 
+
+### R6-11.3 — επαναφορά τοπικού Media Flyout (base dfd5df8e)
+- Base dfd5df8e all 9 CI workflows PASS, including full general renderer and Inno lifecycle. Previous WebP and Inno fixes confirmed.
+- Recover local playback flyout capability from old codex branch, adapting to single existing R6-11.2 media-owner route rather than copying old native helper/polling/player. New isolated window created only on explicit open or opted-in new playing title; close destroys renderer and removes its only IPC command listener; 6.5s auto-dismiss, manual remains until close. Existing automaticFlyout 0/1 key restored/validated. Active local audio/video title and transport only, existing translated transport labels and theme, no external session/mixer/lock-hook access, no extra polling. Existing mini mode remains separate (main window resizing, not a second player).
+- Package allowlist, guide, CSP and sender tests plus actual Electron window lifecycle/bridge selftest extended. Real OS placement, automatic appearance and remaining desktop branches need further certification; no claim of external media sessions, mixer, spectrum, lock toast or taskbar widget. All groups remain tracked; no release/merge.

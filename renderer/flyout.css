@@ -1,0 +1,12 @@
+html,body.media-flyout{width:100%;height:100%;min-width:0;min-height:0;margin:0;overflow:hidden}
+body.media-flyout{display:block;background:var(--panel-solid);color:var(--text);font:14px "Segoe UI",sans-serif}
+.flyout-card{height:100%;box-sizing:border-box;padding:14px;display:grid;grid-template-rows:auto auto 1fr auto;gap:8px;border:1px solid var(--panel-border);border-radius:8px}
+.flyout-card header,.flyout-controls{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.flyout-card header{-webkit-app-region:drag}
+.flyout-card button{-webkit-app-region:no-drag;min-width:38px;min-height:36px;border:1px solid var(--panel-border);border-radius:8px;background:var(--bg);color:var(--text);cursor:pointer;font:inherit}
+.flyout-card button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.flyout-card button:disabled{opacity:.5;cursor:default}
+.flyout-controls button{flex:1;font-size:20px}
+.flyout-controls #playpause{background:var(--accent);color:var(--text)}
+.flyout-source{font-size:12px;color:var(--text-dim)}
+.flyout-title{overflow:hidden;overflow-wrap:anywhere;line-height:1.35;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;align-self:center}

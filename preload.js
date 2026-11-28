@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('waveframe', {
   maximizeToggle: () => ipcRenderer.send('window:maximize-toggle'),
   setMiniMode: (enable) => ipcRenderer.send('window:mini-mode', enable),
   setTrackNotifications: (enabled) => ipcRenderer.send('settings:track-notifications', enabled),
+  openFlyout:()=>ipcRenderer.invoke('flyout:open'),
+  setFlyoutSettings:data=>ipcRenderer.send('flyout:settings',data),
   logCrash: (details) => ipcRenderer.send('crash:log', details),
   getCrashLogPath: () => ipcRenderer.invoke('crash:get-log-path'),
   getAutostart: () => ipcRenderer.invoke('autostart:get'),

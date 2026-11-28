@@ -275,6 +275,18 @@ function createWindow() {
           results.push(...await suiteApi.selfTest());
           results.push(...await converterApi.selfTest());
           results.push(...await mediaApi.selfTest());
+          const flyoutCheck=(name,ok)=>results.push({name,ok:!!ok});
+          flyoutCheck('local flyout is not created at startup',!flyout?.window());
+          await win.webContents.executeJavaScript("waveframe.openFlyout()");
+          const fw=flyout?.window();
+          flyoutCheck('explicit local flyout opens isolated renderer',!!fw&&!fw.isDestroyed()&&fw.isVisible());
+          if(fw&&!fw.isDestroyed()){
+            flyoutCheck('flyout only exposes restricted playback bridge',await fw.webContents.executeJavaScript("!!window.mediaFlyout&&!window.waveframe&&!window.require"));
+            flyoutCheck('flyout rejects owner invoking restricted command',await win.webContents.executeJavaScript("typeof waveframe.flyoutCommand==='undefined'"));
+            await fw.webContents.executeJavaScript("document.getElementById('dismiss').click();true").catch(()=>false);
+            for(let i=0;i<20&&flyout?.window();i++)await new Promise(r=>setTimeout(r,25));
+            flyoutCheck('closing flyout destroys its renderer',!flyout?.window());
+          }
           await sample('post-selftest');
           if(profile&&process.env.OPSIS_RESOURCE_SOAK==='1'){
             const cycles=Math.max(20,Math.min(1200,Number.parseInt(process.env.OPSIS_SOAK_CYCLES,10)||20));
@@ -383,6 +395,23 @@ function createWindow() {
     updateThumbbar();
   });
 
+  // Local flyout is lazy, shares the existing media-key route, and has no
+  // desktop watcher. Restore opt-in using the previous branch's setting key.
+  let flyout=null,flyoutAuto=false,flyoutTitle='',flyoutLang='el';
+  let flyoutState={title:'',playing:false,owner:'audio'};
+  let flyoutLabels={audio:'Music',video:'Video',empty:'No track loaded',prev:'Previous',next:'Next',play:'Play',pause:'Pause',stop:'Stop',close:'Close'};
+  function openFlyout(manual){
+    if(!flyout)flyout=require('./flyout-main').attachFlyout(win,()=>({...flyoutState,theme:currentTheme,lang:flyoutLang,labels:flyoutLabels}));
+    return flyout.open(manual);
+  }
+  ipcMain.handle('flyout:open',event=>fromMain(event)?openFlyout(true):false);
+  ipcMain.on('flyout:settings',(event,data)=>{
+    if(!fromMain(event)||!data||typeof data.automatic!=='boolean'||typeof data.lang!=='string'||!/^[a-z]{2}$/.test(data.lang))return;
+    if(!data.labels||!Object.keys(flyoutLabels).every(k=>typeof data.labels[k]==='string'&&data.labels[k].length<=120))return;
+    flyoutAuto=data.automatic;flyoutLang=data.lang;flyoutLabels=Object.fromEntries(Object.keys(flyoutLabels).map(k=>[k,data.labels[k]]));
+    if(!flyoutAuto)flyout?.closeAutomatic();
+    flyout?.send();
+  });
   let lastNotifiedTitle = null;
   let trackNotificationsEnabled = true;
   ipcMain.on('settings:track-notifications', (event, enabled) => { if (fromMain(event) && typeof enabled === 'boolean') trackNotificationsEnabled = enabled; });
@@ -410,6 +439,12 @@ function createWindow() {
     if (!fromMain(event) || !payload || typeof payload !== 'object') return;
     const playing = payload.playing === true;
     const title = typeof payload.title === 'string' ? payload.title.slice(0, 300) : '';
+    const owner=payload.owner==='video'?'video':'audio';
+    flyoutState={title,playing,owner};
+    const identity=title?owner+':'+title:'';
+    if(flyoutAuto&&playing&&identity&&identity!==flyoutTitle)void openFlyout(false);
+    if(playing||!title)flyoutTitle=identity;
+    flyout?.send();
     isPlaying = playing;
     win.setTitle(title ? `${title} — Opsis Media Suite` : 'Opsis Media Suite');
     updateThumbbar();
@@ -423,6 +458,7 @@ function createWindow() {
   ipcMain.on('theme:changed', (event, theme) => {
     if (!fromMain(event) || typeof theme !== 'string' || !/^[a-z0-9-]{1,30}$/.test(theme)) return;
     currentTheme = theme;
+    flyout?.send();
     if (helpWindow && !helpWindow.isDestroyed()) {
       helpWindow.webContents.send('theme:sync', theme);
     }
