@@ -8,6 +8,7 @@
 
 (function () {
   const C = window.WaveframeConv;
+  const pathKey=window.OpsisPathIdentity.key;
   const api = window.waveframe;
   const OPT_KEY = 'waveframe.conv.opts';
   const root = document.getElementById('tab-converter');
@@ -311,8 +312,10 @@
 
   function addPaths(paths) {
     if(starting||running)return;
+    const seen=new Set(files.map(f=>pathKey(f.path)).filter(Boolean));
     for (const p of paths || []) {
-      if (typeof p === 'string' && !files.some((f) => f.path === p)) files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'file', path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0 });
+      const key=pathKey(p);if(!key||seen.has(key))continue;seen.add(key);
+      files.push({ id: `c${Date.now().toString(36)}${++seq}`, kind: 'file', path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0 });
     }
     renderList();
   }

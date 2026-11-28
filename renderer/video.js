@@ -7,6 +7,7 @@
 (function () {
   const V = window.WaveframeVideo;
   const C = window.WaveframeConv;
+  const pathKey=window.OpsisPathIdentity.key;
   const api = window.waveframe;
   const KEY = 'waveframe.vid.opts';
   const $ = (id) => document.getElementById(id);
@@ -294,11 +295,11 @@
 
   function addPaths(paths) {
     if(starting||running)return;
-    const added = [];
+    const added = [],seen=new Set(items.map(f=>pathKey(f.path)).filter(Boolean));
     for (const p of paths || []) {
-      if (typeof p === 'string' && items.length < V.LIMITS.maxFiles && !items.some((f) => f.path === p)) {
+      if (pathKey(p) && items.length < V.LIMITS.maxFiles && !seen.has(pathKey(p))) {
         const it = { id: `v${Date.now().toString(36)}${++seq}`, path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0, info: null, thumb: '' };
-        items.push(it); added.push(it);
+        items.push(it); added.push(it);seen.add(pathKey(p));
       }
     }
     renderList();
@@ -307,8 +308,8 @@
   }
 
   function prepareAB(path,range){
-    if(starting||running||!$('vidPanel')||typeof path!=='string'||!path.trim()||/^[a-z][a-z0-9+.-]*:\/\//i.test(path)||!Number.isFinite(range?.start)||!Number.isFinite(range?.end)||range.start<0||range.end<=range.start||range.end>360000||items.some(x=>x.path!==path))return false;
-    addPaths([path]);if(items.length!==1||items[0].path!==path)return false;
+    if(starting||running||!$('vidPanel')||typeof path!=='string'||!path.trim()||/^[a-z][a-z0-9+.-]*:\/\//i.test(path)||!Number.isFinite(range?.start)||!Number.isFinite(range?.end)||range.start<0||range.end<=range.start||range.end>360000||items.some(x=>pathKey(x.path)!==pathKey(path)))return false;
+    addPaths([path]);if(items.length!==1||pathKey(items[0].path)!==pathKey(path))return false;
     mode='video';$('vidOperation').value='remux';$('vidTrimStart').value=String(range.start);$('vidTrimEnd').value=String(range.end);sync();return true;
   }
   function renderList() {
@@ -478,7 +479,7 @@
       const url=$('vidOnlineUrl').value,source=V.onlineSource(url);
       if(source?.capability!=='direct-candidate'||source.kind!=='item'){status.textContent='Direct HTTPS media only / Μόνο απευθείας αρχείο HTTPS';return;}
       button.disabled=true;cancel.disabled=false;status.textContent='Downloading / Λήψη…';
-      try{const result=await api.vidOnlineDownload(url);if(result?.ok){addPaths([result.path]);status.textContent=items.some(x=>x.path===result.path)?'Saved and queued / Αποθηκεύτηκε στην ουρά':'Saved; add file after conversion / Αποθηκεύτηκε, εισαγάγετε μετά τη μετατροπή';}else status.textContent='Download: '+(result?.code||'failed');}
+      try{const result=await api.vidOnlineDownload(url);if(result?.ok){addPaths([result.path]);status.textContent=items.some(x=>pathKey(x.path)===pathKey(result.path))?'Saved and queued / Αποθηκεύτηκε στην ουρά':'Saved; add file after conversion / Αποθηκεύτηκε, εισαγάγετε μετά τη μετατροπή';}else status.textContent='Download: '+(result?.code||'failed');}
       catch{status.textContent='Download failed / Αποτυχία λήψης';}
       finally{button.disabled=false;cancel.disabled=true;}
     });

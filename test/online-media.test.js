@@ -32,3 +32,9 @@ test('playlist queue preserves occurrence order, requires explicit mapping, reje
  assert.deepEqual(playlistQueuePlan(rows,[0,1],new Map([[0,'C:/a.mp3'],[1,'c:/A.mp3']])),{ok:false,code:'duplicate-file'});
  assert.deepEqual(playlistQueuePlan(rows,[0],new Map([[0,'https://example.test/a.mp3']])),{ok:false,code:'unmatched-item'});
 });
+
+test('playlist mapping shares case and separator identity with music and converter queues',()=>{
+ const {playlistQueuePlan}=require('../renderer/vidlib'),rows=[{id:'one'},{id:'two'}];
+ assert.deepEqual(playlistQueuePlan(rows,[0],new Map([[0,'C:\\Music\\A.mp3']]),['c:/music/a.mp3']),{ok:false,code:'duplicate-file'});
+ assert.deepEqual(playlistQueuePlan(rows,[0,1],new Map([[0,'C:\\Music\\A.mp3'],[1,'c:/music/a.mp3']])),{ok:false,code:'duplicate-file'});
+});

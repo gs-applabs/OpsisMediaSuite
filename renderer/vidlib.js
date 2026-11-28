@@ -3,9 +3,9 @@
 // ARRAY, never a shell string), encoder detection/selection, size prediction and probe parsing. UMD like convlib.js: loaded lazily by the
 // renderer (window.WaveframeVideo), required by the main process and the unit tests.
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.WaveframeVideo = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./path-identity'));
+  else root.WaveframeVideo = factory(root.OpsisPathIdentity);
+})(typeof self !== 'undefined' ? self : this, function (identity) {
   // software encoders first are NOT preferred: hardware (if listed) comes first, then software; the engine retries the next one on failure.
   const CODECS = {
     h264: { label: 'H.264', hw: ['h264_nvenc', 'h264_qsv', 'h264_amf'], sw: ['libx264', 'libopenh264'], containers: ['mp4', 'mkv'], crf: [0, 51], crfDefault: 21, webCodec: 'avc1.42001f' },
@@ -333,12 +333,12 @@
     if(!Array.isArray(rows)||rows.length>200||!Array.isArray(selection)||!(bindings instanceof Map)||!Array.isArray(existing)||!Number.isSafeInteger(capacity)||capacity<0)return {ok:false,code:'invalid-selection'};
     const chosen=new Set(selection);
     if(!chosen.size||[...chosen].some(i=>!Number.isInteger(i)||i<0||i>=rows.length))return {ok:false,code:'invalid-selection'};
-    const paths=[],seen=new Set(existing.map(p=>String(p).toLowerCase()));
+    const paths=[],seen=new Set(existing.map(identity.key).filter(Boolean));
     for(let i=0;i<rows.length;i++){
       if(!chosen.has(i))continue;
       const p=bindings.get(i);
       if(typeof p!=='string'||!p||!(/^[A-Za-z]:[\\/]/.test(p))||/[\x00-\x1f]/.test(p))return {ok:false,code:'unmatched-item'};
-      const key=p.toLowerCase();if(seen.has(key))return {ok:false,code:'duplicate-file'};
+      const key=identity.key(p);if(seen.has(key))return {ok:false,code:'duplicate-file'};
       seen.add(key);paths.push(p);
     }
     if(paths.length>capacity)return {ok:false,code:'queue-full'};

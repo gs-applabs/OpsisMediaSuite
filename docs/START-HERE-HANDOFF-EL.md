@@ -1,17 +1,19 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R5-P0.2 — SETTINGS BACKUP
+28 Νοεμβρίου 2026 • R6-02.1 — ALL PENDING / EASY FIRST
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
 - Draft PR #3: https://github.com/gs-applabs/OpsisMediaSuite/pull/3
 - Branch: feat/photo-tools-fxsound-coexistence
 - Τρέχον source: https://github.com/gs-applabs/OpsisMediaSuite/tree/feat/photo-tools-fxsound-coexistence
-- Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R5 και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
+- Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R6 (όλες οι εκκρεμότητες, 01–16) και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι R5-P0.2. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι R6-02.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R6: user requires ALL pending work (fixes, features, partials, integration, audit, tests, releases, blockers and conditional scope), not just current category. Single ordered index 01–16 easy-to-hard in main roadmap; preserve dependencies and repair failures first. R6-02.1 OV-08 shared path identity, OV-22 seven new guide entries; prior 8/9 PASS, Inno pending, new CI pending. Next simplest open tasks in group 02, then 03 onward; no merge/release. Report all categories on every pending-work question.
+
 R5-P0.2: OV-14 consolidate existing old backup helper (allowlist/schema, current keys, rollback, shared main/renderer sanitizer) replacing prefix-only flow; OV-13 settings export atomic staging and bounded import; photo save already no-overwrite, distinct contract. OV-04 and OV-12 inspected but pending actual security/origin review and opt-in photo capture date. CI pending, no merge/release. Base 9fa3861 seven PASS, two pending. Next OV-04/12/13 and desktop branch reconciliation.
 
 R5-P0.1: OV-03/18 REUSE existing FFmpeg resolver and subtitle decoder, no new modules; OV-05 EXTEND local-media-policy ASCII control/DEL/UNC rejection; OV-10 EXTEND existing music-tags with conservative read-only ID3 Greek UTF-8 mojibake recovery, wired to metadata:read and MusicBrainz. Added existing-suite regression tests. Legacy Greek codepage guesses excluded pending explicit review; next OV-04/12/13/14/02 branch reconciliation. New CI pending, no merge/release.
