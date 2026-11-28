@@ -1,8 +1,8 @@
 # OPSIS Media Suite 3.0.0 — Ενιαίο Master Roadmap
 
-Αναθεώρηση R3 • 27 Νοεμβρίου 2026 • Draft PR #3 • βάση κώδικα `0c9e15bef830beb144844eea3b2875d66455cb89`
+Αναθεώρηση R5 / R5-AUDIT • 28 Νοεμβρίου 2026 • Draft PR #3 • βάση κώδικα `0c9e15bef830beb144844eea3b2875d66455cb89`
 Στόχος: ασφαλές, αποδοτικό και ολοκληρωμένο 3.0.0 για Windows 10/11 x64, με Inno Setup και συμβατότητα plugin 1.0.0.0. Το master παραμένει 2.4.2 μέχρι την εγκεκριμένη έκδοση.
-R3 ανακατανέμει τις προτεραιότητες R2 χωρίς να επανεκκινεί υλοποιημένες εργασίες. Αυτό το τμήμα είναι το μοναδικό ενεργό σχέδιο προτεραιοτήτων. Το παλαιό σχέδιο και το ιστορικό παραμένουν στο τέλος ως αρχείο αναφοράς, όχι ως δεύτερη ουρά υλοποίησης.
+R5 και R5-AUDIT υπερισχύουν στη σειρά εργασιών και στην πύλη ελέγχου, χωρίς να επανεκκινούν υλοποιημένες εργασίες. Το παρόν αρχείο είναι το μοναδικό ενεργό σχέδιο προτεραιοτήτων. Το παλαιό σχέδιο και το ιστορικό παραμένουν στο τέλος ως αρχείο αναφοράς, όχι ως δεύτερη ουρά υλοποίησης.
 
 ## R5 — υποχρεωτική διασταύρωση κώδικα πριν από κάθε υλοποίηση (28 Νοεμβρίου 2026)
 
@@ -47,6 +47,59 @@ PR1 shared files (27): .github/workflows/ci.yml, .github/workflows/security-scan
 4. Existing music-tags writer supports six audio formats and has preservation tests. 3D.9I must use it or existing FFmpeg output metadata path with user approval, no duplicate tag engine and no silent overwrite. Keep input file untouched; test output format capability, metadata/cover rights and actual bytes.
 5. Older build branch contains ten modules confirmed 404 by same path at active SHA: atomic-write.js, audio-tags.js, decode-text.js, ffmpeg-path.js, ipc-trust.js, local-path.js, media-types.js, photo-metadata.js, renderer-protocol.js, renderer/backup.js. Missing filenames do not prove missing functionality. Inspect/reuse semantics: current resolveFfmpegPath/local-media-policy/settings backup and trusted IPC already exist; compare Greek mojibake repair, EXIF capture-date handling, encoding, safe renderer origin and backup allowlist. Preserve stricter current rules, add missing tests. No wholesale copy. Audit old branches before all new features.
 6. No duplicate literal IPC declarations observed across inspected main.js, conv-main.js, media-main.js, suite-main.js. This is static pattern inspection, not proof for dynamically registered routes/other branches. All 8 observed online renderer API methods have preload declarations; all 6 online/provider modules packaged and test-listed. Passing General CI is not live-provider acceptance.
+
+### R5-AUDIT — μόνιμο μητρώο διπλοτύπων, αλληλοκαλύψεων και συγκρούσεων
+
+**Δεσμευτική απαίτηση χρήστη:** πλήρης διασταύρωση πριν από κάθε νέα λειτουργία, συμπεριλαμβανομένων λειτουργιών με διαφορετική ονομασία, κώδικα, UI, branch ή plugin που παράγουν το ίδιο αποτέλεσμα ή χρησιμοποιούν ανταγωνιστικά τον ίδιο πόρο. Το παρόν Master Roadmap αποτελεί τη μοναδική πηγή των ευρημάτων και εκκρεμοτήτων. Το HANDOFF είναι δείκτης συνέχειας, όχι δεύτερο μητρώο. Το FEATURE-CONTROL-INVENTORY παραμένει βοηθητική απογραφή UI, όχι ανεξάρτητο roadmap.
+
+#### Κατηγορίες ελέγχου
+- D1 — ταυτόσημα αρχεία/blobs, επαναλαμβανόμενα blocks, ίδια imports/dependencies και assets.
+- D2 — σημασιολογικά διπλότυπα: διαφορετικά ονόματα με ίδιο αποτέλεσμα, validators, adapters, helpers, parsers, writers, queues.
+- D3 — λειτουργικές αλληλοκαλύψεις: διαφορετικά εργαλεία/καρτέλες/ρυθμίσεις για το ίδιο user outcome, κοινά υποσύνολα, διαφορετικές επιλογές με συγκρουόμενη συμπεριφορά.
+- D4 — συγκρούσεις runtime: IPC/protocol IDs, DOM IDs, shortcuts, event listeners, timers, workers, subprocesses, audio routes, device ownership, writes, caches, update/install paths.
+- D5 — ιστορικές/διακλαδικές αλληλοκαλύψεις: ενεργός κλάδος, master, όλα τα PR/branches, παλαιές διορθώσεις, κοινό Opsis.UI, plugins και εξωτερικοί μηχανισμοί Windows/FxSound.
+- D6 — τεκμηρίωση έναντι πραγματικότητας: κώδικας χωρίς call site, IPC χωρίς UI, UI χωρίς handler, package χωρίς test, test χωρίς εκτέλεση, υποσχέσεις roadmap χωρίς κώδικα, παρωχημένο Help/History.
+
+#### Ενιαίο μητρώο λειτουργικών αλληλοκαλύψεων
+Κατάσταση στο audit SHA 9447ded, επανέλεγχος κυριολεκτικών IPC στο b0e2115 (μόνο τεκμηρίωση). «Επιβεβαιωμένο» αφορά μόνο το συγκεκριμένο εύρημα, όχι πλήρη πιστοποίηση του υποσυστήματος. Τα IDs μένουν σταθερά· ενημερώνονται εδώ μετά από κάθε pass.
+
+| ID | Περιοχή / υποψήφια αλληλοκάλυψη | Κανονικός ιδιοκτήτης / απόφαση | Κατάσταση |
+|---|---|---|---|
+| OV-01 | PR1 vp:stream-url έναντι PR3 wfmedia protocol, vp:open-source/release-source | media-main.js + media-stream.js, διατήρηση νεότερων grants/tickets και range tests | Επιβεβαιωμένη διακλαδική αλληλοκάλυψη· επιλεκτική συμφιλίωση εκκρεμεί |
+| OV-02 | PR1 desktop flyout / codex/flyout-test-download / build review installer | Ένας desktop host, μία ιδιοκτησία Windows session/mixer/taskbar, bridge προς υπάρχον playback | Επιβεβαιωμένη κοινή περιοχή· σύγκριση δυνατοτήτων εκκρεμεί |
+| OV-03 | FFmpeg resolver/install έναντι παλαιού ffmpeg-path.js | main.js resolveFfmpegPath, έλεγχος discovery/validation των παλαιών υποψηφίων | Μερική αλληλοκάλυψη· επαλήθευση κενών |
+| OV-04 | ipc-trust.js / renderer-protocol.js έναντι υφιστάμενων trusted/fromMain, CSP/navigation και grants | Κοινή πολιτική εμπιστοσύνης, χωρίς χαλάρωση, όχι δεύτερο route registry | Σύγκριση security semantics εκκρεμεί |
+| OV-05 | local-path.js / media-types.js έναντι local-media-policy.js και extension sets | Ένας ορισμός αποδοχής ασφαλούς τοπικού αρχείου· διαφορετικές επιτρεπόμενες μορφές ανά εργαλείο | Μερική αλληλοκάλυψη· έλεγχος path/format matrix |
+| OV-06 | Τρεις provider JSON clients, music-lookup, subtitle-provider, suite.httpGet | Ενοποίηση μόνο ισοδύναμων primitives, ειδικά auth/limits/redirect/abort ανά πάροχο | Επιβεβαιωμένη επανάληψη metadata clients· refactor εκκρεμεί |
+| OV-07 | Τρεις provider preview handlers και τρία renderer preview flows | conv-main shared controller + video.js κοινή orchestration | Επιβεβαιωμένη επανάληψη lifecycle, όχι τρεις ανεξάρτητες υπηρεσίες |
+| OV-08 | Music playlist identity / video converter addPaths / playlistQueuePlan / audio converter / video playlist | Ενιαίο normalization για Windows case/separators όπου είναι local-file identity, διατήρηση intentional occurrences | Επιβεβαιωμένη ασυνέπεια πρώτων τριών· υπόλοιπα προς διασταύρωση |
+| OV-09 | Audio/Video conversion queues, online imports | convlib.createQueue και κοινός FFmpeg engine· χωριστές ενεργές εργασίες επιτρέπονται | Επιβεβαιωμένη επαναχρησιμοποίηση, όχι διπλό engine |
+| OV-10 | music-tags / MusicBrainz / AcoustID / online metadata / παλιό audio-tags | Υπάρχων writer και lookup, ανάγνωση/επισκευή ελληνικών tags ως πιθανή συμπλήρωση | Writers 6 formats ήδη υπάρχουν· output linkage/Greek repair εκκρεμούν |
+| OV-11 | Εξώφυλλα από metadata, τοπικό JPEG/PNG, μετατροπή και photo tools | music-tags.validateCover/complete, υπάρχον photo export για επεξεργασία· διακριτά δικαιώματα χρήσης | Έλεγχος αλληλοκάλυψης/σύνδεσης εκκρεμεί |
+| OV-12 | Photo metadata / photo-metadata.js παλιού branch / export | media-main photo:save + photolib/worker· ημερομηνία λήψης και EXIF/GPS policy μετά από έλεγχο | Παλιό module απουσιάζει κατά όνομα· λειτουργικό κενό προς επιβεβαίωση |
+| OV-13 | atomic-write.js / suite.createStore / provider registry persistence / tag backups / output publish | Κοινές primitives μόνο αν ίδια guarantees, ξεχωριστή πολιτική overwrite/rollback ανά δεδομένα | Υποψήφια αλληλοκάλυψη· σύγκριση durability/ownership |
+| OV-14 | Settings export/import έναντι renderer/backup.js παλαιού branch | Υπάρχον settings IPC + έλεγχος allowlist/restore, migration | Μερική αλληλοκάλυψη· παλιά tests προς σύγκριση |
+| OV-15 | Suite updater έναντι provider updater και dependency installer | suite.js για app updates, provider-compatibility/update-source για υπογεγραμμένο μητρώο· όχι δεύτερος app updater | Διακριτά contracts· transport overlap προς έλεγχο, provider updater μη συνδεδεμένος |
+| OV-16 | Web Audio / native DSP / AudioWorklet / FxSound / video audio / Windows mixer | dsp-routing, audiolib, native bridge και σαφής ιδιοκτήτης ανά session/device | Έλεγχος αποκλειστικότητας και φυσικών endpoints εκκρεμεί· επιτρεπτή παράλληλη ανεξάρτητη εργασία |
+| OV-17 | Chromium/native video, codec packs, player controls, sleep/shortcuts | playback-core, native-host, media-main και υπάρχον player UI· ίδιο control contract, engine-specific capabilities | Σκόπιμη εναλλακτική engine, όχι αυτόματη διαγραφή· parity/ownership tests |
+| OV-18 | Subtitle parsers/providers/download/archive/sync και παλιό decode-text.js | Υπάρχον subtitle pipeline, σύγκριση encoding helpers· όχι δεύτερος subtitle manager | Υποψήφια επικάλυψη· encoding/format/real provider tests |
+| OV-19 | M3U import/export και hardening branch | m3u.js και υφιστάμενο path.win32.resolve | Επιβεβαιωμένη σημασιολογική κάλυψη παλιάς διόρθωσης· reuse |
+| OV-20 | Theme/skins/visualizer/backgrounds και Opsis.UI 6 | Ήδη εισαγμένο ακριβές token blob + υπάρχον theme engine | Επιβεβαιωμένο blob· όχι δεύτερο theme engine· φυσικό UI/DPI προς έλεγχο |
+| OV-21 | Lazy loader, preview cache, resource timers και παλιές audit διορθώσεις | app.js loadScripts, resource-diagnostics, visibility gating, υπάρχον bounded cache | Μερική επιβεβαιωμένη κάλυψη· soak, listener counts, cancellation |
+| OV-22 | Help / Feature Guide / inventory / localization | renderer/feature-guide.js και i18n.js, υπάρχον inventory ως evidence | 18 online controls, 1 direct guide destination· συμπλήρωση χωρίς δεύτερο Help |
+| OV-23 | Opsis host / plugin / desktop visualizer / Crawler | Υφιστάμενο plugin contract, μία ιδιοκτησία playback/IPC, έλεγχος εγκατεστημένων plugins | Διασυστημική αλληλοκάλυψη προς διασταύρωση |
+| OV-24 | Installer variants, old AppId, PR1 installer, master showcase | Υφιστάμενο Inno Setup και identity/migration, διατήρηση master demo | Καμία νέα τεχνολογία installer· selective merge/CI |
+| OV-25 | IPC registrations σε main.js, conv-main.js, media-main.js, suite-main.js | Υφιστάμενες μοναδικές routes και preload | 112 literal registrations στο b0e2115, 0 duplicate channel names στο συγκεκριμένο σύνολο· δυναμικά/άλλα branches όχι πιστοποιημένα |
+
+#### Υποχρεωτική πύλη κάθε MEGA PASS (πριν από αλλαγές και πριν από παράδοση)
+1. Ανάκτηση πραγματικού head SHA και σχετικού baseline, ανανέωση απογραφής branches/PR/αρχειοθετημένων εργασιών. Αναζήτηση ονομάτων, aliases, σκοπού, outputs, UI labels, IPC, tests και callers. Έλεγχος manifest/package, native helpers και plugins όπου αφορούν τη λειτουργία.
+2. Έλεγχος D1–D6: ακριβή hashes/κανονικοποιημένα blocks, ομοιότητα και σημασιολογική ανάλυση, UI/function matrix, εξάρτηση/call graph και lifecycle. Αναφορά του scope και των μη διαθέσιμων αρχείων, όχι ισχυρισμός πλήρους σάρωσης χωρίς πρόσβαση.
+3. Αντιστοίχιση κάθε νέας εργασίας σε OV-ID ή νέο μοναδικό ID εδώ. Καταγραφή αρχείων και συμβόλων, υπάρχοντος owner, overlap scope, απόφασης REUSE / EXTEND / CONSOLIDATE / REPLACE / KEEP-SEPARATE / DEFER, αιτιολόγησης και acceptance tests. Διάκριση ακριβούς διπλοτύπου από σκόπιμη παράλληλη λειτουργία ή fallback.
+4. Προτεραιότητα στην επέκταση/ενοποίηση υπάρχοντος owner. Καμία δεύτερη υπηρεσία, engine, installer, queue implementation, updater ή UI ρύθμιση για το ίδιο αποτέλεσμα χωρίς τεκμηριωμένη ανάγκη. Αφαίρεση παλιού κώδικα μόνο μετά από έλεγχο callers, settings migration, regression και διατήρηση ιστορικού. Όχι διαγραφή δεδομένων χρήστη ή απενεργοποίηση ανεξάρτητων εργασιών.
+5. Τελικός έλεγχος νέου diff για διπλότυπα/σύγκρουση, επιβεβαίωση packaging/IPC/UI/caller και πραγματικής συμπεριφοράς, στοχευμένα regression tests, CI ανά SHA, έλεγχος idle και ταυτόχρονης χρήσης. Ενημέρωση OV-ID με evidence: VERIFIED STATIC / CONNECTED / TESTED / LIVE VERIFIED / BLOCKED. Μη συγχέεται ο κώδικας με πιστοποιημένη λειτουργία.
+6. Τελική παράδοση μόνο με ακριβή commit, τι αφαιρέθηκε/ενοποιήθηκε/διατηρήθηκε, τι έμεινε ανοιχτό και γιατί. Ενημέρωση **του ίδιου κύριου MD**, όχι νέο παράλληλο αρχείο ελέγχου. Το επόμενο session διαβάζει πρώτα R5-AUDIT και επιλέγει μόνο μη ολοκληρωμένες εργασίες.
+
+**Όριο παρόντος ελέγχου:** η απογραφή καλύπτει τους 9 εντοπισμένους κλάδους, 3 PRs, 134 changed-file paths στο PR3 και τις στοχευμένες διασταυρώσεις που καταγράφηκαν παραπάνω. Δεν εκτελέστηκε πλήρης AST/clone scanner σε ολόκληρο checkout ή πλήρης runtime/physical-device audit. Οι υποψήφιες αλληλοκαλύψεις δεν θεωρούνται αποδεδειγμένα διπλότυπα μέχρι τη διασταύρωση. Ο εξαντλητικός έλεγχος παραμένει υποχρεωτική πύλη πριν από release, και το μητρώο διατηρεί τα ανοιχτά στοιχεία χωρίς να τα αποκρύπτει.
 
 ### Revised next-pass gate (overrides order only, not scope)
 - R5-P0: inspect 74-file build branch + PR1/other branch overlap at semantic level; restore only missing stricter fixes (Greek tags, photo dates, backup, IPC, FFmpeg detection, etc.) and regression tests; preserve master demo. Reconcile resource/security regressions before adding features.

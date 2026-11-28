@@ -1,17 +1,19 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R5 — SOURCE CROSS-CHECK
+28 Νοεμβρίου 2026 • R5-AUDIT — SOURCE CROSS-CHECK
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
 - Draft PR #3: https://github.com/gs-applabs/OpsisMediaSuite/pull/3
 - Branch: feat/photo-tools-fxsound-coexistence
 - Τρέχον source: https://github.com/gs-applabs/OpsisMediaSuite/tree/feat/photo-tools-fxsound-coexistence
-- Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
+- Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R5 και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
 - Το commit που περιέχει αυτό το αρχείο είναι ο έλεγχος R5 (μόνο τεκμηρίωση). Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R5-AUDIT: μοναδικό μητρώο πλήρους ελέγχου διπλοτύπων/αλληλοκαλύψεων/συγκρούσεων στο Master Roadmap, 25 σταθερά OV IDs, 6 κατηγορίες και πύλη πριν/μετά από κάθε pass. 112 literal IPC registrations / 0 duplicate names σε 4 main modules στο b0e2115. Στατικός στοχευμένος έλεγχος, όχι πλήρης AST/runtime πιστοποίηση. Επόμενο R5-P0: πραγματική διασταύρωση/επίλυση ανά OV-ID. Καμία αλλαγή runtime σε αυτό το commit.
+
 R5 source audit baseline 9447ded478b6755dec6d249eee971bf608651479: 134 changed files, 156 commits vs historical PR base, 9 branches, 3 PRs, 27 PR1 overlap; master 13 own commits. 8/9 CI PASS including General and Packaged, Inno pending. Full branch/file-level inventory and targeted source evidence in R5 of master roadmap. Critical: build/opsis-2.4.2-review-installer has 74 branch-side changes and 10 modules not present by same path at active SHA; reconcile semantics before new features. Six audio formats already have tag writers; don't recreate. Provider registry/updater library not wired to runtime. Provider preview transport/lifecycle and path identity have overlaps. Next R5-P0 selective branch reconciliation, then R5-P1 common preview/path and R5-P2 existing tag integration. No runtime edits in audit; no merge/release. Scope is static cross-check, not exhaustive runtime certification.
 
 3D.9H.1: official Vimeo/Dailymotion/SoundCloud oEmbed public metadata, canonical URL admission, fixed endpoints, 256 KiB/15s limits, explicit consent, common preview cancellation and single-item local mapping. SoundCloud sets show collection metadata only. HTML/media/thumbnail URLs discarded. Bandcamp remains pending (no verified official endpoint here), no provider audio/video downloads. Fixtures and packaging registered. Base e7b28d2 8/9 PASS incl General and Packaged, Inno pending. Live endpoint/UI tests pending. Docs: https://developer.vimeo.com/api/oembed/videos https://developers.dailymotion.com/v0/docs/embed-with-oembed https://developers.soundcloud.com/docs/oembed.
