@@ -326,5 +326,11 @@
   const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif'];
   const OUT_FORMATS = { jpeg: { mime: 'image/jpeg', ext: 'jpg' }, png: { mime: 'image/png', ext: 'png' }, webp: { mime: 'image/webp', ext: 'webp' } };
 
-  return { headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportReadPlan, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  function previewViewport(scale,x,y,width,height,boxWidth,boxHeight){
+    const finite=v=>Number.isFinite(v)?v:0;
+    scale=Math.max(1,Math.min(3,finite(scale)||1));
+    const mx=Math.max(0,(Math.max(0,finite(width))*scale-Math.max(0,finite(boxWidth)))/2),my=Math.max(0,(Math.max(0,finite(height))*scale-Math.max(0,finite(boxHeight)))/2);
+    return {scale,x:Math.max(-mx,Math.min(mx,finite(x))),y:Math.max(-my,Math.min(my,finite(y)))};
+  }
+  return { previewViewport,headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportReadPlan, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

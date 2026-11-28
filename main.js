@@ -605,6 +605,7 @@ function createWindow() {
         title: displayed.title,
         artist: displayed.artist,
         album: displayed.album,
+        genre: Array.isArray(common.genre)?common.genre.filter(v=>typeof v==='string').slice(0,8).map(v=>v.slice(0,200)).join(' / ').slice(0,512):null,
         picture,
       };
     } catch {

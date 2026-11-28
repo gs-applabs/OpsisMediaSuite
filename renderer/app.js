@@ -1815,10 +1815,11 @@ async function enrichTrackMetadata(item,force=false) {
   const artist=meta.artist||(guess?parts[0].trim():null);
   const name=title?(artist?artist+' - '+title:title):base;
   const picture=musicArtCache.get(item)||null;
-  if(item.name===name&&item.artist===(artist||null)&&item.album===(meta.album||null)&&item.picture===picture)return;
+  if(item.name===name&&item.artist===(artist||null)&&item.album===(meta.album||null)&&item.genre===(meta.genre||null)&&item.picture===picture)return;
   item.name=name;
   item.artist = artist || null;
   item.album = meta.album || null;
+  item.genre = meta.genre || null;
   item.picture = picture;
   scheduleMetadataRefresh();
   if (playlist[currentTrackIndex] === item) updateTrackNameUi();
@@ -1902,17 +1903,33 @@ playlistFolder.addEventListener('click',async()=>{
  }catch{await showAlertDialog('Music library','Import failed / Αποτυχία εισαγωγής');}
  finally{playlistFolder.disabled=false;}
 });
+const playlistGroupField=document.getElementById('playlistGroupField'),playlistGroupValue=document.getElementById('playlistGroupValue');
+let musicGroupSignature='';
+function refreshMusicGroups(){
+ const field=playlistGroupField.value,groups=OpsisFeatureGuide.musicGroups(playlist,field),selected=playlistGroupValue.value;
+ const signature=JSON.stringify([field,groups]);
+ if(signature!==musicGroupSignature){
+  musicGroupSignature=signature;playlistGroupValue.replaceChildren();
+  const all=document.createElement('option');all.value='';all.textContent='Όλα / All';playlistGroupValue.append(all);
+  for(const group of groups){const opt=document.createElement('option');opt.value=group.key;opt.textContent=(group.label||'Άγνωστο / Unknown')+' ('+group.count+')';playlistGroupValue.append(opt);}
+  if(groups.some(g=>g.key===selected))playlistGroupValue.value=selected;
+ }
+ playlistGroupValue.disabled=!field;
+}
+playlistGroupField.addEventListener('change',()=>{playlistGroupValue.value='';renderPlaylist(false);});
+playlistGroupValue.addEventListener('change',()=>renderPlaylist(false));
 const playlistDuplicates=document.getElementById('playlistDuplicates');
 playlistDuplicates.addEventListener('change',()=>renderPlaylist(false));
 playlistSearch.addEventListener('input',()=>renderPlaylist(false));
 document.getElementById('playlistSearchClear').addEventListener('click',()=>{playlistSearch.value='';renderPlaylist(false);playlistSearch.focus();});
 function renderPlaylist(persist=true) {
   els.playlist.innerHTML = '';
-  const query=playlistSearch.value;let visible=0;
+  refreshMusicGroups();
+  const query=playlistSearch.value,groupField=playlistGroupField.value,groupKey=playlistGroupValue.value;let visible=0;
   const duplicates=playlistDuplicates.checked?OpsisFeatureGuide.duplicateMusicPaths(playlist):null;
   els.playlistEmptyHint.style.display = playlist.length ? 'none' : 'block';
   playlist.forEach((item, idx) => {
-    if(!OpsisFeatureGuide.trackMatches(item,query)||(duplicates&&!duplicates.has(OpsisFeatureGuide.musicPathKey(item.path))))return;
+    if(!OpsisFeatureGuide.trackMatches(item,query)||(groupKey&&OpsisFeatureGuide.musicGroupKey(item,groupField)!==groupKey)||(duplicates&&!duplicates.has(OpsisFeatureGuide.musicPathKey(item.path))))return;
     visible++;
     const li = document.createElement('li');
     li.className = idx === currentTrackIndex ? 'active' : '';
@@ -1950,7 +1967,7 @@ function renderPlaylist(persist=true) {
     li.appendChild(rm);
     els.playlist.appendChild(li);
   });
-  document.getElementById('playlistSearchCount').textContent=query.trim()||duplicates?visible+' / '+playlist.length:'';
+  document.getElementById('playlistSearchCount').textContent=query.trim()||duplicates||groupKey?visible+' / '+playlist.length:'';
   if(persist)savePlaylist();
 }
 

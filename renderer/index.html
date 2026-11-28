@@ -119,6 +119,7 @@
           <div class="playlist-drawer-header metadata-tools"><button class="small-btn" id="metadataAuto">Auto tags / Αυτόματα tags (MP3 / FLAC / WAV / M4A / OGG / OPUS*)</button><button class="small-btn" id="metadataManual">Edit tags / Συμπλήρωση tags (MP3 / FLAC / WAV / M4A / OGG / OPUS*)</button><button class="small-btn" id="metadataOnline">MusicBrainz</button><button class="small-btn" id="metadataFingerprint">AcoustID / Αποτύπωμα</button><button class="small-btn" id="metadataCover">Add cover / Εξώφυλλο</button><button class="small-btn" id="metadataCancel" hidden>Cancel / Ακύρωση</button></div>
           <div class="playlist-drawer-header"><label><input id="metadataInferDisplay" type="checkbox"> Filename suggestions / Προτάσεις από όνομα (display only / μόνο προβολή)</label><span id="metadataProgress" role="status" aria-live="polite"></span></div>
           <div class="playlist-drawer-header metadata-tools"><label for="playlistSearch">Search / Αναζήτηση</label><input id="playlistSearch" type="search" maxlength="160" placeholder="Artist, title, album / Καλλιτέχνης, τίτλος, άλμπουμ"><button class="small-btn" id="playlistSearchClear">Clear / Καθαρισμός</button><button class="small-btn" id="playlistFolder">Folder / Φάκελος</button><label><input id="playlistDuplicates" type="checkbox"> Duplicate paths / Διπλές διαδρομές</label><span id="playlistSearchCount" role="status" aria-live="polite"></span></div>
+          <div class="playlist-drawer-header metadata-tools"><label for="playlistGroupField">Συλλογές / Collections</label><select id="playlistGroupField"><option value="">Όλα / All</option><option value="artist">Καλλιτέχνης / Artist</option><option value="album">Άλμπουμ / Album</option><option value="genre">Είδος / Genre</option></select><select id="playlistGroupValue" disabled aria-label="Συλλογή / Collection"><option value="">Όλα / All</option></select></div>
           <ul id="playlist" class="playlist"></ul>
           <p class="empty-hint" id="playlistEmptyHint" data-i18n="player.playlistEmpty">Η playlist είναι άδεια. Πρόσθεσε αρχεία ή σύρε τα εδώ.</p>
           <div class="playlist-resize-handle" id="playlistResizeHandle" title="Σύρε για αλλαγή μεγέθους">⋯</div>
@@ -422,12 +423,13 @@
           <div class="panel ph-stage">
             <h2 data-i18n="ph.title">Βελτίωση φωτογραφιών</h2>
             <div class="ph-drop" id="phDrop">
-              <canvas id="phCanvas" class="ph-canvas"></canvas>
+              <canvas id="phCanvas" class="ph-canvas" tabindex="0" aria-label="Προεπισκόπηση φωτογραφίας / Photo preview"></canvas>
               <p class="vp-empty" id="phEmpty" data-i18n="ph.empty">Άνοιξε ή σύρε εδώ μια φωτογραφία</p>
             </div>
             <div class="vp-bar">
               <button class="small-btn" id="phOpen" data-i18n="ph.open">Άνοιγμα</button>
               <button class="small-btn" id="phCloseMedia" disabled>Close / Κλείσιμο</button>
+              <label class="vp-inline" for="phZoom">Μεγέθυνση / Zoom <input type="range" id="phZoom" min="100" max="300" step="10" value="100" disabled /><output id="phZoomValue" for="phZoom">100%</output></label><button class="small-btn" id="phZoomReset" disabled>100%</button>
               <button class="small-btn" id="phAuto" data-i18n="ph.auto">Αυτόματη βελτίωση</button>
               <label><span data-i18n="ph.look">Φίλτρο</span> <select id="phLook"><option value="neutral" data-i18n="ph.lookNeutral">Ουδέτερο</option><option value="portrait" data-i18n="ph.lookPortrait">Πορτρέτο</option><option value="landscape" data-i18n="ph.lookLandscape">Τοπίο</option><option value="monochrome" data-i18n="ph.lookMono">Ασπρόμαυρο</option><option value="vintage" data-i18n="ph.lookVintage">Ρετρό</option><option value="document" data-i18n="ph.lookDocument">Έγγραφο</option></select></label><label><span data-i18n="ph.strength">Ένταση %</span> <input id="phLookStrength" type="number" min="0" max="100" step="5" value="100"></label><button class="small-btn" id="phLookApply" data-i18n="ph.applyLook">Εφαρμογή φίλτρου</button>
               <button class="small-btn" id="phUndo" disabled data-i18n="ph.undo" data-i18n-aria="ph.undo">Αναίρεση</button>

@@ -17,7 +17,14 @@
   let openGeneration = 0,opening=false,exportController=null,exportPhase='idle',captureToken=null,captureDate=null;
   let bmp = null, name = 'photo', params = P.defaults(), cropKey = 'none', preview = null, orig = null, raf = 0, comparing = false, built = false, busy = false;
 
-  let history=P.createHistory({params,cropKey});
+  let history=P.createHistory({params,cropKey}),view={scale:1,x:0,y:0},pan=null;
+  function updateViewport(){
+    const c=$('phCanvas'),box=$('phDrop');
+    view=P.previewViewport(view.scale,view.x,view.y,c.clientWidth,c.clientHeight,box.clientWidth,box.clientHeight);
+    c.style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
+    $('phZoomValue').textContent=Math.round(view.scale*100)+'%';c.classList.toggle('zoomed',view.scale>1);
+  }
+  function resetViewport(){pan=null;view={scale:1,x:0,y:0};$('phZoom').value='100';$('phZoom').disabled=$('phZoomReset').disabled=!bmp;updateViewport();}
   function updateHistory(){ $('phUndo').disabled=!history.canUndo();$('phRedo').disabled=!history.canRedo(); }
   function checkpoint(){if(!orig)return;history.push({params,cropKey});updateHistory();}
   function restore(snapshot){params=snapshot.params;cropKey=snapshot.cropKey;$('phCrop').value=cropKey;syncCrop();syncSliders();updateHistory();schedule();}
@@ -55,6 +62,14 @@
     cmp.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') down(); }); cmp.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') up(); });
     $('phFormat').addEventListener('change', () => { $('phQualityField').classList.toggle('dep-hidden', $('phFormat').value === 'png');$('phMatteField').hidden=$('phFormat').value!=='jpeg'; });
     $('phFormat').addEventListener('change',syncCaptureDate);
+    const canvas=$('phCanvas');
+    $('phZoom').addEventListener('input',()=>{view.scale=Number($('phZoom').value)/100;updateViewport();});
+    $('phZoomReset').addEventListener('click',resetViewport);
+    canvas.addEventListener('pointerdown',e=>{if(!bmp||view.scale<=1||e.button!==0)return;e.preventDefault();pan={id:e.pointerId,x:e.clientX,y:e.clientY,startX:view.x,startY:view.y};canvas.setPointerCapture(e.pointerId);});
+    canvas.addEventListener('pointermove',e=>{if(pan?.id!==e.pointerId)return;view.x=pan.startX+e.clientX-pan.x;view.y=pan.startY+e.clientY-pan.y;updateViewport();});
+    for(const ev of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(ev,e=>{if(pan?.id===e.pointerId)pan=null;});
+    canvas.addEventListener('keydown',e=>{if(!bmp||view.scale<=1||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();e.stopPropagation();view.x+=(e.key==='ArrowLeft'?30:e.key==='ArrowRight'?-30:0);view.y+=(e.key==='ArrowUp'?30:e.key==='ArrowDown'?-30:0);updateViewport();});
+    window.addEventListener('resize',()=>{if(bmp&&photoVisible())updateViewport();});
     $('phSave').addEventListener('click', save);
     $('phCancelExport').addEventListener('click',()=>{if(exportPhase==='processing')exportController?.abort();});
     $('phCloseMedia').addEventListener('click',async()=>{
@@ -81,7 +96,7 @@
   function syncCaptureDate(){const field=$('phKeepDate');field.disabled=!captureToken||!['jpeg','png'].includes($('phFormat').value);if(field.disabled)field.checked=false;$('phCaptureDate').textContent=captureDate||'';}
   function releasePhoto(){
     ++openGeneration;if(raf)cancelAnimationFrame(raf);raf=0;
-    bmp?.close();bmp=null;orig=null;preview=null;comparing=false;
+    bmp?.close();bmp=null;orig=null;preview=null;comparing=false;resetViewport();
     captureToken=null;captureDate=null;$('phKeepDate').checked=false;syncCaptureDate();
     name='photo';params=P.defaults();cropKey='none';history=P.createHistory({params,cropKey});
     $('phCanvas').width=0;$('phCanvas').height=0;
@@ -133,7 +148,7 @@
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(b, 0, 0, sz.width, sz.height);
       const d = g.getImageData(0, 0, sz.width, sz.height);
       c.width=0;c.height=0;
-      const previous=bmp;bmp=b;candidate=null;previous?.close();
+      const previous=bmp;bmp=b;candidate=null;previous?.close();resetViewport();
       captureToken=typeof token==='string'?token:null;captureDate=typeof date==='string'?date:null;$('phKeepDate').checked=false;syncCaptureDate();
       name=nm||'photo';params=P.defaults();cropKey='none';$('phCrop').value='none';syncCrop();syncSliders();
       orig = { data: d.data, width: d.width, height: d.height };
@@ -169,7 +184,7 @@
     if (!orig) return;
     const out = comparing ? P.geometry(orig, { ...P.defaults(), rotate: params.rotate, flipH: params.flipH, flipV: params.flipV, crop: cropParams() }) : P.process(orig, full());
     const c = $('phCanvas'); if(c.width!==out.width||c.height!==out.height){c.width=out.width;c.height=out.height;}
-    c.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
+    c.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);updateViewport();
     drawHist(out.data);
     exportSize();
     const dimensions=P.outputSize(bmp.width,bmp.height,full());

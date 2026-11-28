@@ -188,3 +188,9 @@ test('recovered capture date helper writes a single minimal EXIF date in JPEG an
  assert.equal(M.captureDate(Buffer.alloc(2)),null);
  assert.equal(M.captureDate(null),null);
 });
+
+test('preview-only zoom clamps pan and never changes image dimensions',()=>{
+ assert.deepEqual(P.previewViewport(2,500,-500,300,200,400,300),{scale:2,x:100,y:-50});
+ assert.deepEqual(P.previewViewport(1,500,-500,300,200,400,300),{scale:1,x:0,y:0});
+ assert.deepEqual(P.previewViewport(99,0,0,300,200,400,300),{scale:3,x:0,y:0});
+});
