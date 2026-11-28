@@ -75,6 +75,43 @@ function captureDate(bytes) {
   return datePattern.test(value) ? value : null;
 }
 
+// Only static, metadata-free WebP layouts produced by the canvas encoder.
+// Preserve compressed image chunks exactly; no pixel decode or re-encode.
+function attachWebpDate(bytes,tiff){
+  if(bytes.length<20||bytes.length>256*1024*1024-100||
+     bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WEBP'||
+     bytes.readUInt32LE(4)!==bytes.length-8)return bytes;
+  let p=12,extended=null,image=null,alphaChunk=false;
+  for(let count=0;p<bytes.length&&count++<4;){
+    if(p+8>bytes.length)return bytes;
+    const type=bytes.toString('ascii',p,p+4),length=bytes.readUInt32LE(p+4),start=p+8,next=start+length+(length&1);
+    if(next>bytes.length)return bytes;
+    if(type==='VP8X'&&p===12&&length===10&&!extended){
+      const flags=bytes[start];
+      if((flags&~0x10)!==0||bytes[start+1]||bytes[start+2]||bytes[start+3])return bytes;
+      extended={flags,width:bytes.readUIntLE(start+4,3)+1,height:bytes.readUIntLE(start+7,3)+1};
+    }else if(type==='ALPH'&&extended&&!image&&!alphaChunk&&length>0){
+      alphaChunk=true;
+    }else if(type==='VP8 '&&!image&&length>=10&&!(bytes[start]&1)&&
+       bytes[start+3]===0x9d&&bytes[start+4]===1&&bytes[start+5]===0x2a){
+      image={width:bytes.readUInt16LE(start+6)&0x3fff,height:bytes.readUInt16LE(start+8)&0x3fff,alpha:alphaChunk};
+    }else if(type==='VP8L'&&!image&&!alphaChunk&&length>=5&&bytes[start]===0x2f){
+      const bits=bytes.readUInt32LE(start+1);if(bits>>>29)return bytes;
+      image={width:(bits&0x3fff)+1,height:((bits>>>14)&0x3fff)+1,alpha:!!(bits&0x10000000)};
+    }else return bytes;
+    p=next;
+  }
+  if(p!==bytes.length||!image||!image.width||!image.height)return bytes;
+  if(extended&&(extended.width!==image.width||extended.height!==image.height||!!(extended.flags&0x10)!==image.alpha))return bytes;
+  const vp8x=Buffer.alloc(18);vp8x.write('VP8X');vp8x.writeUInt32LE(10,4);
+  vp8x[8]=0x08|(image.alpha?0x10:0);
+  vp8x.writeUIntLE(image.width-1,12,3);vp8x.writeUIntLE(image.height-1,15,3);
+  const metadata=Buffer.alloc(8+tiff.length);metadata.write('EXIF');metadata.writeUInt32LE(tiff.length,4);tiff.copy(metadata,8);
+  const pixels=bytes.subarray(extended?30:12),riff=Buffer.from(bytes.subarray(0,12));
+  riff.writeUInt32LE(4+vp8x.length+pixels.length+metadata.length,4);
+  return Buffer.concat([riff,vp8x,pixels,metadata]);
+}
+
 function attachCaptureDate(bytes, format, value) {
   if (!Buffer.isBuffer(bytes) || typeof value !== 'string' || !datePattern.test(value) || findExif(bytes)) return bytes;
   const tiff = Buffer.alloc(64);
@@ -93,6 +130,7 @@ function attachCaptureDate(bytes, format, value) {
   tiff.writeUInt32LE(44, 36);
   tiff.write(value, 44, 'ascii');
 
+  if (format === 'webp') return attachWebpDate(bytes,tiff);
   if (format === 'jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8) {
     const header = Buffer.from([0xff, 0xe1, 0, 0]);
     header.writeUInt16BE(2 + exif.length + tiff.length, 2);

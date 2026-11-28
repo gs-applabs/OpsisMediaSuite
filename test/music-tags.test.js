@@ -165,3 +165,10 @@ test('music scan distinguishes an exact file/entry limit from actual omission',a
  await fs.writeFile(path.join(dir,'two.flac'),'fixture');
  r=await scanFolder(dir,{maxFiles:1});assert.equal(r.files.length,1);assert.equal(r.truncated,true);
 });
+
+
+test('folder and main music admission share the same immutable supported formats',()=>{
+ const {MUSIC_EXTENSIONS}=require('../music-library'),fs=require('node:fs'),path=require('node:path');
+ assert.deepEqual(MUSIC_EXTENSIONS,['.mp3','.wav','.flac','.ogg','.m4a','.opus','.wma']);assert.ok(Object.isFrozen(MUSIC_EXTENSIONS));
+ assert.match(fs.readFileSync(path.join(__dirname,'../main.js'),'utf8'),/AUDIO_FILE_EXTENSIONS = require\('\.\/music-library'\)\.MUSIC_EXTENSIONS/);
+});

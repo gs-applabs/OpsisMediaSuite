@@ -238,3 +238,22 @@ test('picked WebP date after large pixel payload is located by bounded chunk jum
  assert.equal(M.captureDate(source.subarray(0,1024*1024)),null);
  const corrupt=Buffer.from(source);corrupt.writeUInt32LE(0xffffffff,16);assert.equal(M.captureDate(corrupt),null);
 });
+
+
+test('static WebP date export preserves compressed pixels and validates RIFF layout',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30';
+ function chunk(name,data){const b=Buffer.alloc(8+data.length+(data.length&1));b.write(name);b.writeUInt32LE(data.length,4);data.copy(b,8);return b;}
+ function riff(...chunks){const h=Buffer.alloc(12);h.write('RIFF');h.writeUInt32LE(4+chunks.reduce((n,x)=>n+x.length,0),4);h.write('WEBP',8);return Buffer.concat([h,...chunks]);}
+ const lossy=Buffer.from([0,0,0,0x9d,1,0x2a,32,0,24,0]),lossless=Buffer.alloc(5);lossless[0]=0x2f;lossless.writeUInt32LE(31|(23<<14)|0x10000000,1);
+ for(const [type,payload,alpha] of [['VP8 ',lossy,false],['VP8L',lossless,true]]){
+  const pixels=chunk(type,payload),source=riff(pixels),out=M.attachCaptureDate(source,'webp',date);
+  assert.notEqual(out,source);assert.equal(M.captureDate(out),date);assert.equal(out.readUInt32LE(4),out.length-8);
+  assert.equal(out[20],alpha?0x18:8);assert.equal(out.readUIntLE(24,3),31);assert.equal(out.readUIntLE(27,3),23);
+  assert.deepEqual(out.subarray(30,30+pixels.length),pixels);assert.equal(M.attachCaptureDate(out,'webp',date),out);
+  const broken=Buffer.from(source);broken.writeUInt32LE(999,16);assert.equal(M.attachCaptureDate(broken,'webp',date),broken);
+  const foreign=riff(pixels,chunk('XMP ',Buffer.from('private')));assert.equal(M.attachCaptureDate(foreign,'webp',date),foreign);
+ }
+ const ext=Buffer.alloc(10);ext[0]=0x10;ext.writeUIntLE(31,4,3);ext.writeUIntLE(23,7,3);
+ const alpha=chunk('ALPH',Buffer.from([0,1])),pixels=chunk('VP8 ',lossy),source=riff(chunk('VP8X',ext),alpha,pixels);
+ const out=M.attachCaptureDate(source,'webp',date);assert.equal(M.captureDate(out),date);assert.equal(out[20],0x18);assert.deepEqual(out.subarray(30,30+alpha.length+pixels.length),Buffer.concat([alpha,pixels]));
+});

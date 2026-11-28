@@ -3,7 +3,8 @@
 // network access. Hard limits include examined non-audio entries.
 const fs=require('node:fs/promises'),path=require('node:path');
 const {localDirectory,localPath}=require('./local-media-policy');
-const EXTS=new Set(['.mp3','.wav','.flac','.ogg','.m4a','.opus','.wma']);
+const MUSIC_EXTENSIONS=Object.freeze(['.mp3','.wav','.flac','.ogg','.m4a','.opus','.wma']);
+const EXTS=new Set(MUSIC_EXTENSIONS);
 async function scanFolder(root,{maxFiles=2000,maxEntries=20000,maxDepth=8,cancelled=()=>false}={}){
  const safe=localDirectory(root);if(!safe)throw Error('unsafe music folder');
  const files=[],queue=[{dir:safe,depth:0}];let examined=0,truncated=false,skipped=0,cursor=0,limitReached=false;
@@ -27,4 +28,4 @@ async function scanFolder(root,{maxFiles=2000,maxEntries=20000,maxDepth=8,cancel
  files.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
  return {files,examined:Math.min(examined,maxEntries),truncated,skipped,cancelled:cancelled()};
 }
-module.exports={scanFolder};
+module.exports={scanFolder,MUSIC_EXTENSIONS};

@@ -521,7 +521,7 @@ function init({ getMainWin, resolveFfmpegPath }) {
   ipcMain.handle('photo:save', async (e, req) => {
     if(!trusted(e)||imageSaveBusy||!req||!Object.hasOwn(SAVE_FORMATS,req.format)||!(req.bytes instanceof ArrayBuffer||ArrayBuffer.isView(req.bytes))||!req.bytes.byteLength||req.bytes.byteLength>MAX_SAVE_BYTES)return {ok:false};
     const captureDate=req.captureToken==null?null:typeof req.captureToken==='string'&&req.captureToken.length===32?captureDates.get(req.captureToken):undefined;
-    if(req.captureToken!=null&&(!captureDate||!['jpeg','png'].includes(req.format)))return {ok:false,code:'capture-date-unavailable'};
+    if(req.captureToken!=null&&!captureDate)return {ok:false,code:'capture-date-unavailable'};
     imageSaveBusy=true;let tmp=null;
     try{
       const base=String(req.name||'photo').replace(/[\\/:*?"<>|\0]/g,'_').replace(/\.[A-Za-z0-9]{1,5}$/,'').slice(0,120)||'photo';
@@ -796,6 +796,13 @@ function init({ getMainWin, resolveFfmpegPath }) {
       check('photo export worker transfers pixels and rotates',workerOk);
       const encoded=await js("(async()=>{const out={width:64,height:48,data:new Uint8ClampedArray(64*48*4)};const results=[];for(const f of ['png','jpeg','webp']){const r=await WaveframePhotoUi.encodeExport(out,f,.95,32,'#00ff00');const bmp=await createImageBitmap(r.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);const rgba=Array.from(c.getContext('2d').getImageData(16,12,1,1).data);results.push({f,w:bmp.width,h:bmp.height,mime:r.blob.type,rgba});bmp.close();c.width=0;c.height=0;}return results;})()");
       check('photo real PNG JPEG WebP encode/decode, resized dimensions and alpha/matte',encoded.length===3&&encoded.every(x=>x.w===32&&x.h===24&&x.mime==='image/'+x.f&&(x.f==='jpeg'?x.rgba[1]>235&&x.rgba[0]<20&&x.rgba[2]<20&&x.rgba[3]===255:x.rgba[3]===0)),JSON.stringify(encoded));
+      // Exercise actual Chromium canvas WebP bytes through the shared date writer,
+      // then decode again and compare every RGBA byte with the original decode.
+      const photoDate='2024:07:18 09:14:30',dateWriter=require('./photo-metadata');
+      const webpFixture=Buffer.from(await js("(async()=>{const out={width:4,height:3,data:new Uint8ClampedArray(4*3*4)};for(let i=0;i<out.data.length;i+=4){out.data[i]=80;out.data[i+1]=160;out.data[i+2]=240;out.data[i+3]=i%8?255:0;}const r=await WaveframePhotoUi.encodeExport(out,'webp',.95,0,'#000000');return Array.from(new Uint8Array(await r.blob.arrayBuffer()));})()"));
+      const datedWebp=dateWriter.attachCaptureDate(webpFixture,'webp',photoDate);
+      const decodedPair=await js("(async()=>{const result=[];for(const bytes of "+JSON.stringify([Array.from(webpFixture),Array.from(datedWebp)])+"){const b=await createImageBitmap(new Blob([new Uint8Array(bytes)],{type:'image/webp'}));const c=document.createElement('canvas');c.width=b.width;c.height=b.height;const g=c.getContext('2d');g.drawImage(b,0,0);result.push([b.width,b.height,...g.getImageData(0,0,b.width,b.height).data]);b.close();c.width=0;c.height=0;}return result;})()");
+      check('photo real WebP date export preserves decoded pixels',datedWebp!==webpFixture&&dateWriter.captureDate(datedWebp)===photoDate&&JSON.stringify(decodedPair[0])===JSON.stringify(decodedPair[1]));
       await js("document.getElementById('phUndo').click();1");
       check('photo undo restores original orientation',await until("document.getElementById('phCanvas').width===64",3000));
       await js("document.getElementById('phRedo').click();1");

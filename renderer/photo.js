@@ -100,7 +100,7 @@
     document.addEventListener('waveframe:language-changed', () => { $('phCrop').options[0].textContent = t('ph.cropNone');if(orig)schedule(); });
   }
 
-  function syncCaptureDate(){const field=$('phKeepDate');field.disabled=!captureToken||!['jpeg','png'].includes($('phFormat').value);if(field.disabled)field.checked=false;$('phCaptureDate').textContent=captureDate||'';}
+  function syncCaptureDate(){const field=$('phKeepDate');field.disabled=!captureToken||!Object.hasOwn(P.OUT_FORMATS,$('phFormat').value);if(field.disabled)field.checked=false;$('phCaptureDate').textContent=captureDate||'';}
   function releasePhoto(){
     ++openGeneration;if(raf)cancelAnimationFrame(raf);raf=0;
     bmp?.close();bmp=null;orig=null;preview=null;comparing=false;resetViewport();

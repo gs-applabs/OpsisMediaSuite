@@ -164,3 +164,13 @@ test('backup preserves normal Windows output folders without treating them as fi
   for(const key of ['waveframe.destFolder','waveframe.vidDestFolder']) assert.equal(B.sanitize({[key]:value}),null,value.slice(0,40));
  }
 });
+
+
+test('backup restore avoids unchanged writes and rolls back only changed keys',()=>{
+ const B=require('../renderer/backup'),m=new Map([['waveframe.lang','el'],['waveframe.skin','midnight']]),writes=[];
+ const storage={getItem:k=>m.get(k)??null,setItem:(k,v)=>{writes.push([k,v]);if(k==='waveframe.skin'&&v==='light')throw Error('quota');m.set(k,v);},removeItem:k=>m.delete(k)};
+ assert.equal(B.restore(storage,{'waveframe.lang':'el','waveframe.skin':'midnight'}),true);
+ assert.deepEqual(writes,[]);
+ assert.equal(B.restore(storage,{'waveframe.lang':'en','waveframe.skin':'light'}),false);
+ assert.deepEqual(writes,[['waveframe.lang','en'],['waveframe.skin','light'],['waveframe.lang','el']]);assert.equal(m.get('waveframe.lang'),'el');
+});

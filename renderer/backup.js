@@ -74,6 +74,7 @@ const WaveframeBackup = (() => {
     try {
       for (const [key, value] of entries) {
         const original = storage.getItem(key);
+        if(original===value)continue;
         storage.setItem(key, value);
         applied.push([key, original]);
       }

@@ -177,7 +177,7 @@ function saveWindowState(win) {
   } catch { /* best-effort */ }
 }
 
-const AUDIO_FILE_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.opus', '.wma'];
+const AUDIO_FILE_EXTENSIONS = require('./music-library').MUSIC_EXTENSIONS;
 const VIDEO_FILE_EXTENSIONS = ['.mp4', '.m4v', '.mkv', '.webm', '.mov', '.avi', '.wmv', '.mpg', '.mpeg', '.ts', '.ogv'];
 function extractAudioFileArg(argv) {
   return argv.find((a) => AUDIO_FILE_EXTENSIONS.includes(path.extname(a).toLowerCase()) && fs.existsSync(a)) || null;

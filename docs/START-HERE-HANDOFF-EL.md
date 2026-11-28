@@ -101,3 +101,10 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - FIX: prevent overlapping photo picker dialogs, block photo close/save/drop while picker is pending, stop drop bubbling into the global music handler; release guards on cancel/error. Existing decoder/export/history unchanged.
 - Added parser and IPC regression fixtures for late EXIF, malformed length, bounded view, denied sender/path, valid token, exclusive export and original preservation. Synthetic fixtures, not real decoder/UI certification. Base f0f2b109 8/9 PASS (installer in progress), base 8ea811a8 2/9 PASS at first inspection, seven in progress. New CI pending. All R6 groups remain tracked; no merge/release.
 
+
+### R6-04.4 / 02.5 / 06.3 — EXIF εξαγωγή WebP, Backup και κοινές μορφές μουσικής (base 84a01951)
+- OV-12 EXTEND: existing date-only writer now supports static metadata-free WebP canvas layouts (VP8, VP8L, VP8X/ALPH), adds/updates VP8X EXIF feature bit and RIFF length, preserves compressed chunks, validates dimensions and rejects animation/unknown or existing metadata layouts. Same opt-in UI/token/IPC and no-overwrite publication, no new editor or GPS copying. New synthetic structure tests and actual Chromium encode/tag/redecode pixel comparison in existing selftest; not yet executed. Late EXIF for dropped files beyond first MiB remains open.
+- OV-14 FIX: existing backup restore skips unchanged writes, retains rollback of changed settings and regression fixture; no new storage path.
+- R6-06 CONSOLIDATE: music folder scan and main file admission/metadata reader share immutable existing seven-format list; no new codec support, no database. Added contract fixture.
+- Base 84a01951 2 PASS, 7 running at first inspection; 8ea811a8 6 PASS, packaged cancelled, General/Inno running; f0f2b109 8 PASS, installer running. No tests executed by connector; new CI required. All 16 groups remain open where not certified, no merge/release.
+
