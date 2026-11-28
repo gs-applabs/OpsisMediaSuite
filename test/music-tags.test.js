@@ -138,3 +138,15 @@ test('recovered Greek ID3 display text does not mutate or guess ambiguous origin
  assert.equal(readTrackText({common:{title:'a'.repeat(5000)}}).title.length,4096);
  assert.deepEqual(readTrackText({common:{},native:{ID3v23:null}}),{title:null,artist:null,album:null});
 });
+
+test('metadata writer refuses linked audio before parsing or modifying it',async(t)=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const {complete}=require('../music-tags');
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-tag-link-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'source.mp3'),link=path.join(dir,'linked.mp3'),bytes=Buffer.alloc(32,7);
+ await fs.writeFile(file,bytes);await fs.link(file,link);
+ await assert.rejects(complete(file,{title:'test'}),/unsupported file/);
+ await assert.rejects(complete(link,{title:'test'}),/unsupported file/);
+ assert.deepEqual(await fs.readFile(file),bytes);
+ assert.deepEqual((await fs.readdir(dir)).sort(),['linked.mp3','source.mp3']);
+});

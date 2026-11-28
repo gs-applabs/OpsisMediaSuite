@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R6-05.5 — ΕΞΩΦΥΛΛΑ ΑΝΑ ΚΟΜΜΑΤΙ
+28 Νοεμβρίου 2026 • R6-01.3 / 03.2 — ΔΙΟΡΘΩΣΗ ΕΞΑΓΩΓΗΣ ΚΑΙ BACKUP
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R6 (όλες οι εκκρεμότητες, 01–16) και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι R6-05.5. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι R6-01.3 / 03.2. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R6-01.3/03.2: διόρθωση actual redirected-path CI failure με κοινή canonical local policy σε converter/tag writer, διατήρηση απαγόρευσης symlink/hardlink/UNC/ADS. Backup επαλήθευση current video/converter keys και enum/boolean encodings. Base 7 PASS/1 FAIL/1 running· νέο CI εκκρεμεί. Πρώτα κλείσιμο μερικώς υλοποιημένων λειτουργιών εύκολες προς δύσκολες, όλες οι R6 ομάδες παραμένουν στο κύριο MD. Καμία έκδοση.
+
 R6-05.5: OV-11 κοινό/διαφορετικό/κανένα εξώφυλλο ανά κομμάτι, MP3/FLAC/M4A/Opus, υπάρχων writer και κοινά όρια (Opus 40 KiB), περιορισμοί layout διατηρούνται. Base be44cd8 7 PASS/2 running, νέα CI εκκρεμή. Online artwork και λοιπές ομάδες R6 παραμένουν ανοιχτές. Καμία έκδοση.
 
 R6-05.4: OV-11 υπάρχων writer και κοινή bounded ανάγνωση τοπικού JPEG/PNG, προαιρετικό κοινό εξώφυλλο για MP3/FLAC στην ουρά εξαγωγής, πριν από publication, χωρίς αλλαγή πρωτοτύπων και χωρίς περιττό backup μόνο για internal scratch. Base 35bbf6a 9/9 PASS, νέο CI εκκρεμεί. Άλλα formats/online art/per-item cover, όλες οι R6 ομάδες και τελική πιστοποίηση ανοιχτές. Guide 128. Καμία έκδοση.

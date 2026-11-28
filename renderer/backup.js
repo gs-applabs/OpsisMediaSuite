@@ -12,6 +12,15 @@ const WaveframeBackup = (() => {
   const allowed = new Set(keys);
   const outputFolders = new Set(['waveframe.destFolder', 'waveframe.vidDestFolder']);
   const maxBytes = 8 * 1024 * 1024;
+  // Match actual persisted value encodings, not display labels.
+  const literalEnums={
+    'waveframe.fxSoundMode':['native','external','auto'],
+    'waveframe.metadata.inferDisplay':['true','false'],
+    'waveframe.destMode':['default','source','custom'],
+    'waveframe.vidDestMode':['default','source','custom'],
+    'waveframe.notifyUpdates':['0','1'],
+    'waveframe.trackNotifications':['0','1'],
+  };
 
   const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   const strings = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -30,6 +39,10 @@ const WaveframeBackup = (() => {
     'waveframe.video.resume': (item) => isRecord(item) && Object.values(item).every(v=>Number.isFinite(v)&&v>=0),
     'waveframe.video.subs': (item) => isRecord(item) && (item.languages == null || strings(item.languages)),
     'waveframe.video.speed': v => Number.isFinite(v)&&v>=0.25&&v<=4,
+    'waveframe.video.nativeDecoder': v=>['auto','d3d11va','dxva2','none'].includes(v),
+    'waveframe.video.repeat': v=>['off','list','file','shuffle'].includes(v),
+    'waveframe.video.remainingTime': v=>typeof v==='boolean',
+    'waveframe.video.subSaveBeside': v=>typeof v==='boolean',
     'waveframe.conv.opts': isRecord,
     'waveframe.vid.opts': isRecord,
   };
@@ -37,6 +50,7 @@ const WaveframeBackup = (() => {
   function validStoredValue(key, value) {
     if (typeof value !== 'string' || value.length >= 5 * 1024 * 1024) return false;
     if (outputFolders.has(key) && value && (!/^[a-z]:[\/]/i.test(value) || /[\u0000-\u001f:]/.test(value.slice(2)))) return false;
+    if(Object.hasOwn(literalEnums,key)&&!literalEnums[key].includes(value))return false;
     if (!Object.hasOwn(schemas, key)) return true;
     try { return schemas[key](JSON.parse(value)); } catch { return false; }
   }
@@ -72,7 +86,7 @@ const WaveframeBackup = (() => {
     }
   }
 
-  return { collect, restore, sanitize };
+  return { collect, restore, sanitize, keys:Object.freeze([...keys]) };
 })();
 
 if (typeof module !== 'undefined') module.exports = WaveframeBackup;

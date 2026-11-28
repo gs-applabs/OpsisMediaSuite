@@ -89,7 +89,12 @@ async function encodeVideo({ ffmpegPath, input, options, outputCover=null, avail
   const span = (options.trimEnd > 0 ? Math.min(options.trimEnd, info.duration || options.trimEnd) : info.duration) - options.trimStart;
   const duration = span > 0 ? span : info.duration;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
-  const finalPath = () => L.buildOutputPath({ inputPath: input, ext, suffix: options.suffix, pathApi: path, exists: fs.existsSync, dir: outDir || undefined });
+  // Resolve valid Windows short-name aliases before creating the owned scratch.
+  // Keep the canonical destination fixed for the job; never follow symlinks.
+  const destination=require('./local-media-policy').localDirectory(outDir||path.dirname(input));
+  if(!destination)throw Object.assign(Error('Invalid output folder'),{code:'denied'});
+  outDir=destination;
+  const finalPath = () => L.buildOutputPath({ inputPath: input, ext, suffix: options.suffix, pathApi: path, exists: fs.existsSync, dir: outDir });
   let current = null, cancelled = false, tmp = null, passLog = null, passScratch=null,sequenceDir=null;
   const cleanup = () => { if(sequenceDir){try{if(require('./local-media-policy').localDirectory(sequenceDir)===sequenceDir){for(const n of fs.readdirSync(sequenceDir))if(/^frame-\d{4}\.png$/.test(n))fs.unlinkSync(path.join(sequenceDir,n));fs.rmdirSync(sequenceDir);}}catch{}sequenceDir=null;} if (tmp) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } } if(passScratch)passScratch.release();passScratch=null;tmp=null;passLog=null; };
   const run = (args, scale, offset) => {

@@ -139,3 +139,16 @@ test('all guide renderers load shared path identity before feature-guide',()=>{
   assert.ok(html.indexOf('src="path-identity.js"')<html.indexOf('src="feature-guide.js"'),page);
  }
 });
+
+test('backup covers all persisted current video and converter keys and validates their actual encodings',()=>{
+ const B=require('../renderer/backup');
+ const current=['renderer/videoplayer.js','renderer/video.js','renderer/converter.js'];
+ for(const file of current){
+  const code=read(file);
+  const keys=new Set(code.match(/waveframe\.(?:video\.[\w]+|vid\.opts|vidDestFolder|vidDestMode|conv\.opts|destFolder|destMode)\b/g)||[]);
+  for(const key of keys)assert.ok(B.keys.includes(key),key);
+ }
+ const valid={'waveframe.video.nativeDecoder':'"d3d11va"','waveframe.video.repeat':'"shuffle"','waveframe.video.remainingTime':'true','waveframe.video.subSaveBeside':'false','waveframe.fxSoundMode':'external','waveframe.vidDestMode':'custom'};
+ assert.deepEqual(B.sanitize(valid),valid);
+ for(const [key,value] of [['waveframe.video.nativeDecoder','"arbitrary"'],['waveframe.video.repeat','"unknown"'],['waveframe.video.remainingTime','"false"'],['waveframe.video.subSaveBeside','null'],['waveframe.fxSoundMode','invalid'],['waveframe.vidDestMode','invalid']])assert.equal(B.sanitize({[key]:value}),null,key);
+});

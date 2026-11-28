@@ -244,9 +244,13 @@ async function complete(file,values,{cover:inputCover=null,cancelled=()=>false,s
  const cover=inputCover?validateCover(inputCover):null;if(inputCover&&!cover)throw Error('invalid cover');
  const checkCancelled=()=>{if(cancelled())throw Object.assign(Error('cancelled'),{code:'cancelled'});};checkCancelled();
  const ext=path.extname(file).toLowerCase();if(!path.isAbsolute(file)||!['.mp3','.flac','.wav','.m4a','.ogg','.opus'].includes(ext)||/^(\\\\|\/\/)/.test(file))throw Error('unsupported local audio format');
- if(!require('./local-media-policy').localPath(file))throw Error('unsafe local path');
+ const {localPath}=require('./local-media-policy');
+ const canonical=localPath(file);if(!canonical||path.extname(canonical).toLowerCase()!==ext)throw Error('unsafe local path');
+ // resolveLocal inspects every component and rejects symlinks/UNC/ADS.
+ // Use its real path rather than confusing legitimate 8.3 aliases with redirects.
+ file=canonical;
  const stat=await fs.lstat(file);if(!stat.isFile()||stat.nlink!==1||stat.size>maxFile||stat.size<10)throw Error('unsupported file');
- const real=await fs.realpath(file);if(path.resolve(file).toLowerCase()!==real.toLowerCase())throw Error('redirected path');
+ if(localPath(file)!==file)throw Error('redirected path');
  const mm=await import('music-metadata');const meta=await mm.parseFile(file,{duration:false,skipCovers:!cover});
  if(ext==='.mp3'&&!/layer 3/i.test(meta.format.codec||''))throw Error('not verified MP3');if(ext==='.flac'&&!/FLAC/i.test(meta.format.codec||'')&&meta.format.container!=='FLAC')throw Error('not verified FLAC');
  const h=await fs.open(file,'r');let header,body,skip,patch;
@@ -264,7 +268,7 @@ async function complete(file,values,{cover:inputCover=null,cancelled=()=>false,s
   const check=await mm.parseFile(tmp,{duration:false,skipCovers:!patch.coverApplied});
   if(patch.coverApplied&&!check.common.picture?.some(p=>Buffer.from(p.data).equals(cover.data)))throw Error('cover verification failed');
   for(const [k,v] of Object.entries(patch.applied))if(Array.isArray(check.common[k])?!check.common[k].includes(v):String(check.common[k])!==v)throw Error('tag verification failed: '+k);
-  const same=async()=>{const s=await fs.lstat(file);if(s.size!==stat.size||s.mtimeMs!==stat.mtimeMs||s.ino!==stat.ino||!s.isFile())throw Error('file changed during operation');};
+  const same=async()=>{if(localPath(file)!==file)throw Error('redirected path');const s=await fs.lstat(file);if(s.size!==stat.size||s.mtimeMs!==stat.mtimeMs||s.ino!==stat.ino||s.dev!==stat.dev||s.nlink!==1||!s.isFile()||s.isSymbolicLink())throw Error('file changed during operation');};
   checkCancelled();await same();
   // Internal unpublished converter output only: no user source backup needed.
   if(!stagedOutput){await fs.copyFile(file,backup,F.constants.COPYFILE_EXCL);await same();}checkCancelled();
