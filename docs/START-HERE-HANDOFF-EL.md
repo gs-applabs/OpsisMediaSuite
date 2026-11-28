@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.7A
+28 Νοεμβρίου 2026 • ULTRA 3D.9D.1
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.7A. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9D.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.9D.1: data-only signed Ed25519 registry contract, schema/expiry/provider constraints, in-memory staged activation, one concurrent activation, previous-version rollback without lowering sequence, opt-in on-use check policy and cooldown. Registered package and tests. No production trust key, remote registry, persistent anti-replay state, adapter process, live provider update or UI yet; next integrate trusted manifest source and durable state before enabling automatic update. Base 7b95ed2 CI 2 running, 7 queued at inspection. New CI pending.
+
 3D.9C: fix explicit electron-builder file list and npm test registration (both online suites previously omitted); shared bounded stream writer, MIME/status/length validation, partial cleanup, progress IPC throttled to 250ms plus completion, deterministic stream fixtures. DNS deadline begins before lookup but OS lookup itself is not cancellable. Actual public HTTPS/packaged UI tests and provider adapters still pending. Base d605d3b 3 PASS, 6 running; 3a72aa3 7 PASS, installer running, packaged cancelled.
 
 New requirement — Provider Compatibility Manager (3D.9D): independently versioned provider adapters with stable core contract; detect provider protocol/API changes and distinguish network/auth/unsupported failures; opt-in automatic checks only on provider use or manual request, bounded retry/backoff, no resident polling. Update only from explicitly trusted upstream, authenticated signed manifest or pinned verified release hash, bounded downloads, staging, contract/security tests, atomic activation and rollback to last known good; no arbitrary remote scripts, no silent executable installation, no DRM/access-control bypass, no guarantee every provider change is automatically repairable. Preserve queue/settings, expose adapter version and last check, allow manual update/disable. Keep old adapter only for rollback, clean owned staging. Verify with simulated provider changes, failed signatures, failed updates and concurrent jobs. No claims of implementation before actual code and CI.
