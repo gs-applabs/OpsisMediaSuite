@@ -282,6 +282,11 @@
     void drainPreviews();
   }
 
+  function prepareAB(path,range){
+    if(starting||running||!$('vidPanel')||typeof path!=='string'||!Number.isFinite(range?.start)||!Number.isFinite(range?.end)||range.start<0||range.end<=range.start||range.end>360000||items.some(x=>x.path!==path))return false;
+    addPaths([path]);if(items.length!==1||items[0].path!==path)return false;
+    mode='video';$('vidOperation').value='remux';$('vidTrimStart').value=String(range.start);$('vidTrimEnd').value=String(range.end);sync();return true;
+  }
   function renderList() {
     const list = $('vidList');
     if (!list) return;
@@ -407,5 +412,5 @@
   document.addEventListener('waveframe:converter-built', () => { if (!running&&!starting) build(); });
   build();
   // exposed for the layout self-test (every language x zoom) and the unit-level checks
-  window.WaveframeVideoUi = { busy:()=>!!(running||starting), addPaths, clearItems: () => { if(running||starting)return;clearPreviews();items = []; renderList(); }, showRunning: (on) => { $('vidStart').classList.toggle('dep-hidden', on); $('vidCancel').classList.toggle('dep-hidden', !on); $('vidTrack').classList.toggle('dep-hidden', !on); }, applyPreset, collect, getEncInfo: () => encInfo };
+  window.WaveframeVideoUi = { busy:()=>!!(running||starting), prepareAB, addPaths, clearItems: () => { if(running||starting)return;clearPreviews();items = []; renderList(); }, showRunning: (on) => { $('vidStart').classList.toggle('dep-hidden', on); $('vidCancel').classList.toggle('dep-hidden', !on); $('vidTrack').classList.toggle('dep-hidden', !on); }, applyPreset, collect, getEncInfo: () => encInfo };
 })();

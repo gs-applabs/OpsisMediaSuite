@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.5A
+28 Νοεμβρίου 2026 • ULTRA 3D.5B
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως πιστοποιημένη βάση: a8b23da3f0716684e8fd3d6a9dac529607076a44 (3D.2), 9/9 CI PASS, 309/309 tests, Electron PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.4. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.5B. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.5B: explicit local Chromium A-B transfer to existing MKV remux controls, no auto-start, no mixed queue mutation; one optional 1–480 min video-only close timer, 0 cancels, cleared on full stop/unload. No app/OS exit or interruption of other tools. Guide 112 entries, pure range test. New CI pending; 3D.5A CI 2 PASS, 7 running at inspection. Next renderer interaction tests, app exit feasibility with independent jobs, remaining 3D R4.
+
 3D.5A: arbitrary playlist reorder via internal drag/drop and Alt+Up/Down on focused row, existing pure reorder helper, active duplicate occurrence preserved, no playback restart or new background work. Added pure regression cases; renderer interaction and new CI pending. Base 93a5b65: 8/9 PASS, installer pending at inspection. Next A-B transfer and video sleep/exit; then remaining R4. Earlier 3D.4 context follows.
 
 3D.4: existing converter operation selector, MKV stream-copy remux/keyframe trim, PNG poster/contact sheet/bounded sequence, existing queue/cancel, 110 guide entries, tests added, new CI pending. No new standalone service. Πρώτα έλεγξε CI πραγματικού PR head, διόρθωσε failures. Μετά 3D.5: player A-B transfer, arbitrary playlist reorder, video sleep/exit, remaining 3D R4 items, then 3E/3F/4A–D/5A–C. All older items are preserved in R4 and Git history; no duplicate implementation or premature release.

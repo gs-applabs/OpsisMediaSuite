@@ -27,6 +27,10 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.5B — A–B transfer and video sleep (28 Νοεμβρίου 2026)
+- Base `fc7114dbc4b6227e9ed7e5898d1a82ad045b20b9`: RAR/DSP PASS, seven workflows running at inspection.
+- Local Chromium complete finite A–B range transfers after explicit confirmation to idle existing converter with empty or matching one-file queue. Uses MKV stream copy; approximate keyframe cut, no automatic execution. No native or network transfer. One explicit video-only sleep timeout (1–480 min, 0 cancels), cleared on full stop/unload; does not quit application or stop independent jobs. Guide 112 and pure range validation test. New Windows CI and real UI checks pending. App exit remains open; no merge/release.
+
 ### ULTRA 3D.5A — arbitrary playlist reorder (28 Νοεμβρίου 2026)
 - Base `93a5b6594e878575a579ed6746be5c78b2674735`: eight workflows PASS, Inno lifecycle pending at inspection.
 - Existing playlist rows accept internal drag/drop and keyboard Alt+Up/Down. Reuse indexed reorder helper, preserve active occurrence and queue persistence, no playback restart. Drag state cleared on redraw; no external file admission or new service. Added pure regression coverage for inactive rows, duplicates, invalid destination and no selection. New CI and actual renderer interaction pending. A-B transfer and video sleep/exit remain open; no merge/release.

@@ -287,11 +287,16 @@
     return { filter, transform: parts.join(' ') };
   }
   // A-B loop state machine: none -> A set -> loop A..B -> none.
+  function exportAB(state,duration){
+    if(state?.stage!=='loop'||!Number.isFinite(duration)||duration<=0||!Number.isFinite(state.a)||!Number.isFinite(state.b)||state.a<0||state.b>duration||state.b>360000||state.b-state.a<=0.2)return null;
+    const start=Math.round(state.a*1000)/1000,end=Math.round(state.b*1000)/1000;
+    return end>start?{start,end}:null;
+  }
   function abStep(state, nowSec) {
     if (!state || state.stage === 'off') return { stage: 'a', a: nowSec, b: 0 };
     if (state.stage === 'a') return nowSec > state.a + 0.2 ? { stage: 'loop', a: state.a, b: nowSec } : state;
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, exportAB, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

@@ -729,3 +729,6 @@ test('video zoom is bounded and does not change neutral picture',()=>{assert.equ
 
 
 test('moving an inactive playlist occurrence preserves active identity and duplicate positions',()=>{const a=['a.mp4','b.mp4','a.mp4','c.mp4'];assert.deepEqual(V.reorderPlaylist(a,2,'move',0,3),{items:['b.mp4','a.mp4','c.mp4','a.mp4'],selected:1});assert.deepEqual(V.reorderPlaylist(a,2,'move',3,0),{items:['c.mp4','a.mp4','b.mp4','a.mp4'],selected:3});assert.deepEqual(V.reorderPlaylist(a,2,'move',0,4),{items:a,selected:2});assert.deepEqual(V.reorderPlaylist(a,-1,'move',0,3),{items:['b.mp4','a.mp4','c.mp4','a.mp4'],selected:-1});});
+
+
+test('A-B transfer requires a finite complete local timeline range',()=>{assert.deepEqual(V.exportAB({stage:'loop',a:1.12345,b:3.45678},10),{start:1.123,end:3.457});for(const state of [{stage:'a',a:1,b:3},{stage:'loop',a:-1,b:3},{stage:'loop',a:1,b:11},{stage:'loop',a:1,b:1.1},{stage:'loop',a:NaN,b:3}])assert.equal(V.exportAB(state,10),null);assert.equal(V.exportAB({stage:'loop',a:1,b:3},Infinity),null);});

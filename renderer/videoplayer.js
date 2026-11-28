@@ -77,7 +77,9 @@
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function disposeSession(){const previous=session;session=null;if(previous)previous.stop().catch(()=>{});}
-  function stop() { clearChapters();parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
+  let videoSleep=0;
+  function cancelVideoSleep(){clearTimeout(videoSleep);videoSleep=0;}
+  function stop() { cancelVideoSleep();clearChapters();parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
   function parkForAudio(){
     if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return nativeStopping||(nativeStopUnconfirmed?stopNative():true);
@@ -920,6 +922,24 @@
     $('vpFramePrev').addEventListener('click', () => stepFrame(-1));
     $('vpFrameNext').addEventListener('click', () => stepFrame(1));
     $('vpAB').addEventListener('click', toggleAB);
+    $('vpABExport').addEventListener('click',async()=>{
+      const path=current(),epoch=generation,range=VP.exportAB(ab,video.duration);
+      if(!path||VP.isUrl(path)||handoff||parked||!range){say('Set A–B on a local Chromium video / Ορίστε A–B σε τοπικό βίντεο');return;}
+      if(!await showConfirmDialog('A–B to converter / Μεταφορά A–B','Prepare one MKV stream-copy cut (keyframe-based, not frame-exact). No conversion starts. / Προετοιμασία κοπής MKV σε καρέ-κλειδί, χωρίς αυτόματη εκκίνηση.'))return;
+      if(epoch!==generation||path!==current())return;
+      try{await loadConverter();if(epoch!==generation||path!==current())return;
+        if(!window.WaveframeVideoUi?.prepareAB(path,range)){say('Converter busy or queue contains other files / Η ουρά περιέχει άλλα αρχεία ή εκτελείται');return;}
+        showTab('converter');
+      }catch{say('Converter unavailable / Μη διαθέσιμη μετατροπή');}
+    });
+    $('vpSleepVideo').addEventListener('click',async()=>{
+      const value=await showInputDialog('Video sleep in minutes (1–480), 0 cancels / Λεπτά έως το κλείσιμο βίντεο, 0 ακύρωση');
+      if(value==null)return;const s=String(value).trim();if(!/^\\d{1,3}$/.test(s)||Number(s)>480){say('Invalid minutes / Μη έγκυρα λεπτά');return;}
+      cancelVideoSleep();const minutes=Number(s);
+      if(!minutes){say('Video sleep cancelled / Ακυρώθηκε');return;}
+      videoSleep=setTimeout(()=>{videoSleep=0;closeMedia();},minutes*60000);
+      say('Video closes in '+minutes+' min / Κλείσιμο βίντεο σε '+minutes+' λεπτά');
+    });
     $('vpSnap').addEventListener('click',()=>snapshot(false));
     $('vpCopyFrame').addEventListener('click',()=>snapshot(true));
     $('vpViewMode').addEventListener('change',()=>{pic.view=$('vpViewMode').value;applyPicture();});
@@ -981,7 +1001,7 @@
 
 
     syncResumeTimer();
-    window.addEventListener('beforeunload', () => { clearInterval(saveTimer);stopNative();saveResume(); releaseTicket(); });
+    window.addEventListener('beforeunload', () => { clearInterval(saveTimer);cancelVideoSleep();stopNative();saveResume(); releaseTicket(); });
     window.addEventListener('waveframe:storage-changed', () => { fillPlaylists(); fillRecent(); renderBookmarks(); const s = get(K.subs, {}); if (s.fontSize) $('vpSubSize').value = String(s.fontSize); if (s.color) $('vpSubColor').value = s.color; applySubStyle(); });
     document.addEventListener('waveframe:language-changed', () => { fillSubSelect(); fillPlaylists(); fillRecent(); });
     window.addEventListener('waveframe:dsp-route-changed',refreshFx);
