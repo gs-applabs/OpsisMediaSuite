@@ -51,3 +51,13 @@ test('music collection filters are case-insensitive, keep unknowns and do not mu
  assert.equal(guide.trackMatches(rows[1],'jazz'),true);assert.equal(rows[1].artist,'alpha');
  assert.deepEqual(guide.musicGroups(rows,'invalid'),[]);
 });
+
+
+test('forced metadata refresh after a tag write queues a fresh read instead of reusing active stale data',async()=>{
+ let release,count=0;
+ const q=guide.createSerialQueue(async()=>{const n=++count;if(n===1)await new Promise(r=>release=r);return n;},4);
+ const old=q.request('track');await Promise.resolve();
+ const fresh=q.request('track',true,true);assert.notEqual(old,fresh);
+ assert.equal(q.request('track',true,true),fresh);
+ release();assert.deepEqual(await Promise.all([old,fresh]),[1,2]);assert.equal(count,2);assert.equal(q.diagnostics().pending,0);
+});

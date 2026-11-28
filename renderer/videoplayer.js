@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
   const K = { recent: 'waveframe.video.recent', resume: 'waveframe.video.resume', bookmarks: 'waveframe.video.bookmarks', subs: 'waveframe.video.subs', playlists: 'waveframe.video.playlists', speed: 'waveframe.video.speed', queue: 'waveframe.video.queue' };
   const get = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
-  const put = (k, v) => { try { const encoded=JSON.stringify(v);if(localStorage.getItem(k)!==encoded)localStorage.setItem(k,encoded); } catch (_) { /* storage unavailable */ } };
+  const put = (k, v) => { if(!WaveframeBackup.canPersist(k))return;try { const encoded=JSON.stringify(v);if(localStorage.getItem(k)!==encoded)localStorage.setItem(k,encoded); } catch (_) { /* storage unavailable */ } };
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let session = null, playbackEngine = null,fxClosing=null,parked=null;
@@ -1064,7 +1064,7 @@
     });
   }
 
-  window.WaveframeVideoPlayer = {
+  window.WaveframeVideoPlayer = { checkpointForBackup:()=>{if(built)saveResume();},
     show() { build(); },
     open(p) { build(); addPaths([p], true); },
     enqueue(paths) { build(); addPaths(paths, false); },

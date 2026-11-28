@@ -108,3 +108,9 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - R6-06 CONSOLIDATE: music folder scan and main file admission/metadata reader share immutable existing seven-format list; no new codec support, no database. Added contract fixture.
 - Base 84a01951 2 PASS, 7 running at first inspection; 8ea811a8 6 PASS, packaged cancelled, General/Inno running; f0f2b109 8 PASS, installer running. No tests executed by connector; new CI required. All 16 groups remain open where not certified, no merge/release.
 
+
+### R6-03.3 / 06.4 — ασφαλής επαναφορά Backup και ανανέωση metadata (base 31a1b7fe)
+- OV-14 FIX: restored settings previously could be overwritten by pending playlist, accent, hue, resize or video resume writes during success-dialog/reload. Existing backup module now locks only successfully restored keys until renderer reload; existing writers observe lock. Flush pending values before export, checkpoint initialized video, serialize backup UI and handle rejected IPC. No second storage or database; full installed UI/import lifecycle remains to be tested.
+- OV-10/08 EXTEND: forced tag refresh queues a fresh read if an earlier read of the same item is active, preserving bounded/coalesced work; compare updated paths using shared Windows-aware identity. Canonical metadata file admission rechecked after import before parse. No new writer or network action; existing per-path read authorization design not changed.
+- Added regression fixtures for restore lock and forced metadata read. Baseline f0f2b109 all nine CI workflows passed; 31a1b7fe 4 PASS/5 running at inspection, prior packaged runs cancelled. No tests run by connector; new CI pending. All R6 01–16 remain tracked; no merge/release.
+

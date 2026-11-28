@@ -40,8 +40,8 @@ function createSerialQueue(work,maxPending=64){
   const [key,job]=pending.entries().next().value;pending.delete(key);active={key,job};
   Promise.resolve().then(()=>work(key)).catch(()=>null).then(value=>{active=null;job.resolve(value);drain();});
  }
- function request(key,priority=false){
-  if(active?.key===key)return active.job.promise;
+ function request(key,priority=false,fresh=false){
+  if(active?.key===key&&!fresh)return active.job.promise;
   if(pending.has(key)){const job=pending.get(key);if(priority){pending.delete(key);const rest=[...pending];pending.clear();pending.set(key,job);for(const row of rest)pending.set(...row);}return job.promise;}
   if(pending.size>=maxPending){if(!priority)return Promise.resolve(null);const oldest=pending.keys().next().value;pending.get(oldest).resolve(null);pending.delete(oldest);}
   let resolve;const promise=new Promise(r=>resolve=r),job={promise,resolve};

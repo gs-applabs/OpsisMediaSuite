@@ -174,3 +174,15 @@ test('backup restore avoids unchanged writes and rolls back only changed keys',(
  assert.equal(B.restore(storage,{'waveframe.lang':'en','waveframe.skin':'light'}),false);
  assert.deepEqual(writes,[['waveframe.lang','en'],['waveframe.skin','light'],['waveframe.lang','el']]);assert.equal(m.get('waveframe.lang'),'el');
 });
+
+
+test('backup import locks only restored keys against stale renderer saves until reload',()=>{
+ const B=require('../renderer/backup'),m=new Map([['waveframe.lang','el']]);
+ const storage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)};
+ assert.equal(B.restoreForReload(storage,{'waveframe.video.speed':'"bad"'}),false);
+ assert.equal(B.canPersist('waveframe.video.speed'),true);
+ assert.equal(B.restoreForReload(storage,{'waveframe.playlist':'[]','waveframe.video.resume':'{}','waveframe.lang':'en'}),true);
+ for(const key of ['waveframe.playlist','waveframe.video.resume','waveframe.lang'])assert.equal(B.canPersist(key),false);
+ assert.equal(B.canPersist('waveframe.accentColor'),true);
+ assert.equal(m.get('waveframe.lang'),'en');
+});

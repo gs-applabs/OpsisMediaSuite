@@ -1113,6 +1113,7 @@ function setPlaylistHeight(px) {
 }
 function commitPlaylistHeight(){
   if(pendingPlaylistHeight===null)return;
+  if(!WaveframeBackup.canPersist('waveframe.playlistHeight')){pendingPlaylistHeight=null;return;}
   try{const value=String(pendingPlaylistHeight);if(localStorage.getItem('waveframe.playlistHeight')!==value)localStorage.setItem('waveframe.playlistHeight',value);}catch{}
   pendingPlaylistHeight=null;
 }
@@ -1749,7 +1750,8 @@ async function completeMusicTags(mode){
     if(result.error){await showAlertDialog('Metadata',result.error);return;}
     const rows=result.rows||[];
     for(const row of rows.filter(r=>r.status==='updated')){
-      for(const item of playlist.filter(x=>x.path===row.file))await enrichTrackMetadata(item,true);
+      const key=OpsisFeatureGuide.musicPathKey(row.file);
+      if(key)for(const item of playlist.filter(x=>OpsisFeatureGuide.musicPathKey(x.path)===key))await enrichTrackMetadata(item,true);
     }
     await showAlertDialog('Metadata',rows.map(r=>r.file+' — '+r.status+(r.error?': '+r.error:'')+(r.backup?' | Backup: '+r.backup:'')).join('\n'));
   }catch(err){await showAlertDialog('Metadata',String(err.message||err));}
@@ -1802,7 +1804,7 @@ async function enrichTrackMetadata(item,force=false) {
   if (!item.path||!playlist.includes(item)) return;
   let task=metadataReads.get(item);
   if(!task||force){
-    task=metadataQueue.request(item,force);
+    task=metadataQueue.request(item,force,force);
     metadataReads.set(item,task);
   }
   const meta=await task;
@@ -1841,6 +1843,7 @@ window.waveframe.onOpenFile((filePath) => {
   enrichTrackMetadata(item);
 });
 function savePlaylist() {
+  if(!WaveframeBackup.canPersist(PLAYLIST_KEY))return;
   const serializable = playlist
     .filter((item) => item.path || item.url)
     .map((item) => ({ path: item.path || null, url: item.path ? null : item.url || null, name: item.name }));
@@ -2300,7 +2303,7 @@ function hslToHex(h, s, l) {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 let pendingAccent=null,accentTimer=0;
-function commitAccent(){clearTimeout(accentTimer);accentTimer=0;if(pendingAccent!==null){OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.accentColor',pendingAccent);pendingAccent=null;}}
+function commitAccent(){clearTimeout(accentTimer);accentTimer=0;if(pendingAccent!==null){if(WaveframeBackup.canPersist('waveframe.accentColor'))OpsisFeatureGuide.setIfChanged(localStorage,'waveframe.accentColor',pendingAccent);pendingAccent=null;}}
 function applyAccentColor(hex,persist=true) {
   const [h, s, l] = hexToHsl(hex);
   document.documentElement.style.setProperty('--accent', hex);
@@ -2429,7 +2432,7 @@ hueModeSeg.addEventListener('click', (e) => {
   applyHueMode(btn.dataset.hueMode);
 });
 let huePending=false;
-function commitHue(){if(!huePending)return;try{if(localStorage.getItem('waveframe.hueValue')!==hueSlider.value)localStorage.setItem('waveframe.hueValue',hueSlider.value);}catch{}huePending=false;}
+function commitHue(){if(!huePending)return;if(!WaveframeBackup.canPersist('waveframe.hueValue')){huePending=false;return;}try{if(localStorage.getItem('waveframe.hueValue')!==hueSlider.value)localStorage.setItem('waveframe.hueValue',hueSlider.value);}catch{}huePending=false;}
 hueSlider.addEventListener('input', () => {
   huePending=true;
   if (hueMode === 'manual') bgCanvasEl.style.filter = `hue-rotate(${hueSlider.value}deg)`;
@@ -2539,21 +2542,31 @@ document.getElementById('btnOpenFamily').addEventListener('click', () => window.
 document.addEventListener('waveframe:language-changed', () => { if (tutorialOverlay.classList.contains('open')) renderTutorial(); });
 
 /* ---- Backup & Cloud Sync ---- */
-function collectBackupData() { return WaveframeBackup.collect(localStorage); }
-els.btnBackupExport.addEventListener('click', async () => {
-  const result = await window.waveframe.exportSettings(collectBackupData());
-  if (result.canceled) return;
-  els.backupStatus.textContent = result.ok ? t('settings.backupExportOk') : (result.error || t('settings.backupError'));
-});
-els.btnBackupImport.addEventListener('click', async () => {
-  const result = await window.waveframe.importSettings();
-  if (result.canceled) return;
-  if (!result.ok) { els.backupStatus.textContent = result.error || t('settings.backupError'); return; }
-  // Validate the entire known-key set before touching localStorage; restore rolls back on write failure.
-  if (!WaveframeBackup.restore(localStorage,result.data)) { els.backupStatus.textContent = t('settings.backupError'); return; }
-  await showAlertDialog(t('settings.backupImportTitle'), t('settings.backupImportDone'));
-  location.reload();
-});
+function collectBackupData() {
+  finishPlaylistResize();commitAccent();commitHue();
+  if(metadataSaveTimer){clearTimeout(metadataSaveTimer);metadataSaveTimer=0;savePlaylist();}
+  window.WaveframeVideoPlayer?.checkpointForBackup?.();
+  return WaveframeBackup.collect(localStorage);
+}
+let backupUiBusy=false;
+async function runBackup(importing){
+  if(backupUiBusy)return;
+  backupUiBusy=true;els.btnBackupExport.disabled=els.btnBackupImport.disabled=true;
+  let reloading=false;
+  try{
+    const result=importing?await window.waveframe.importSettings():await window.waveframe.exportSettings(collectBackupData());
+    if(result?.canceled)return;
+    if(!result?.ok){els.backupStatus.textContent=result?.error||t('settings.backupError');return;}
+    if(!importing){els.backupStatus.textContent=t('settings.backupExportOk');return;}
+    if(!WaveframeBackup.restoreForReload(localStorage,result.data)){els.backupStatus.textContent=t('settings.backupError');return;}
+    reloading=true;
+    try{await showAlertDialog(t('settings.backupImportTitle'),t('settings.backupImportDone'));}
+    finally{location.reload();}
+  }catch{els.backupStatus.textContent=t('settings.backupError');}
+  finally{if(!reloading){backupUiBusy=false;els.btnBackupExport.disabled=els.btnBackupImport.disabled=false;}}
+}
+els.btnBackupExport.addEventListener('click',()=>runBackup(false));
+els.btnBackupImport.addEventListener('click',()=>runBackup(true));
 
 /* ------------------------------------------------------------------ */
 /* Visualizer                                                          */

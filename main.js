@@ -576,10 +576,14 @@ function createWindow() {
     if(metadataReadBusy)return null;
     metadataReadBusy=true;
     try {
-      // tags are only read from absolute paths of real audio files
-      if (!fromMain(event) || typeof filePath !== 'string' || !path.isAbsolute(filePath) || !AUDIO_FILE_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) || !localPath(filePath) || fs.statSync(filePath).size>512*1024*1024) return null;
+      // Read the canonical path validated by local-media-policy, not the
+      // caller's spelling. Recheck after the asynchronous module import.
+      if (!fromMain(event) || typeof filePath !== 'string' || !path.isAbsolute(filePath) || !AUDIO_FILE_EXTENSIONS.includes(path.extname(filePath).toLowerCase())) return null;
+      const file=localPath(filePath);
+      if(!file||!AUDIO_FILE_EXTENSIONS.includes(path.extname(file).toLowerCase())||fs.statSync(file).size>512*1024*1024)return null;
       const mm = await import('music-metadata');
-      const meta = await mm.parseFile(filePath, { duration: false, skipCovers: false });
+      if(!fromMain(event)||localPath(file)!==file||fs.statSync(file).size>512*1024*1024)return null;
+      const meta = await mm.parseFile(file, { duration: false, skipCovers: false });
       const { common } = meta;
       const displayed=require('./music-tags').readTrackText(meta);
       let picture = null;

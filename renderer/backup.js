@@ -87,7 +87,16 @@ const WaveframeBackup = (() => {
     }
   }
 
-  return { collect, restore, sanitize, keys:Object.freeze([...keys]) };
+  // A successful import is authoritative until this renderer reloads.
+  // Pending UI/timer/unload saves must not overwrite restored keys.
+  const reloadKeys=new Set();
+  function restoreForReload(storage,data){
+    const clean=sanitize(data);if(!clean||!restore(storage,clean))return false;
+    for(const key of Object.keys(clean))reloadKeys.add(key);
+    return true;
+  }
+  const canPersist=key=>!reloadKeys.has(key);
+  return { collect, restore, restoreForReload, canPersist, sanitize, keys:Object.freeze([...keys]) };
 })();
 
 if (typeof module !== 'undefined') module.exports = WaveframeBackup;
