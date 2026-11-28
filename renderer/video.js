@@ -91,6 +91,10 @@
       h('label',{class:'field-label',htmlFor:'vidYoutubeKey',text:'YouTube Data API key (not saved) / Κλειδί API (δεν αποθηκεύεται)'}),
       h('input',{id:'vidYoutubeKey',type:'password',maxLength:128,autocomplete:'off'}),
       h('button',{id:'vidYoutubePreview',class:'small-btn',text:'YouTube metadata preview / Προεπισκόπηση'}),
+      h('label',{class:'field-label',htmlFor:'vidSpotifyToken',text:'Spotify access token (not saved) / Προσωρινό token'}),
+      h('input',{id:'vidSpotifyToken',type:'password',maxLength:4096,autocomplete:'off'}),
+      h('button',{id:'vidSpotifyPreview',class:'small-btn',text:'Spotify metadata preview / Προεπισκόπηση'}),
+      h('button',{id:'vidSpotifyOpen',class:'small-btn',text:'Open selected item on Spotify / Άνοιγμα στο Spotify',disabled:true}),
       h('button',{id:'vidYoutubeCancel',class:'small-btn',text:'Cancel preview / Ακύρωση',disabled:true}),
       h('textarea',{id:'vidYoutubeResults',readOnly:true,rows:4,'aria-label':'YouTube metadata results'}),
       h('label',{class:'field-label',htmlFor:'vidYoutubeItems',text:'Choose playlist occurrences / Επιλογή στοιχείων λίστας'}),
@@ -405,13 +409,14 @@
     const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
     $('vidOnlineAnalyze').addEventListener('click',identify);
     const choice=$('vidYoutubeItems'),match=$('vidYoutubeMatch'),queue=$('vidYoutubeQueue'),all=$('vidYoutubeAll'),selectionStatus=$('vidYoutubeSelectionStatus');
-    let previewRows=[],bindings=new Map(),matching=false;
+    let previewRows=[],bindings=new Map(),matching=false,previewBusy=false,spotifyLink=null;
     const selected=()=>Array.from(choice.selectedOptions,x=>Number(x.value));
     const refreshSelection=()=>{
       const sel=selected();all.disabled=!previewRows.length||matching;match.disabled=matching||sel.length!==1;queue.disabled=matching||!sel.length||sel.some(i=>!bindings.has(i));
+      $('vidSpotifyOpen').disabled=!spotifyLink;
       selectionStatus.textContent=sel.length+' selected / επιλεγμένα · '+bindings.size+' matched / αντιστοιχισμένα';
     };
-    const resetSelection=()=>{previewRows=[];bindings.clear();choice.replaceChildren();refreshSelection();};
+    const resetSelection=()=>{previewRows=[];spotifyLink=null;bindings.clear();choice.replaceChildren();refreshSelection();};
     choice.addEventListener('change',refreshSelection);
     all.addEventListener('click',()=>{for(const opt of choice.options)opt.selected=true;refreshSelection();});
     match.addEventListener('click',async()=>{
@@ -429,16 +434,27 @@
       if(!plan.ok){selectionStatus.textContent='Queue: '+plan.code;return;}
       addPaths(plan.paths);selectionStatus.textContent=plan.paths.length+' files queued / αρχεία στην ουρά';
     });
+    $('vidSpotifyOpen').addEventListener('click',()=>{const sel=selected();const link=sel.length===1&&previewRows[sel[0]]?.link||spotifyLink;if(link)void api.vidSpotifyOpen(link).catch(()=>{});});
+    $('vidSpotifyPreview').addEventListener('click',async()=>{
+      const btn=$('vidSpotifyPreview'),other=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidSpotifyToken');
+      if(previewBusy||matching)return;
+      const token=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();previewBusy=true;btn.disabled=other.disabled=true;cancel.disabled=false;
+      try{const result=await api.vidSpotifyPreview(url,token);if(!choice.isConnected)return;
+        if(result?.ok){spotifyLink=result.link;previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(row.position+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
+        out.value=result?.ok?'Spotify — '+result.items.length+' tracks'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel+' · '+x.link).join('\n'):'Spotify preview: '+(result?.code||'failed');
+      }catch{out.value='Spotify preview failed';}finally{previewBusy=false;btn.disabled=other.disabled=false;cancel.disabled=true;}
+    });
     $('vidYoutubeCancel').addEventListener('click',()=>api.vidYoutubeCancel());
     $('vidYoutubePreview').addEventListener('click',async()=>{
       const btn=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidYoutubeKey');
-      if(btn.disabled||matching)return;
+      if(btn.disabled||matching||previewBusy)return;
+      const other=$('vidSpotifyPreview');previewBusy=true;other.disabled=true;
       const key=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();btn.disabled=true;cancel.disabled=false;
       try{const result=await api.vidYoutubePreview(url,key);
         if(!choice.isConnected)return;
         if(result?.ok){previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(i+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
         out.value=result?.ok?'YouTube — '+result.items.length+' items'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel).join('\n'):'YouTube preview: '+(result?.code||'failed');
-      }catch{out.value='YouTube preview failed';}finally{btn.disabled=false;cancel.disabled=true;}
+      }catch{out.value='YouTube preview failed';}finally{previewBusy=false;other.disabled=false;btn.disabled=false;cancel.disabled=true;}
     });
     $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
     if(!onlineListening){onlineListening=true;api.onVidOnlineProgress(data=>{

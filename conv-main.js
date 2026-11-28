@@ -183,6 +183,21 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     finally{youtubePreview=null;}
   });
   ipcMain.on('vid:youtube-cancel',e=>{if(trusted(e))youtubePreview?.abort();});
+  ipcMain.handle('vid:spotify-preview',async(e,url,token)=>{
+    if(!trusted(e)||youtubePreview||consentBusy)return {ok:false,code:'busy-or-denied'};
+    const S=require('./spotify-metadata');if(!S.identify(url)||!S.validToken(token))return {ok:false,code:'invalid-source-or-token'};
+    const controller=new AbortController();youtubePreview=controller;
+    try{
+      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Preview / Προεπισκόπηση'],defaultId:0,cancelId:0,message:'Fetch metadata from Spotify?',detail:'The supplied temporary access token and selected item ID will be sent only to Spotify. No audio is downloaded. https://www.spotify.com/legal/privacy-policy/'});
+      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
+      return {ok:true,...await S.preview(url,token,{signal:controller.signal})};
+    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':['token-expired','access-denied','not-found','rate-limit'].includes(err.message)?err.message:'preview-failed'};}
+    finally{youtubePreview=null;}
+  });
+  ipcMain.handle('vid:spotify-open',async(e,url)=>{
+    if(!trusted(e)||!require('./spotify-metadata').identify(url))return false;
+    const source=require('./spotify-metadata').identify(url);await shell.openExternal('https://open.spotify.com/'+source.kind+'/'+source.id);return true;
+  });
   ipcMain.handle('vid:online-download',async(e,url)=>{
     if(!trusted(e)||onlineDownload||consentBusy)return {ok:false,code:'busy-or-denied'};
     const D=require('./online-media-download');const candidate=D.candidate(url);
