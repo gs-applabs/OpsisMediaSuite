@@ -3,6 +3,8 @@ on:
   push:
     branches: ['feat/photo-tools-fxsound-coexistence']
     paths: ['.github/workflows/public-subtitle-ci.yml','test/public-subtitle-fixture.js','subtitle-autosync.js','subtitle-sync-worker.js','subtitle-provider.js','renderer/vplib.js','renderer/videoplayer.js']
+  pull_request:
+    paths: ['docs/RC1-ACCEPTANCE.md']
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -15,6 +17,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22

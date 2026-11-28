@@ -25,7 +25,7 @@ Base source 7ac8b2129b5c2efba52f0dde68121a247aba0a90: all nine existing workflow
 ## RC1 test matrix
 - General CI: JS syntax, dependencies, npm audit, all unit/real conversion, renderer/selftest, 20 locales and 20-cycle soak.
 - Native playback, isolated K-Lite Mega, DSP C++, AudioWorklet WASM, plugin contract, RAR subtitles, packaged candidate/native pipe, installer lifecycle.
-- Public subtitle HTTPS, real cues, screenshots and timing evidence; resource hour soak (1200 cycles). Separate RC trigger required.
+- Public subtitle HTTPS, real cues, screenshots and timing evidence; resource hour soak (1200 cycles). RC marker triggers both public subtitle and extended soak workflows; matrix 120 and 1200 cycles. All 11 workflow definitions use exact PR head checkout. Remove extra PR triggers after freezing RC1 to avoid repeating costly runs on every later fix.
 - RC artifacts: unsigned Inno installer, portable directory ZIP, exact source archive, SBOM, SHA256; artifacts are test-only, not stable releases.
 - Additional final gates: full candidate-specific Defender/secrets/trace/NuGet scan (existing security-scan downloads published assets, so cannot prove this RC), real 2.4.2 migration and rollback, clean Windows 10/11 and second authorized VM, physical GPU/audio/monitor/hardware/codec matrix, 120-cycle and 8h continuous mixed soak, live API account/token tests, third-party notices and signing feasibility. No claims of completed physical or release tests.
 - Final release after remaining implementation and regression fixes, fresh full CI on frozen final SHA, human acceptance and release artifacts/hashes. Preserve all prior user requirements in master roadmap; avoid duplicates or blanket closure.

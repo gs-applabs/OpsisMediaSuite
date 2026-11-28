@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: cmake -S native-dsp -B native-dsp-build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build native-dsp-build --config Release
       - run: ctest --test-dir native-dsp-build -C Release --verbose

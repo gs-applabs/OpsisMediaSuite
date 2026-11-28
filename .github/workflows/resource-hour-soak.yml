@@ -1,6 +1,8 @@
 name: Hour-long resource soak (test only)
 on:
   # Existing runs remain independent. Avoid another hour-long run on each PR update.
+  pull_request:
+    paths: ['docs/RC1-ACCEPTANCE.md']
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,9 +12,15 @@ concurrency:
 jobs:
   soak:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cycles: [120, 1200]
     timeout-minutes: 140
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,7 +48,7 @@ jobs:
         env:
           OPSIS_RESOURCE_PROFILE: '1'
           OPSIS_RESOURCE_SOAK: '1'
-          OPSIS_SOAK_CYCLES: '1200'
+          OPSIS_SOAK_CYCLES: ${{ matrix.cycles }}
         run: |
           npm run selftest 2>&1 | Tee-Object -FilePath selftest-resource.log
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -48,6 +56,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hour-soak-resource-profile
+          name: resource-profile-${{ matrix.cycles }}-cycles
           path: selftest-resource.log
           if-no-files-found: warn

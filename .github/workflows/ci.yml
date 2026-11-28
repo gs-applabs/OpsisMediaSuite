@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_cycles == '1200' && 140 || 25 }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
