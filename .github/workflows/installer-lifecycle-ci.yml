@@ -178,13 +178,15 @@ jobs:
           Get-ChildItem assets -Filter '*Portable-*.zip' | ForEach-Object {
             $d = Join-Path $work $_.BaseName; Expand-Archive $_.FullName $d -Force
             Get-ChildItem $d -Recurse -File -Include *.exe,*.dll,*.pdb,*.json,*.config,*.js,*.html | ForEach-Object {
+              $relative=$_.FullName.Substring($d.Length+1)
               $b = [IO.File]::ReadAllBytes($_.FullName)
               $u8 = [Text.Encoding]::Latin1.GetString($b); $u16 = [Text.Encoding]::Unicode.GetString($b)
               foreach ($p in $patterns) {
-                if ($u8.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $u16.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $hits += "$($_.Name): contains '$p'" }
+                if ($u8.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $u16.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $hits += "$relative : pattern index $([Array]::IndexOf($patterns,$p)) : sha256 $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" }
               }
             }
           }
+          $hits | Sort-Object -Unique | Set-Content -Encoding utf8 trace-findings.txt
           $hits | Sort-Object -Unique | ForEach-Object { "TRACE: $_" }
           if ($hits.Count -gt 0) { throw "$($hits.Count) trace(s) of personal data or build paths inside the release files" }
           'trace scan: clean'
@@ -217,3 +219,10 @@ jobs:
             if ($LASTEXITCODE) { throw 'NuGet audit failed' }
             if (Select-String -Path vuln.txt -Pattern '\bHigh\b|\bCritical\b' -Quiet) { throw 'A High/Critical vulnerability is referenced' }
           }
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.rc.outputs.enabled == 'true'
+        with:
+          name: rc-trace-evidence
+          path: trace-findings.txt
+          if-no-files-found: warn

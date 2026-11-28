@@ -35,3 +35,8 @@ Base source 7ac8b2129b5c2efba52f0dde68121a247aba0a90: all nine existing workflow
 - Exact two historical digest fingerprints added to existing .gitleaksignore after checking original lines against official pinned compiler checksum; no general rule exclusion. Trace scan still a blocking issue; require provenance, path-map and actual bytes review, no blanket allowance of vendor DLLs.
 - Fixed invalid preset startup/import shape; shared validation and reload write guard. Flyout slider refresh no longer stops simply because input retains focus; all transport commands scoped to displayed owner/title. Added actual generated WAV playback through flyout DOM for play/pause, seek, volume, mute, next/previous, stop and destruction, not only existence checks. New tests pending.
 - Detailed Claude Code handoff and per-capability acceptance matrix accompany this revision. All 16 groups remain; never infer functional completion from controls, docs, static tests or provider mocks. Build RC1 revision on exact SHA and keep original archived.
+
+## Claude Code handoff
+- docs/CLAUDE-CODE-RC1-HANDOFF-EL.md
+- docs/RC1-FUNCTIONAL-ACCEPTANCE.md
+- docs/RC1-CONTROL-AUDIT.csv (inventory only, each row requires individual evidence)
