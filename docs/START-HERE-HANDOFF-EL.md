@@ -12,6 +12,8 @@
 - Το commit που περιέχει αυτό το αρχείο είναι το 3D.7A. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.9B: direct HTTPS public IPv4 download, explicit main-process consent and folder, one cancellable transfer, 512 MiB ceiling, 180s deadline, no redirects, pinned DNS, exclusive partial file cleanup, new persistent source approved for existing queue. No provider adapter, playlist retrieval or byte progress yet. Tests for admission only; real HTTPS fixture and packaged CI pending. Base 3a72aa3 four PASS, five in progress at inspection.
+
 3D.9A: local URL/provider classification and existing lazy video converter identify control, 114 guide entries, pure tests. No network request, download, metadata fetching or job admission yet. Spotify metadata-only classification. Base 7b3a2da eight workflows PASS, Inno pending. Next direct authorized download staging and queue integration with main-process validation and resource bounds; then provider adapters and actual fixtures.
 
 3D.7B: packaged job 140853768011 failed subtitle pixel comparison because video outside viewport after converter navigation. Explicitly restore video tab and scroll video into view before existing capture; retain pixel threshold and failure condition. CI pending. Online converter 3D.9 still open.

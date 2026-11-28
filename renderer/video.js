@@ -86,6 +86,8 @@
       h('label',{class:'field-label',htmlFor:'vidOnlineUrl',text:'Online media URL / Σύνδεσμος πολυμέσων'}),
       h('input',{id:'vidOnlineUrl',type:'url',maxLength:2048,placeholder:'https://…',autocomplete:'off'}),
       h('button',{id:'vidOnlineAnalyze',class:'small-btn',text:'Identify source / Αναγνώριση πηγής'}),
+      h('button',{id:'vidOnlineDownload',class:'small-btn',text:'Download direct file / Λήψη αρχείου'}),
+      h('button',{id:'vidOnlineCancel',class:'small-btn',text:'Cancel download / Ακύρωση λήψης',disabled:true}),
       h('p',{id:'vidOnlineStatus',class:'hint',role:'status','aria-live':'polite',text:'Local identification only / Τοπική αναγνώριση χωρίς σύνδεση'})
     ]));
 
@@ -391,6 +393,17 @@
   function wire() {
     const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
     $('vidOnlineAnalyze').addEventListener('click',identify);
+    $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
+    $('vidOnlineDownload').addEventListener('click',async()=>{
+      const button=$('vidOnlineDownload'),cancel=$('vidOnlineCancel'),status=$('vidOnlineStatus');
+      if(button.disabled||running||starting||items.length>=V.LIMITS.maxFiles)return;
+      const url=$('vidOnlineUrl').value,source=V.onlineSource(url);
+      if(source?.capability!=='direct-candidate'||source.kind!=='item'){status.textContent='Direct HTTPS media only / Μόνο απευθείας αρχείο HTTPS';return;}
+      button.disabled=true;cancel.disabled=false;status.textContent='Downloading / Λήψη…';
+      try{const result=await api.vidOnlineDownload(url);if(result?.ok){addPaths([result.path]);status.textContent=items.some(x=>x.path===result.path)?'Saved and queued / Αποθηκεύτηκε στην ουρά':'Saved; add file after conversion / Αποθηκεύτηκε, εισαγάγετε μετά τη μετατροπή';}else status.textContent='Download: '+(result?.code||'failed');}
+      catch{status.textContent='Download failed / Αποτυχία λήψης';}
+      finally{button.disabled=false;cancel.disabled=true;}
+    });
     $('vidOnlineUrl').addEventListener('input',()=>{$('vidOnlineStatus').textContent='Identify source / Αναγνώριση πηγής';});
     $('vidOnlineUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();identify();}});
     $('vidAdd').addEventListener('click', async () => addPaths(await api.vidPick('video')));

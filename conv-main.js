@@ -22,13 +22,13 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   const pending = new Set(); // cancel requests that arrived while the job was still being prepared
   let closing=false,quitAllowed=false;
   const progressGate=require('./resource-diagnostics').createProgressGate();
-  let probeBusy=false,thumbBusy=false;
-  const busy=()=>pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
+  let probeBusy=false,thumbBusy=false,onlineDownload=null;
+  const busy=()=>!!onlineDownload||pending.size>0||E.activeRunCount()>0||EV.activeAuxCount()>0||probeBusy||thumbBusy||readBusy||decodeBusy||otherBusy();
   app.on('before-quit',event=>{
     if(quitAllowed)return;
     event.preventDefault();
     if(closing)return;
-    closing=true;
+    closing=true;onlineDownload?.abort();
     for(const id of pending)cancelledEarly.add(id);
     for(const job of jobs.values())try{job.cancel();}catch{}
     E.beginShutdown();EV.beginShutdown();
@@ -171,6 +171,22 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
 
   ipcMain.handle('vid:default-dir', (e) => (trusted(e) ? defaultVideoOutDir() : null));
 
+  ipcMain.handle('vid:online-download',async(e,url)=>{
+    if(!trusted(e)||onlineDownload||consentBusy)return {ok:false,code:'busy-or-denied'};
+    const D=require('./online-media-download');const candidate=D.candidate(url);
+    if(!candidate)return {ok:false,code:'unsupported-url'};
+    const controller=new AbortController();onlineDownload=controller;
+    try{
+      const answer=await dialog.showMessageBox(getMainWin(),{type:'question',buttons:['Cancel / Ακύρωση','Download / Λήψη'],defaultId:0,cancelId:0,message:'Download authorized media from '+candidate.host+'?',detail:'Up to 512 MiB. Saved as a new file in your selected folder. No redirects.'});
+      if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
+      const picked=await dialog.showOpenDialog(getMainWin(),{properties:['openDirectory','createDirectory']});
+      const dir=!picked.canceled&&localDirectory(picked.filePaths[0]);if(!dir||!trusted(e)||controller.signal.aborted)return {ok:false,code:'cancelled'};
+      const file=await D.download(url,dir,{signal:controller.signal});
+      const approved=trusted(e)&&approveSource(file);return approved?{ok:true,path:approved}:{ok:false,code:'not-approved'};
+    }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':'download-failed'};}
+    finally{onlineDownload=null;}
+  });
+  ipcMain.on('vid:online-cancel',e=>{if(trusted(e))onlineDownload?.abort();});
   ipcMain.handle('vid:pick', async (e, kind) => {
     if (!trusted(e)) return [];
     const subs = kind === 'subtitle';
