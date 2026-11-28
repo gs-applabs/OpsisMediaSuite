@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.9G.1
+28 Νοεμβρίου 2026 • ULTRA 3D.9H.1
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9G.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9H.1. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.9H.1: official Vimeo/Dailymotion/SoundCloud oEmbed public metadata, canonical URL admission, fixed endpoints, 256 KiB/15s limits, explicit consent, common preview cancellation and single-item local mapping. SoundCloud sets show collection metadata only. HTML/media/thumbnail URLs discarded. Bandcamp remains pending (no verified official endpoint here), no provider audio/video downloads. Fixtures and packaging registered. Base e7b28d2 8/9 PASS incl General and Packaged, Inno pending. Live endpoint/UI tests pending. Docs: https://developer.vimeo.com/api/oembed/videos https://developers.dailymotion.com/v0/docs/embed-with-oembed https://developers.soundcloud.com/docs/oembed.
+
 3D.9G.1: Spotify metadata preview via official /tracks, /albums/id/tracks and 2026 /playlists/id/items, transient user token, explicit consent, shared preview mutex/cancel and local-file mapping, links back to Spotify, 4 pages/200 tracks, no preview/audio URLs, no downloading Spotify content. Tests and package registered. Live OAuth/API, provider logo/branding compliance and actual UI/CI verification pending; do not claim production-ready. Base da2bd1a 6 PASS, 3 running. Official migration: https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide.
 
 3D.9F.1: selectable playlist occurrences, select all, explicitly match one authorized local file per occurrence using existing main-process picker, ordered all-or-nothing queue plan, rejects unmapped/duplicate/overflow, no conversion auto-start. Online progress listener only once across rebuilds. Tests added to registered suite. Base 4875860 seven CI PASS including packaged, general and Inno pending. No remote playlist download, Spotify or actual UI/CI verification yet. Next Spotify metadata and authorized direct batch workflow.

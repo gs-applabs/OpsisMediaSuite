@@ -95,6 +95,7 @@
       h('input',{id:'vidSpotifyToken',type:'password',maxLength:4096,autocomplete:'off'}),
       h('button',{id:'vidSpotifyPreview',class:'small-btn',text:'Spotify metadata preview / Προεπισκόπηση'}),
       h('button',{id:'vidSpotifyOpen',class:'small-btn',text:'Open selected item on Spotify / Άνοιγμα στο Spotify',disabled:true}),
+      h('button',{id:'vidOtherPreview',class:'small-btn',text:'Vimeo / Dailymotion / SoundCloud metadata'}),
       h('button',{id:'vidYoutubeCancel',class:'small-btn',text:'Cancel preview / Ακύρωση',disabled:true}),
       h('textarea',{id:'vidYoutubeResults',readOnly:true,rows:4,'aria-label':'YouTube metadata results'}),
       h('label',{class:'field-label',htmlFor:'vidYoutubeItems',text:'Choose playlist occurrences / Επιλογή στοιχείων λίστας'}),
@@ -438,23 +439,32 @@
     $('vidSpotifyPreview').addEventListener('click',async()=>{
       const btn=$('vidSpotifyPreview'),other=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidSpotifyToken');
       if(previewBusy||matching)return;
-      const token=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();previewBusy=true;btn.disabled=other.disabled=true;cancel.disabled=false;
+      const token=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();previewBusy=true;btn.disabled=other.disabled=$('vidOtherPreview').disabled=true;cancel.disabled=false;
       try{const result=await api.vidSpotifyPreview(url,token);if(!choice.isConnected)return;
         if(result?.ok){spotifyLink=result.link;previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(row.position+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
         out.value=result?.ok?'Spotify — '+result.items.length+' tracks'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel+' · '+x.link).join('\n'):'Spotify preview: '+(result?.code||'failed');
-      }catch{out.value='Spotify preview failed';}finally{previewBusy=false;btn.disabled=other.disabled=false;cancel.disabled=true;}
+      }catch{out.value='Spotify preview failed';}finally{previewBusy=false;btn.disabled=other.disabled=$('vidOtherPreview').disabled=false;cancel.disabled=true;}
+    });
+    $('vidOtherPreview').addEventListener('click',async()=>{
+      const btn=$('vidOtherPreview'),yt=$('vidYoutubePreview'),sp=$('vidSpotifyPreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults');
+      if(previewBusy||matching)return;
+      const url=$('vidOnlineUrl').value;out.value='';resetSelection();previewBusy=true;btn.disabled=yt.disabled=sp.disabled=true;cancel.disabled=false;
+      try{const result=await api.vidProviderPreview(url);if(!choice.isConnected)return;
+        if(result?.ok&&!result.collectionOnly){previewRows=result.items.slice(0,1);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:row.title+' — '+row.channel}));refreshSelection();}
+        out.value=result?.ok?result.source+' — '+result.items.map(x=>x.title+' — '+x.channel+'\n'+x.link).join('\n')+(result.collectionOnly?'\nCollection metadata only / Μόνο στοιχεία συλλογής':''):'Preview: '+(result?.code||'failed');
+      }catch{out.value='Provider preview failed';}finally{previewBusy=false;btn.disabled=yt.disabled=sp.disabled=false;cancel.disabled=true;}
     });
     $('vidYoutubeCancel').addEventListener('click',()=>api.vidYoutubeCancel());
     $('vidYoutubePreview').addEventListener('click',async()=>{
       const btn=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidYoutubeKey');
       if(btn.disabled||matching||previewBusy)return;
-      const other=$('vidSpotifyPreview');previewBusy=true;other.disabled=true;
+      const other=$('vidSpotifyPreview');previewBusy=true;other.disabled=$('vidOtherPreview').disabled=true;
       const key=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();btn.disabled=true;cancel.disabled=false;
       try{const result=await api.vidYoutubePreview(url,key);
         if(!choice.isConnected)return;
         if(result?.ok){previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(i+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
         out.value=result?.ok?'YouTube — '+result.items.length+' items'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel).join('\n'):'YouTube preview: '+(result?.code||'failed');
-      }catch{out.value='YouTube preview failed';}finally{previewBusy=false;other.disabled=false;btn.disabled=false;cancel.disabled=true;}
+      }catch{out.value='YouTube preview failed';}finally{previewBusy=false;other.disabled=$('vidOtherPreview').disabled=false;btn.disabled=false;cancel.disabled=true;}
     });
     $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
     if(!onlineListening){onlineListening=true;api.onVidOnlineProgress(data=>{

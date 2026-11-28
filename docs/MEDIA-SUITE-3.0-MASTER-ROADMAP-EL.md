@@ -31,6 +31,9 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 ### ULTRA 3D.9C — package inclusion and bounded streaming progress
 - Added download module to explicit package file list and both online suites to npm test. Shared stream writer validates response length/MIME/status, cleans owned partials, emits bounded byte/total/rate updates. Deterministic stream tests for success, size limit, truncation, MIME, redirect, empty, abort. No actual HTTPS or packaged UI certification yet. DNS lookup itself not cancellable. Provider adapters remain open.
 
+### ULTRA 3D.9H.1 — common public oEmbed metadata
+- Vimeo/Dailymotion/SoundCloud official endpoints, canonical public links, consent, shared preview mutex/cancel, bounded responses, no returned HTML/media/image execution. Single items can be manually matched; SoundCloud collections are metadata only. Bandcamp and actual authorized provider downloads pending. Tests and package registered; live/UI certification pending. Base e7b28d2 eight PASS, Inno pending.
+
 ### ULTRA 3D.9G.1 — Spotify metadata preview
 - Official 2026 API routes, temporary token, consent, shared selection/queue and cancel, bounded pagination, source links, no Spotify audio extraction. Tests cover new endpoint, legacy response compatibility, limits and token errors. Actual OAuth onboarding/live credentials, official logo/branding and production policy review, CI pending. No claim of Spotify download support. Base da2bd1a six PASS, three running.
 

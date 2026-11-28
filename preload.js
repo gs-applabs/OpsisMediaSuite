@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vidDefaultDir: () => ipcRenderer.invoke('vid:default-dir'),
   vidYoutubePreview: (url,key)=>ipcRenderer.invoke('vid:youtube-preview',url,key),
   vidYoutubeCancel: ()=>ipcRenderer.send('vid:youtube-cancel'),
+  vidProviderPreview: url=>ipcRenderer.invoke('vid:provider-preview',url),
   vidSpotifyPreview: (url,token)=>ipcRenderer.invoke('vid:spotify-preview',url,token),
   vidSpotifyOpen: url=>ipcRenderer.invoke('vid:spotify-open',url),
   vidOnlineDownload: url=>ipcRenderer.invoke('vid:online-download',url),
