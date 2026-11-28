@@ -31,6 +31,11 @@ R6 υπερισχύει στη σειρά εργασιών, R5-AUDIT στην π
 
 **Αναφορά κάθε pass:** κατάσταση κάθε ομάδας 01–16 (ή σύνδεση προς τον ενημερωμένο πλήρη πίνακα αν δεν ζητήθηκε αναλυτικά), ακριβείς αλλαγές/OV-IDs, πραγματικό CI, επόμενο εύκολο μη ολοκληρωμένο βήμα, blockers (credentials, provider policy, hardware, connector limits). Μην παρουσιάζεις ως πλήρες το σύνολο των εκκρεμοτήτων αν υπάρχει μόνο μερική απογραφή. Δεν χρειάζεται νέο plugin για τις τρέχουσες GitHub αλλαγές· αν απαιτηθεί συγκεκριμένη μη διαθέσιμη δυνατότητα, αναζήτησε κατάλληλο connector και ζήτησε μόνο την αναγκαία σύνδεση. Μη δημιουργείς δεύτερο roadmap.
 
+### R6-01.4 — πραγματική αποτυχία WebP ICC (base 9c8c0a8e)
+- General CI 46124830392 on 31a1b7fe failed the real WebP date/pixel check (not the synthetic tests). Reproduced actual local headless Chromium canvas WebP layout with VP8X 0x30 + ICCP + ALPH + VP8. Prior writer allowed only alpha flag, rejecting the encoder-generated ICC profile.
+- Extend existing writer to admit a bounded 128 B–1 MiB ICCP with matching declared length/acsp signature, correct chunk order and feature flag; preserve original encoded ICC and compressed pixels, reject other unknown/private metadata. Existing real pixel comparison retained with diagnostic header/date/pixel-match fields. Added synthetic ICC layout/malformed/flag mismatch tests; new Windows CI required. No source ICC import, no weakening EXIF/GPS policy, no release.
+- Latest fcea3e04 6 PASS/3 running; 31a1b7fe 6 PASS, General FAIL, packaged cancelled, installer running. All groups remain tracked.
+
 ### R6-06.5 / 03.4 — εισαγωγή μουσικής, κωδικοποίηση διαδρομών και ασφαλέστερα εξώφυλλα (base fcea3e04)
 - OV-08 FIX: existing shared path-identity module adds local file URL conversion preserving literal percent/hash/question marks, spaces and Unicode. Music open-with/folder/restore use it, reject relative/network/ADS/control/malformed strings; no permission grant. Existing path identity unchanged.
 - R6-06 EXTEND: explicit cancel for existing folder import, one scoped job and cooperative scan cancellation, no partial import when cancelled, no new scanner/watchers. Native picker still needs closing by user; no claim of forcibly interrupting pending OS directory I/O. Updated existing guide.

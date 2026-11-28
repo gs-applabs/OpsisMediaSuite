@@ -121,3 +121,9 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - OV-11 FIX: preflight embedded art dimensions before native decode with existing photo header reader and 16 MP bound; invalid/unknown header skips artwork, text remains available. No new decoder.
 - Added URL and static contract tests. f0f2b109 9/9 PASS; fcea3e04 CI 3 PASS/6 running at first inspection. New CI pending, real folder cancel/UI and malformed artwork acceptance not yet certified. All groups 01–16 retained; no merge/release.
 
+
+### R6-01.4 — πραγματική αποτυχία WebP ICC (base 9c8c0a8e)
+- General CI 46124830392 on 31a1b7fe failed the real WebP date/pixel check (not the synthetic tests). Reproduced actual local headless Chromium canvas WebP layout with VP8X 0x30 + ICCP + ALPH + VP8. Prior writer allowed only alpha flag, rejecting the encoder-generated ICC profile.
+- Extend existing writer to admit a bounded 128 B–1 MiB ICCP with matching declared length/acsp signature, correct chunk order and feature flag; preserve original encoded ICC and compressed pixels, reject other unknown/private metadata. Existing real pixel comparison retained with diagnostic header/date/pixel-match fields. Added synthetic ICC layout/malformed/flag mismatch tests; new Windows CI required. No source ICC import, no weakening EXIF/GPS policy, no release.
+- Latest fcea3e04 6 PASS/3 running; 31a1b7fe 6 PASS, General FAIL, packaged cancelled, installer running. All groups remain tracked.
+

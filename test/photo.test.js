@@ -257,3 +257,18 @@ test('static WebP date export preserves compressed pixels and validates RIFF lay
  const alpha=chunk('ALPH',Buffer.from([0,1])),pixels=chunk('VP8 ',lossy),source=riff(chunk('VP8X',ext),alpha,pixels);
  const out=M.attachCaptureDate(source,'webp',date);assert.equal(M.captureDate(out),date);assert.equal(out[20],0x18);assert.deepEqual(out.subarray(30,30+alpha.length+pixels.length),Buffer.concat([alpha,pixels]));
 });
+
+
+test('static WebP date export retains the bounded encoder ICC profile and its feature flag',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30';
+ function chunk(name,data){const b=Buffer.alloc(8+data.length+(data.length&1));b.write(name);b.writeUInt32LE(data.length,4);data.copy(b,8);return b;}
+ function riff(...chunks){const h=Buffer.alloc(12);h.write('RIFF');h.writeUInt32LE(4+chunks.reduce((n,x)=>n+x.length,0),4);h.write('WEBP',8);return Buffer.concat([h,...chunks]);}
+ const ext=Buffer.alloc(10);ext[0]=0x30;ext.writeUIntLE(3,4,3);ext.writeUIntLE(2,7,3);
+ const icc=Buffer.alloc(128);icc.writeUInt32BE(128);icc.write('acsp',36);
+ const pixels=chunk('VP8 ',Buffer.from([0,0,0,0x9d,1,0x2a,4,0,3,0])),alpha=chunk('ALPH',Buffer.from([0,1]));
+ const source=riff(chunk('VP8X',ext),chunk('ICCP',icc),alpha,pixels),out=M.attachCaptureDate(source,'webp',date);
+ assert.notEqual(out,source);assert.equal(out[20],0x38);assert.equal(M.captureDate(out),date);
+ assert.deepEqual(out.subarray(30,source.length),source.subarray(30));
+ const bad=Buffer.from(source);bad.write('oops',30+8+36);assert.equal(M.attachCaptureDate(bad,'webp',date),bad);
+ const mismatch=Buffer.from(source);mismatch[20]=0x10;assert.equal(M.attachCaptureDate(mismatch,'webp',date),mismatch);
+});

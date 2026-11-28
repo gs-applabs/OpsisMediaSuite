@@ -75,21 +75,24 @@ function captureDate(bytes) {
   return datePattern.test(value) ? value : null;
 }
 
-// Only static, metadata-free WebP layouts produced by the canvas encoder.
+// Only static WebP layouts produced by the canvas encoder; permit its bounded ICC color profile.
 // Preserve compressed image chunks exactly; no pixel decode or re-encode.
 function attachWebpDate(bytes,tiff){
   if(bytes.length<20||bytes.length>256*1024*1024-100||
      bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WEBP'||
      bytes.readUInt32LE(4)!==bytes.length-8)return bytes;
-  let p=12,extended=null,image=null,alphaChunk=false;
+  let p=12,extended=null,image=null,alphaChunk=false,icc=false;
   for(let count=0;p<bytes.length&&count++<4;){
     if(p+8>bytes.length)return bytes;
     const type=bytes.toString('ascii',p,p+4),length=bytes.readUInt32LE(p+4),start=p+8,next=start+length+(length&1);
     if(next>bytes.length)return bytes;
     if(type==='VP8X'&&p===12&&length===10&&!extended){
       const flags=bytes[start];
-      if((flags&~0x10)!==0||bytes[start+1]||bytes[start+2]||bytes[start+3])return bytes;
+      if((flags&~0x30)!==0||bytes[start+1]||bytes[start+2]||bytes[start+3])return bytes;
       extended={flags,width:bytes.readUIntLE(start+4,3)+1,height:bytes.readUIntLE(start+7,3)+1};
+    }else if(type==='ICCP'&&extended&&!icc&&!alphaChunk&&!image&&length>=128&&length<=1024*1024){
+      if(bytes.readUInt32BE(start)!==length||bytes.toString('ascii',start+36,start+40)!=='acsp')return bytes;
+      icc=true;
     }else if(type==='ALPH'&&extended&&!image&&!alphaChunk&&length>0){
       alphaChunk=true;
     }else if(type==='VP8 '&&!image&&length>=10&&!(bytes[start]&1)&&
@@ -102,9 +105,9 @@ function attachWebpDate(bytes,tiff){
     p=next;
   }
   if(p!==bytes.length||!image||!image.width||!image.height)return bytes;
-  if(extended&&(extended.width!==image.width||extended.height!==image.height||!!(extended.flags&0x10)!==image.alpha))return bytes;
+  if(extended&&(extended.width!==image.width||extended.height!==image.height||!!(extended.flags&0x10)!==image.alpha||!!(extended.flags&0x20)!==icc))return bytes;
   const vp8x=Buffer.alloc(18);vp8x.write('VP8X');vp8x.writeUInt32LE(10,4);
-  vp8x[8]=0x08|(image.alpha?0x10:0);
+  vp8x[8]=0x08|(image.alpha?0x10:0)|(icc?0x20:0);
   vp8x.writeUIntLE(image.width-1,12,3);vp8x.writeUIntLE(image.height-1,15,3);
   const metadata=Buffer.alloc(8+tiff.length);metadata.write('EXIF');metadata.writeUInt32LE(tiff.length,4);tiff.copy(metadata,8);
   const pixels=bytes.subarray(extended?30:12),riff=Buffer.from(bytes.subarray(0,12));
