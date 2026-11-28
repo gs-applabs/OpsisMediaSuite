@@ -181,7 +181,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       if(!trusted(e)||controller.signal.aborted||answer.response!==1)return {ok:false,code:'cancelled'};
       const picked=await dialog.showOpenDialog(getMainWin(),{properties:['openDirectory','createDirectory']});
       const dir=!picked.canceled&&localDirectory(picked.filePaths[0]);if(!dir||!trusted(e)||controller.signal.aborted)return {ok:false,code:'cancelled'};
-      const file=await D.download(url,dir,{signal:controller.signal});
+      const file=await D.download(url,dir,{signal:controller.signal,onProgress:progress=>{if(trusted(e)&&onlineDownload===controller&&!controller.signal.aborted)e.sender.send('vid:online-progress',progress);}});
       const approved=trusted(e)&&approveSource(file);return approved?{ok:true,path:approved}:{ok:false,code:'not-approved'};
     }catch(err){return {ok:false,code:controller.signal.aborted?'cancelled':'download-failed'};}
     finally{onlineDownload=null;}

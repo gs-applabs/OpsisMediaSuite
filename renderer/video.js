@@ -394,6 +394,11 @@
     const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
     $('vidOnlineAnalyze').addEventListener('click',identify);
     $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
+    api.onVidOnlineProgress(data=>{
+      if(!$('vidOnlineDownload').disabled||!data||!Number.isFinite(data.received))return;
+      const mib=n=>(n/1048576).toFixed(1)+' MiB';
+      $('vidOnlineStatus').textContent='Downloading / Λήψη: '+mib(data.received)+(data.total?' / '+mib(data.total)+' ('+Math.min(100,Math.round(data.received/data.total*100))+'%)':'')+' · '+mib(data.bytesPerSecond||0)+'/s';
+    });
     $('vidOnlineDownload').addEventListener('click',async()=>{
       const button=$('vidOnlineDownload'),cancel=$('vidOnlineCancel'),status=$('vidOnlineStatus');
       if(button.disabled||running||starting||items.length>=V.LIMITS.maxFiles)return;

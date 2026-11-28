@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   vidDefaultDir: () => ipcRenderer.invoke('vid:default-dir'),
   vidOnlineDownload: url=>ipcRenderer.invoke('vid:online-download',url),
   vidOnlineCancel: ()=>ipcRenderer.send('vid:online-cancel'),
+  onVidOnlineProgress: cb=>ipcRenderer.on('vid:online-progress',(_e,data)=>cb(data)),
   vidPick: (kind) => ipcRenderer.invoke('vid:pick', kind),
   vidEncoders: () => ipcRenderer.invoke('vid:encoders'),
   vidProbe: (p) => ipcRenderer.invoke('vid:probe', p),
