@@ -11,9 +11,11 @@ concurrency:
 jobs:
   lifecycle:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -43,8 +45,81 @@ jobs:
         run: |
           node test/build-installer-ci.js 2.4.2
           if ($LASTEXITCODE) { throw 'base fixture build failed' }
-          node test/build-installer-ci.js 3.0.0
-          if ($LASTEXITCODE) { throw 'upgrade fixture build failed' }
+          $v=(Get-Content package.json -Raw | ConvertFrom-Json).version
+          if($v -notmatch '^3\.0\.0-rc\.[1-9][0-9]{0,3}
+        shell: pwsh
+      - name: Stage actual RC installer, portable directory ZIP, source and checksums
+        shell: pwsh
+        run: |
+          $v=(Get-Content package.json -Raw | ConvertFrom-Json).version
+          if($v -notmatch '^3\.0\.0-rc\.[1-9][0-9]{0,3}
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          ./test/installer-lifecycle.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-lifecycle-evidence
+          path: |
+            installer-first.log
+            installer-upgrade.log
+          retention-days: 7
+){$v='3.0.0'}
+          node test/build-installer-ci.js $v
+          if ($LASTEXITCODE) { throw 'upgrade candidate build failed' }
+        shell: pwsh
+      - name: Test installation, upgrade and removal
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          ./test/installer-lifecycle.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-lifecycle-evidence
+          path: |
+            installer-first.log
+            installer-upgrade.log
+          retention-days: 7
+){exit 0}
+          New-Item -ItemType Directory -Force rc-artifacts | Out-Null
+          Copy-Item "release-installer-ci/$v/OpsisMediaSuite-CI-$v.exe" "rc-artifacts/OpsisMediaSuite-Setup-$v.exe"
+          Copy-Item LICENSE release/win-unpacked/LICENSE.OpsisMediaSuite.txt
+          Copy-Item licenses release/win-unpacked/licenses -Recurse -Force
+          Compress-Archive -Path 'release/win-unpacked/*' -DestinationPath "rc-artifacts/OpsisMediaSuite-Portable-$v.zip"
+          git archive --format=zip --prefix="OpsisMediaSuite-$v/" --output="rc-artifacts/OpsisMediaSuite-Source-$v.zip" HEAD
+          if($LASTEXITCODE){throw 'source archive failed'}
+          npm sbom --omit=dev --sbom-format=cyclonedx | Set-Content -Encoding utf8 rc-artifacts/npm-sbom.cdx.json
+          if($LASTEXITCODE){throw 'SBOM generation failed'}
+          $sha=(git rev-parse HEAD).Trim()
+          Set-Content rc-artifacts/SOURCE-COMMIT.txt $sha
+          Get-ChildItem rc-artifacts -File | ForEach-Object {
+            $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content -Encoding ascii ($_.FullName+'.sha256') "$hash  $($_.Name)"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rc1-unsigned-candidate
+          path: rc-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Test installation, upgrade and removal
+        shell: pwsh
+        run: |
+          ./.github/scripts/ensure-ffmpeg.ps1
+          ./test/installer-lifecycle.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-lifecycle-evidence
+          path: |
+            installer-first.log
+            installer-upgrade.log
+          retention-days: 7
+){$v='3.0.0'}
+          node test/build-installer-ci.js $v
+          if ($LASTEXITCODE) { throw 'upgrade candidate build failed' }
         shell: pwsh
       - name: Test installation, upgrade and removal
         shell: pwsh

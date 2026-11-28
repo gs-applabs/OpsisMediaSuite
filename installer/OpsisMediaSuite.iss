@@ -8,7 +8,10 @@
 #endif
 
 #ifndef MyAppVersion
-  #define MyAppVersion "2.4.2"
+  #define MyAppVersion "3.0.0-rc.1"
+#endif
+#ifndef MyBinaryVersion
+  #define MyBinaryVersion "3.0.0.1"
 #endif
 #define MyAppName "Opsis Media Suite"
 #define MyAppExeName "Opsis Media Suite.exe"
@@ -25,10 +28,11 @@ AppPublisher=gs-applabs
 AppCopyright=Copyright (c) 2026 gs-applabs
 VersionInfoCompany=gs-applabs
 VersionInfoDescription={#MyAppName} Setup
-VersionInfoVersion={#MyAppVersion}
+VersionInfoVersion={#MyBinaryVersion}
 VersionInfoCopyright=Copyright (c) 2026 gs-applabs
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyBinaryVersion}
+VersionInfoProductTextVersion={#MyAppVersion}
 AppPublisherURL=https://github.com/gs-applabs/OpsisMediaSuite
 AppSupportURL=https://github.com/gs-applabs/OpsisMediaSuite/issues
 DefaultDirName={autopf}\{#MyAppName}

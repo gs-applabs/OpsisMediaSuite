@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.0-rc.1 — Release candidate (test only)
+- Freeze the 7ac8b212 development baseline (9/9 successful GitHub workflows) and expose the actual prerelease version throughout the application via package metadata. Existing product identity and plugin 1.0.0.0 retained.
+- Includes local audio/video desktop controls, demand-driven core, bounded photo EXIF export, safer media text and playlist reads, library and metadata controls, subtitle and codec tests, provider and conversion work documented in the master roadmap.
+- RC binaries are unsigned test artifacts, not a stable release. All new RC tests and physical/extended acceptance remain explicit gates.
+
 ## Unreleased — Ultra Mega Pass 20B.14
 - EQ bank, bass shelf, presence and stereo-width matrix use independent on-demand live branches. Neutral values and bypass release their processing nodes after a short crossfade; selected settings are preserved. Keep neutral stereo speaker conversion, output limiter, offline render and video EQ unchanged. Six real renderer assertions cover selective activation, bypass, restore and release. New Windows verification pending; the EQ bank still uses all ten bands when any is nonzero.
 
