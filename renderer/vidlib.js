@@ -327,5 +327,22 @@
     }
     return {provider,kind,capability};
   }
-  return { onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
+  // Match by occurrence, not video ID; repeated tracks remain independently selectable.
+  // Local paths must still come from the main-process picker and be revalidated at encode.
+  function playlistQueuePlan(rows,selection,bindings,existing=[],capacity=LIMITS.maxFiles){
+    if(!Array.isArray(rows)||rows.length>200||!Array.isArray(selection)||!(bindings instanceof Map)||!Array.isArray(existing)||!Number.isSafeInteger(capacity)||capacity<0)return {ok:false,code:'invalid-selection'};
+    const chosen=new Set(selection);
+    if(!chosen.size||[...chosen].some(i=>!Number.isInteger(i)||i<0||i>=rows.length))return {ok:false,code:'invalid-selection'};
+    const paths=[],seen=new Set(existing.map(p=>String(p).toLowerCase()));
+    for(let i=0;i<rows.length;i++){
+      if(!chosen.has(i))continue;
+      const p=bindings.get(i);
+      if(typeof p!=='string'||!p||!(/^[A-Za-z]:[\\/]/.test(p))||/[\x00-\x1f]/.test(p))return {ok:false,code:'unmatched-item'};
+      const key=p.toLowerCase();if(seen.has(key))return {ok:false,code:'duplicate-file'};
+      seen.add(key);paths.push(p);
+    }
+    if(paths.length>capacity)return {ok:false,code:'queue-full'};
+    return {ok:true,paths};
+  }
+  return { playlistQueuePlan, onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
 });

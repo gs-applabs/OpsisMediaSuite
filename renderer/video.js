@@ -40,7 +40,7 @@
   let mode = 'video';      // video | gif | audio (set by presets)
   let subFile = '';
   let seq = 0;
-  let listening = false;
+  let listening = false,onlineListening=false;
 
   const h = (tag, props = {}, kids = []) => {
     const e = document.createElement(tag);
@@ -93,6 +93,12 @@
       h('button',{id:'vidYoutubePreview',class:'small-btn',text:'YouTube metadata preview / Προεπισκόπηση'}),
       h('button',{id:'vidYoutubeCancel',class:'small-btn',text:'Cancel preview / Ακύρωση',disabled:true}),
       h('textarea',{id:'vidYoutubeResults',readOnly:true,rows:4,'aria-label':'YouTube metadata results'}),
+      h('label',{class:'field-label',htmlFor:'vidYoutubeItems',text:'Choose playlist occurrences / Επιλογή στοιχείων λίστας'}),
+      h('select',{id:'vidYoutubeItems',multiple:true,size:4,'aria-label':'Playlist items'}),
+      h('button',{id:'vidYoutubeAll',class:'small-btn',text:'Select all / Επιλογή όλων',disabled:true}),
+      h('button',{id:'vidYoutubeMatch',class:'small-btn',text:'Match one owned local file / Αντιστοίχιση ενός τοπικού αρχείου',disabled:true}),
+      h('button',{id:'vidYoutubeQueue',class:'small-btn',text:'Queue selected matched files / Εισαγωγή επιλεγμένων',disabled:true}),
+      h('p',{id:'vidYoutubeSelectionStatus',class:'hint',role:'status','aria-live':'polite',text:'Metadata only; choose files you already have permission to use.'}),
       h('p',{id:'vidOnlineStatus',class:'hint',role:'status','aria-live':'polite',text:'Local identification only / Τοπική αναγνώριση χωρίς σύνδεση'})
     ]));
 
@@ -398,21 +404,48 @@
   function wire() {
     const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
     $('vidOnlineAnalyze').addEventListener('click',identify);
+    const choice=$('vidYoutubeItems'),match=$('vidYoutubeMatch'),queue=$('vidYoutubeQueue'),all=$('vidYoutubeAll'),selectionStatus=$('vidYoutubeSelectionStatus');
+    let previewRows=[],bindings=new Map(),matching=false;
+    const selected=()=>Array.from(choice.selectedOptions,x=>Number(x.value));
+    const refreshSelection=()=>{
+      const sel=selected();all.disabled=!previewRows.length||matching;match.disabled=matching||sel.length!==1;queue.disabled=matching||!sel.length||sel.some(i=>!bindings.has(i));
+      selectionStatus.textContent=sel.length+' selected / επιλεγμένα · '+bindings.size+' matched / αντιστοιχισμένα';
+    };
+    const resetSelection=()=>{previewRows=[];bindings.clear();choice.replaceChildren();refreshSelection();};
+    choice.addEventListener('change',refreshSelection);
+    all.addEventListener('click',()=>{for(const opt of choice.options)opt.selected=true;refreshSelection();});
+    match.addEventListener('click',async()=>{
+      const sel=selected();if(matching||sel.length!==1)return;
+      const index=sel[0],row=previewRows[index];matching=true;refreshSelection();
+      try{
+        const picked=await api.vidPick('media-one');
+        if(!choice.isConnected||previewRows[index]!==row||!picked?.[0])return;
+        bindings.set(index,picked[0]);choice.options[index].textContent=(index+1)+'. '+row.title+' — '+row.channel+' [✓ '+picked[0].split(/[\\/]/).pop()+']';
+      }finally{matching=false;if(choice.isConnected)refreshSelection();}
+    });
+    queue.addEventListener('click',()=>{
+      if(running||starting||matching){selectionStatus.textContent='Converter busy / Εκτελείται μετατροπή';return;}
+      const plan=V.playlistQueuePlan(previewRows,selected(),bindings,items.map(x=>x.path),V.LIMITS.maxFiles-items.length);
+      if(!plan.ok){selectionStatus.textContent='Queue: '+plan.code;return;}
+      addPaths(plan.paths);selectionStatus.textContent=plan.paths.length+' files queued / αρχεία στην ουρά';
+    });
     $('vidYoutubeCancel').addEventListener('click',()=>api.vidYoutubeCancel());
     $('vidYoutubePreview').addEventListener('click',async()=>{
       const btn=$('vidYoutubePreview'),cancel=$('vidYoutubeCancel'),out=$('vidYoutubeResults'),field=$('vidYoutubeKey');
-      if(btn.disabled)return;
-      const key=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';btn.disabled=true;cancel.disabled=false;
+      if(btn.disabled||matching)return;
+      const key=field.value,url=$('vidOnlineUrl').value;field.value='';out.value='';resetSelection();btn.disabled=true;cancel.disabled=false;
       try{const result=await api.vidYoutubePreview(url,key);
+        if(!choice.isConnected)return;
+        if(result?.ok){previewRows=result.items.slice(0,200);for(const [i,row] of previewRows.entries())choice.append(h('option',{value:String(i),text:(i+1)+'. '+row.title+' — '+row.channel}));refreshSelection();}
         out.value=result?.ok?'YouTube — '+result.items.length+' items'+(result.truncated?' (limit reached)':'')+'\n'+result.items.map(x=>(x.position+1)+'. '+x.title+' — '+x.channel).join('\n'):'YouTube preview: '+(result?.code||'failed');
       }catch{out.value='YouTube preview failed';}finally{btn.disabled=false;cancel.disabled=true;}
     });
     $('vidOnlineCancel').addEventListener('click',()=>api.vidOnlineCancel());
-    api.onVidOnlineProgress(data=>{
-      if(!$('vidOnlineDownload').disabled||!data||!Number.isFinite(data.received))return;
+    if(!onlineListening){onlineListening=true;api.onVidOnlineProgress(data=>{
+      if(!$('vidOnlineDownload')?.disabled||!data||!Number.isFinite(data.received))return;
       const mib=n=>(n/1048576).toFixed(1)+' MiB';
       $('vidOnlineStatus').textContent='Downloading / Λήψη: '+mib(data.received)+(data.total?' / '+mib(data.total)+' ('+Math.min(100,Math.round(data.received/data.total*100))+'%)':'')+' · '+mib(data.bytesPerSecond||0)+'/s';
-    });
+    });}
     $('vidOnlineDownload').addEventListener('click',async()=>{
       const button=$('vidOnlineDownload'),cancel=$('vidOnlineCancel'),status=$('vidOnlineStatus');
       if(button.disabled||running||starting||items.length>=V.LIMITS.maxFiles)return;

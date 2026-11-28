@@ -201,10 +201,10 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
   ipcMain.on('vid:online-cancel',e=>{if(trusted(e))onlineDownload?.abort();});
   ipcMain.handle('vid:pick', async (e, kind) => {
     if (!trusted(e)) return [];
-    const subs = kind === 'subtitle';
+    const subs = kind === 'subtitle',oneMedia=kind==='media-one';
     const r = await dialog.showOpenDialog(getMainWin(), {
-      properties: subs ? ['openFile'] : ['openFile', 'multiSelections'],
-      filters: subs ? [{ name: 'Subtitles', extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'] }] : [{ name: 'Video', extensions: E.VIDEO_EXTS }, { name: 'All files', extensions: ['*'] }],
+      properties: subs||oneMedia ? ['openFile'] : ['openFile', 'multiSelections'],
+      filters: subs ? [{ name: 'Subtitles', extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'] }] : [{ name: 'Video', extensions: oneMedia?[...MEDIA_TYPES]:E.VIDEO_EXTS }, { name: 'All files', extensions: ['*'] }],
     });
     if (r.canceled) return [];
     return r.filePaths.slice(0,V.LIMITS.maxFiles).map(p=>subs?(V.validSubtitlePath(p)?approveSubtitle(p):null):approveSource(p)).filter(Boolean);
