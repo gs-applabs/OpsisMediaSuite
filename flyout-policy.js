@@ -10,9 +10,9 @@ function progress(data,state){
  return {duration:data.duration,position:data.position,volume:data.volume,muted:data.muted};
 }
 function command(data,state){
- if(typeof data==='string'&&['prev','playpause','next','stop','dismiss'].includes(data))return {action:data};
+ if(data==='dismiss')return {action:data};
  if(!sameTarget(data,state)||!data.title)return null;
- if(data.action==='mute')return {action:'mute',title:data.title,owner:data.owner};
+ if(['mute','prev','playpause','next','stop'].includes(data.action))return {action:data.action,title:data.title,owner:data.owner};
  if(!['seek','volume'].includes(data.action)||!Number.isInteger(data.value)||data.value<0||data.value>(data.action==='seek'?1000:100))return null;
  return {action:data.action,value:data.value,title:data.title,owner:data.owner};
 }

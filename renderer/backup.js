@@ -25,13 +25,18 @@ const WaveframeBackup = (() => {
 
   const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   const strings = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+  // Use the same validation for startup/rendering and imported settings.
+  function validPreset(item){
+    if(!isRecord(item)||typeof item.name!=='string'||!item.name.trim()||item.name.length>512||!Array.isArray(item.bands)||item.bands.length!==10||!item.bands.every(x=>Number.isFinite(x)&&Math.abs(x)<=24))return false;
+    for(const k of ['bassBoost','presence','balance','reverbAmount','exciterAmount','volumeBoost','surround'])if(item[k]!==undefined&&!Number.isFinite(item[k]))return false;
+    for(const k of ['compressor','reverb','exciter'])if(item[k]!==undefined&&typeof item[k]!=='boolean')return false;
+    return item.compressorMode===undefined||typeof item.compressorMode==='string';
+  }
   const schemas = {
     'waveframe.playlist': (list) => Array.isArray(list) && list.every((item) =>
       isRecord(item) && typeof item.name === 'string' &&
       (typeof item.path === 'string' || typeof item.url === 'string')),
-    'waveframe.userPresets': (list) => Array.isArray(list) && list.every((item) =>
-      isRecord(item) && typeof item.name === 'string' && Array.isArray(item.bands) &&
-      item.bands.length <= 10 && item.bands.every(Number.isFinite)),
+    'waveframe.userPresets': list => Array.isArray(list)&&list.every(validPreset),
     'waveframe.video.bookmarks': (list) => Array.isArray(list) && list.every((item) =>
       isRecord(item) && typeof item.path === 'string' && Number.isFinite(item.ms)),
     'waveframe.video.playlists': (item) => isRecord(item) && Object.values(item).every(strings),
@@ -97,7 +102,7 @@ const WaveframeBackup = (() => {
     return true;
   }
   const canPersist=key=>!reloadKeys.has(key);
-  return { collect, restore, restoreForReload, canPersist, sanitize, keys:Object.freeze([...keys]) };
+  return { collect, restore, restoreForReload, canPersist, sanitize, validPreset, keys:Object.freeze([...keys]) };
 })();
 
 if (typeof module !== 'undefined') module.exports = WaveframeBackup;

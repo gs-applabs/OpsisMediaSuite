@@ -1288,9 +1288,12 @@ function highlightActivePreset() {
 
 /* ---- user presets ---- */
 function loadUserPresets() {
-  try { return JSON.parse(localStorage.getItem(USER_PRESET_KEY)) || []; } catch { return []; }
+  try { const list=JSON.parse(localStorage.getItem(USER_PRESET_KEY));return Array.isArray(list)?list.filter(WaveframeBackup.validPreset):[]; } catch { return []; }
 }
-function saveUserPresets(list) { localStorage.setItem(USER_PRESET_KEY, JSON.stringify(list)); }
+function saveUserPresets(list) {
+  if(!WaveframeBackup.canPersist(USER_PRESET_KEY)||!Array.isArray(list)||!list.every(WaveframeBackup.validPreset))return;
+  OpsisFeatureGuide.setIfChanged(localStorage,USER_PRESET_KEY,JSON.stringify(list));
+}
 function renderUserPresets() {
   const list = loadUserPresets();
   els.userPresetList.innerHTML = '';

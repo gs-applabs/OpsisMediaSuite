@@ -214,3 +214,20 @@ test('flyout progress and variable commands are bounded and tied to current play
  assert.deepEqual(P.command({...state,action:'seek',value:400},state),{...state,action:'seek',value:400});
  for(const bad of [{...state,action:'seek',value:1001},{...state,action:'volume',value:-1},{...state,action:'exec',value:0},{...state,title:'Stale',action:'mute'}])assert.equal(P.command(bad,state),null);
 });
+
+
+test('preset startup and backup reject invalid shape before renderer applies EQ',()=>{
+ const B=require('../renderer/backup'),p={name:'Test',bands:Array(10).fill(0)};
+ assert.equal(B.validPreset(p),true);
+ for(const bad of [{...p,bands:[0]},{...p,bands:Array(10).fill(1000)},{...p,presence:'bad'},{...p,compressor:'yes'},null])assert.equal(B.validPreset(bad),false);
+ assert.equal(B.sanitize({'waveframe.userPresets':JSON.stringify([{...p,bands:[1]}])}),null);
+});
+test('all flyout transport commands require the displayed target except dismiss',()=>{
+ const P=require('../flyout-policy'),state={owner:'audio',title:'A'};
+ for(const action of ['prev','next','playpause','stop','mute']){
+  assert.equal(P.command(action,state),null);
+  assert.equal(P.command({...state,action},state).action,action);
+  assert.equal(P.command({...state,action,title:'B'},state),null);
+ }
+ assert.deepEqual(P.command('dismiss',state),{action:'dismiss'});
+});

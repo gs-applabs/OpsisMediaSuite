@@ -277,16 +277,47 @@ function createWindow() {
           results.push(...await mediaApi.selfTest());
           const flyoutCheck=(name,ok)=>results.push({name,ok:!!ok});
           flyoutCheck('local flyout is not created at startup',!flyout?.window());
+          // Use real generated media and actual flyout DOM controls, not IPC mocks.
+          const js=source=>win.webContents.executeJavaScript(source);
+          const until=async(source,ms=6000)=>{const end=Date.now()+ms;while(Date.now()<end){if(await js(source))return true;await new Promise(r=>setTimeout(r,50));}return false;};
+          await js("(()=>{engine.pauseActive();engine.stopAlternateSources();engine.crossfadeSeconds=0;engine.setNormalizationEnabled(false);engine.setMuted(true);engine.slots.forEach(s=>s.el.muted=true);shuffleOn=false;repeatOn=false;playlist=[];currentTrackIndex=-1;const rate=22050,n=rate*30;const data=WaveframeConv.writeWav([new Float32Array(n)],rate,16);addFilesToPlaylist(['rc-flyout-a.wav','rc-flyout-b.wav'].map(name=>new File([data],name,{type:'audio/wav'})));showTab('player');return true;})()");
+          flyoutCheck('flyout fixture actually plays decoded audio',await until("currentTrackIndex===0&&engine.activeEl.readyState>=2&&!engine.activeEl.paused&&engine.activeEl.duration>20"));
+          await js("document.getElementById('btnMediaFlyout').click();true");
+          await new Promise(r=>setTimeout(r,100));
           await win.webContents.executeJavaScript("waveframe.openFlyout()");
           const fw=flyout?.window();
           flyoutCheck('explicit local flyout opens isolated renderer',!!fw&&!fw.isDestroyed()&&fw.isVisible());
           if(fw&&!fw.isDestroyed()){
             flyoutCheck('flyout only exposes restricted playback bridge',await fw.webContents.executeJavaScript("!!window.mediaFlyout&&!window.waveframe&&!window.require"));
             flyoutCheck('flyout rejects owner invoking restricted command',await win.webContents.executeJavaScript("typeof waveframe.flyoutCommand==='undefined'"));
+            const fj=source=>fw.webContents.executeJavaScript(source);
+            const waitFlyout=async(source,ms=6000)=>{const end=Date.now()+ms;while(Date.now()<end){if(await fj(source))return true;await new Promise(r=>setTimeout(r,50));}return false;};
+            flyoutCheck('flyout receives actual audio title and finite duration',await waitFlyout("document.getElementById('title').textContent==='rc-flyout-a'&&!document.getElementById('seek').disabled"));
+            await fj("document.getElementById('playpause').click();true");
+            flyoutCheck('flyout playpause actually pauses audio',await until("engine.activeEl.paused"));
+            await fj("(()=>{const e=document.getElementById('seek');e.value='500';e.dispatchEvent(new Event('change'));return true})()");
+            flyoutCheck('flyout seek changes actual media currentTime',await until("Math.abs(engine.activeEl.currentTime-engine.activeEl.duration*.5)<.3"));
+            await fj("(()=>{const e=document.getElementById('volume');e.value='37';e.dispatchEvent(new Event('change'));return true})()");
+            flyoutCheck('flyout volume changes actual engine and main control',await until("Math.abs(engine.state.volume-.37)<.001&&els.volume.value==='37'"));
+            await fj("document.getElementById('mute').click();true");
+            flyoutCheck('flyout mute changes actual audio route',await until("!engine.state.muted"));
+            await fj("document.getElementById('mute').click();true");
+            flyoutCheck('flyout mute restores actual mute state',await until("engine.state.muted"));
+            await fj("document.getElementById('playpause').click();true");
+            flyoutCheck('flyout resumes actual audio',await until("!engine.activeEl.paused"));
+            await fj("document.getElementById('next').click();true");
+            flyoutCheck('flyout next changes selected decoded track',await until("currentTrackIndex===1&&engine.activeEl.readyState>=2&&!engine.activeEl.paused"));
+            await waitFlyout("document.getElementById('title').textContent==='rc-flyout-b'");
+            await fj("document.getElementById('prev').click();true");
+            flyoutCheck('flyout previous selects original track',await until("currentTrackIndex===0&&engine.activeEl.readyState>=2&&!engine.activeEl.paused"));
+            await waitFlyout("document.getElementById('title').textContent==='rc-flyout-a'");
+            await fj("document.getElementById('stop').click();true");
+            flyoutCheck('flyout stop halts actual playback',await until("engine.activeEl.paused"));
             await fw.webContents.executeJavaScript("document.getElementById('dismiss').click();true").catch(()=>false);
             for(let i=0;i<20&&flyout?.window();i++)await new Promise(r=>setTimeout(r,25));
             flyoutCheck('closing flyout destroys its renderer',!flyout?.window());
           }
+          await js("(()=>{engine.pauseActive();engine.stopAlternateSources();engine.slots.forEach(s=>{s.el.removeAttribute('src');s.el.load();if(s.objectUrl)URL.revokeObjectURL(s.objectUrl);s.objectUrl=null;s.item=null;s.name='';});playlist=[];currentTrackIndex=-1;renderPlaylist();updateTrackNameUi();syncPlayButton();return true;})()");
           await sample('post-selftest');
           if(profile&&process.env.OPSIS_RESOURCE_SOAK==='1'){
             const cycles=Math.max(20,Math.min(1200,Number.parseInt(process.env.OPSIS_SOAK_CYCLES,10)||20));
