@@ -23,6 +23,16 @@
     return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(r).padStart(2, '0');
   }
 
+  function parseSeekTime(value){
+    const s=typeof value==='string'?value.trim():'';
+    if(!/^\d{1,6}(?::[0-5]\d){0,2}(?:[.,]\d{1,3})?$/.test(s))return null;
+    const n=s.replace(',','.').split(':').reduce((a,b)=>a*60+Number(b),0);
+    return Number.isFinite(n)&&n>=0&&n<=360000?n:null;
+  }
+  function displayTime(position,duration,remaining=false){
+    const pos=Number.isFinite(position)?Math.max(0,position):0,finite=Number.isFinite(duration)&&duration>0;
+    return (remaining&&finite?'-'+clock(Math.max(0,duration-pos)*1000):clock(pos*1000))+' / '+(duration===Infinity?'LIVE':clock(duration*1000));
+  }
   const TS = /^\s*(?:(\d{1,3}):)?([0-5]?\d):([0-5]\d)[,.](\d{1,3})(?=\s|$)/;
   function toMs(h, m, s, f) { return ((+h * 60 + +m) * 60 + +s) * 1000 + +String(f).padEnd(3, '0'); }
   function vttTime(ms) {
@@ -269,5 +279,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

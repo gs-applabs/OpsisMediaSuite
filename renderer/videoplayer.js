@@ -522,9 +522,10 @@
     m.textContent = muted ? '🔇' : '🔊'; m.classList.toggle('active', muted);
     const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
   }
+  let remainingTime=get('waveframe.video.remainingTime',false)===true;
   function syncTime() {
-    const d = handoff?(handoff.status?.durationMs||0)/1000:video.duration, c = handoff?(handoff.status?.positionMs||0)/1000:video.currentTime || 0, finite = Number.isFinite(d) && d > 0;
-    $('vpTime').textContent = VP.clock(c * 1000) + ' / ' + (d === Infinity ? 'LIVE' : VP.clock(d * 1000));
+    const d = handoff?(handoff.status?.durationMs||0)/1000:video.duration, c = parked?parked.seconds:handoff?(handoff.status?.positionMs||0)/1000:video.currentTime || 0, finite = Number.isFinite(d) && d > 0;
+    $('vpTime').textContent=VP.displayTime(c,d,remainingTime);
     $('vpSeek').disabled = !finite;
     if (!seeking) $('vpSeek').value = finite ? String(Math.round(c / d * 1000)) : '0';
   }
@@ -580,7 +581,7 @@
     for (const s of VP.SPEEDS) { const o = document.createElement('option'); o.value = String(s); o.textContent = `${s}×`; $('vpSpeed').append(o); }
     $('vpSpeed').value = String(get(K.speed, 1)); if (!$('vpSpeed').value) $('vpSpeed').value = '1';
     const subs = get(K.subs, {});
-    $('vpSubLanguage').value=VP.subtitleLanguages(subs.languages)[0]||'el';
+    $('vpSubPreferredLanguage').value=VP.subtitleLanguages(subs.languages)[0]||'el';
     if (subs.fontSize) $('vpSubSize').value = String(subs.fontSize);
     if (subs.color) $('vpSubColor').value = subs.color;
     applySubStyle();
@@ -605,12 +606,32 @@
 
 
 
+    $('vpTime').addEventListener('click',()=>{remainingTime=!remainingTime;put('waveframe.video.remainingTime',remainingTime);syncTime();});
+    $('vpGoTime').addEventListener('click',async()=>{
+      const p=current(),g=generation,marker=handoff;
+      if(!p||parked)return;
+      const duration=marker?Number(marker.status?.durationMs)/1000:video.duration;
+      if(!Number.isFinite(duration)||duration<=0){say('Seeking unavailable / Η μετάβαση δεν είναι διαθέσιμη');return;}
+      const value=await showInputDialog('Time in seconds, M:SS or H:MM:SS / Χρόνος');
+      if(value==null||generation!==g||current()!==p||handoff!==marker)return;
+      const seconds=VP.parseSeekTime(value);
+      if(seconds===null||seconds>duration){say('Invalid time / Μη έγκυρος χρόνος');return;}
+      if(marker)nativeCommand('seek',Math.round(seconds*1000));else seekTo(seconds);
+    });
+    $('vpPlaybackStats').addEventListener('click',async()=>{
+      const lines=['Backend: '+(playbackEngine||'—')];
+      if(handoff){lines.push('Native frame counters unavailable / Μη διαθέσιμοι μετρητές native');}
+      else if(video.getAttribute('src')&&typeof video.getVideoPlaybackQuality==='function'){
+        const q=video.getVideoPlaybackQuality();lines.push('Decoded/displayed frame counter: '+q.totalVideoFrames,'Dropped frames: '+q.droppedVideoFrames,'Resolution: '+video.videoWidth+' × '+video.videoHeight);
+      }else lines.push('No active video / Δεν υπάρχει ενεργό βίντεο');
+      await showAlertDialog('Playback stats / Στατιστικά',lines.join('\n'));
+    });
     $('vpSpeed').addEventListener('change', () => { if(handoff){nativeCommand('rate',Number($('vpSpeed').value)||1);return;} video.playbackRate = Number($('vpSpeed').value) || 1; put(K.speed, video.playbackRate); });
     $('vpFx').addEventListener('click', toggleFx);
     $('vpFull').addEventListener('click', () => { const f = $('vpStage'); if (document.fullscreenElement) document.exitFullscreen(); else f.requestFullscreen().catch(() => {}); });
     $('vpSubTrack').addEventListener('change', () => { clearAnchors();++subRevision; subSel = Number($('vpSubTrack').value); rebuildTrack(); });
     $('vpSubLoad').addEventListener('click', loadSubFile);
-    $('vpSubLanguage').addEventListener('change',()=>{const lang=$('vpSubLanguage').value;put(K.subs,{...get(K.subs,{}),languages:VP.subtitleLanguages([lang,'el','en'])});});
+    $('vpSubPreferredLanguage').addEventListener('change',()=>{const lang=$('vpSubPreferredLanguage').value;put(K.subs,{...get(K.subs,{}),languages:VP.subtitleLanguages([lang,'el','en'])});});
     let searchGeneration=0,resultsProvider=null;
     $('vpSubProvider').addEventListener('change',()=>{
       ++searchGeneration;resultsProvider=null;

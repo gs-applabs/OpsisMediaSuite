@@ -4,6 +4,34 @@
 Στόχος: ασφαλές, αποδοτικό και ολοκληρωμένο 3.0.0 για Windows 10/11 x64, με Inno Setup και συμβατότητα plugin 1.0.0.0. Το master παραμένει 2.4.2 μέχρι την εγκεκριμένη έκδοση.
 R3 ανακατανέμει τις προτεραιότητες R2 χωρίς να επανεκκινεί υλοποιημένες εργασίες. Αυτό το τμήμα είναι το μοναδικό ενεργό σχέδιο προτεραιοτήτων. Το παλαιό σχέδιο και το ιστορικό παραμένουν στο τέλος ως αρχείο αναφοράς, όχι ως δεύτερη ουρά υλοποίησης.
 
+## R4 — ανακτημένες εκκρεμότητες και πρωτόκολλο συνέχειας (28 Νοεμβρίου 2026)
+
+Η R4 υπερισχύει της σειράς R3 όπου αλλάζει τη σειρά των επόμενων περασμάτων. Δεν ακυρώνει τις πύλες P0–P8. Πηγές: MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, PR #1/#2/#3, αρχικό παράρτημα Α και διαθέσιμες συζητήσεις. Τα ακόλουθα είναι κατάλογος προς διασταύρωση με τον κώδικα, όχι ισχυρισμός ότι κάθε λειτουργία απουσιάζει. Πριν από υλοποίηση: reuse/extend/replace/defer, έλεγχος διπλοτύπων, πραγματική δοκιμή.
+
+| Pass | Ανακτημένο scope / εκκρεμότητες |
+|---|---|
+| 3D | MPP: URL από πρόχειρο με consent, go-to-time, elapsed/remaining, frame stats, chapters MKV, aspect/zoom/crop, mini/PiP, video sleep/exit (όχι shutdown υπολογιστή), screenshot clipboard, shortcuts και mouse buttons, playlist sort/reorder/reveal/copy path/M3U export, HLS/RTSP/authorized IPTV/reconnect, movie/series info opt-in. Converter: frame sequence, poster, contact sheet, lossless A-B/remux, gamma/deinterlace/sharpen, metadata/track preservation, queue recovery. |
+| 3E | Music: smart collections, album/artist/genre grouping, history, portable import/export, optional lyrics feasibility, WMA write and broader WAV/M4A/Ogg/Opus layouts only after integrity proof, metadata preview/undo, gapless/crossfade. DSP: 15/31 band or genuine parametric only if no duplicate chain, headphone/device profiles, dialogue/dynamic boost, de-esser/noise gate, true-peak/headroom, video output device/channel mapping/delay, LUFS/compressor/visualizer parity, native/external physical validation. |
+| 3F | Photo: zoom/pan, free crop, straighten/perspective, curves/HSL, dehaze/texture, grading/split toning, WB picker, red-eye, masks/healing/clone, text/watermark, LUT/grain, batch edits/conversion/rename, gallery/albums/slideshow/print/PDF, ICC/EXIF/GPS privacy/alpha, RAW/DNG/TIFF/HEIC decoder feasibility, GPU parity. Advanced tools may be deferred under P9; never claim complete. |
+| 4A | Opsis.UI 6: PR #2 merged; correct upstream gs-applabs/Opsis.UI accessible, local tokens already imported. Validate released contract, keep 20 skins, 20 visualizations, 10 animated backgrounds, Classic layout and 4 button styles; all windows, language/focus/accessibility, reduced motion and physical DPI. No duplicate theme engine. |
+| 4B | PR #1 open: 64 changed files, 27 overlap with PR #3 (122 at audit). Selective integration of flyout, other Windows media sessions, mixer/session volumes, volume-key overlay, lock status toasts, taskbar widget/spectrum and monitor positioning; keep existing Inno and newer core/IPC. Read-only inspection then compatibility tests; no blind merge. |
+| 4C | Opsis plugin 1.0.0.0, installed Opsis host, Crawler M3U real playback, shared playback metadata for desktop visualization/Spectrum Sphere (verify host requirements), one owner/no duplicate player, no automatic always-on helper. |
+| 4D | Full control/capability ownership, all help/history/welcome locales, settings migration, resource panel, pending/dirty state, regression of original Waveframe features; update ledger and exact evidence. |
+| 5A–C | Security scan/SBOM/licenses, same-SHA 1h/8h/mixed workload, measured CPU/RAM/GPU/SSD I/O, second authorized Windows VM if accessible, real Windows display/audio/codec packs, authentic 2.4.2 migration and Inno Setup installer, source/portable/hash/download verification. |
+| P9 | Explicit feasibility/scope decision for casting/DLNA, system-wide signed DSP/APO, VST3, advanced photo/RAW, HDR, optional OCR/STT, x86/ARM64, unprotected optical media. No insecure workarounds, DRM bypass or silent installation. |
+
+Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek/rate/chapter/fullscreen), trust/bitness/actual connected filters, clean vs installed K-Lite variants and other packs; real authenticated OpenSubtitles/SubDL, authorized Greek source fallback links, encodings, compressed RAR/RAR5, forced/default/SDH, ASS styling/PGS/VobSub/dual language, saved naming/folder, live visible sync verification. Existing local/online subtitle mechanisms are reused. Unsupported native/format behavior must remain explicit.
+
+### Handoff rule (user request)
+- Every substantial pass: commit changes plus a concise update to this single master roadmap; keep latest `docs/START-HERE-HANDOFF-EL.md` as canonical restart pointer, not a second backlog. Record exact base/head (use PR head to resolve self-referential SHA), completed scope, CI evidence per SHA, failed/pending/blocked items, next pass and instructions.
+- Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
+- If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
+
+### ULTRA 3D.1 — first closure
+- 3C base `88eeecc0f7bba6f8b08b58c4215134c91a13b4a5`: all nine workflows PASS, general 46073208388 job 140754791176 logs 303/303, Electron SELF-TEST PASSED.
+- Fixed duplicate static ID vpSubLanguage: local preferred subtitle language now independent of online provider language; new static unique-ID regression check. Added bounded timestamp parser, explicit seek dialog for active seekable Chromium/native playback, elapsed/remaining toggle, on-demand Chromium frame stats (no invented native counters). 100 guide routes. Tests added, new CI pending; no merge or release.
+- Remaining 3D items above are open until verified; next slice playlist and converter tools, after checking new CI.
+
 ## 1. Τεκμηριωμένο σημείο εκκίνησης
 
 | Περιοχή | Κατάσταση | Απόδειξη / περιορισμός |

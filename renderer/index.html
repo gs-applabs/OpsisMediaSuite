@@ -259,7 +259,7 @@
               </div>
               <div class="time-row vp-timerow">
                 <input type="range" id="vpSeek" min="0" max="1000" value="0" step="1" />
-                <span id="vpTime" class="vp-time">0:00 / 0:00</span>
+                <button id="vpTime" type="button" class="vp-time small-btn" aria-label="Toggle elapsed or remaining time / Εναλλαγή χρόνου">0:00 / 0:00</button>
               </div>
               <div class="transport vp-transport">
                 <button id="vpPrev">⏮</button>
@@ -294,7 +294,7 @@
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpFramePrev">◂|</button>
                   <button class="small-btn" id="vpFrameNext">|▸</button>
-                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button>
+                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button><button class="small-btn" id="vpGoTime">Go to time / Μετάβαση σε χρόνο</button><button class="small-btn" id="vpPlaybackStats">Playback stats / Στατιστικά</button>
                 </div>
               </section>
               <section class="panel vp-card" aria-labelledby="vpGPic">
@@ -320,7 +320,7 @@
                 <h3 id="vpGSub" data-i18n="vp.subtitles">Υπότιτλοι</h3>
                 <div class="vp-bar vp-row">
                   <label class="vp-inline"><span data-i18n="vp.subtitles">Υπότιτλοι</span>
-                    <select id="vpSubTrack"></select></label><label>Preferred / Προτίμηση <select id="vpSubLanguage" aria-label="Preferred subtitle language"><option value="el">Ελληνικά</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="es">Español</option></select></label>
+                    <select id="vpSubTrack"></select></label><label>Preferred / Προτίμηση <select id="vpSubPreferredLanguage" aria-label="Preferred subtitle language"><option value="el">Ελληνικά</option><option value="en">English</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="es">Español</option></select></label>
                   <button class="small-btn" id="vpSubLoad" data-i18n="vp.subLoad">Φόρτωση αρχείου…</button>
                   <button class="small-btn" id="vpSubOnlineToggle" data-i18n="vp.onlineSubs">Λήψη υποτίτλων</button>
                   <button class="small-btn" id="vpSubSaveSyncedBeside" data-i18n="vp.saveSynced">Αποθήκευση δίπλα στο βίντεο</button><button class="small-btn" id="vpSubSaveSrt" data-i18n="vp.saveSrt">Συγχρονισμένο SRT</button><button class="small-btn" id="vpSubSaveVtt" data-i18n="vp.saveVtt">Συγχρονισμένο VTT</button>

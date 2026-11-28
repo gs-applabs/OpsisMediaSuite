@@ -714,3 +714,6 @@ test('subtitle activity estimation honours cancellation during scoring',()=>{
  const A=require('../subtitle-autosync'),activity=Uint8Array.from({length:650},(_,i)=>i%20<7?1:0),cues=Array.from({length:10},(_,i)=>({start:i*4,end:i*4+1}));
  assert.deepEqual(A.estimate(activity,cues,{cancelled:()=>true}),{ok:false,code:'cancelled'});
 });
+
+
+test('seek input and remaining display reject invalid times and handle live duration',()=>{assert.equal(V.parseSeekTime('1:02:03.250'),3723.25);assert.equal(V.parseSeekTime('90'),90);assert.equal(V.parseSeekTime('2:15,5'),135.5);for(const x of ['','-1','1:60','1e3','1:2','9999999',null])assert.equal(V.parseSeekTime(x),null);assert.equal(V.displayTime(20,100,true),'-1:20 / 1:40');assert.equal(V.displayTime(20,Infinity,true),'0:20 / LIVE');});
