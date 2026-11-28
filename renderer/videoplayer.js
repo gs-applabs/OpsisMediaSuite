@@ -582,6 +582,7 @@
     for (const ev of ['play', 'pause', 'ended', 'emptied']) on(ev,()=>{syncTransport();syncResumeTimer();syncVideoFxActivity();});
     on('click', () => { if(parked){playAt(idx);return;}if (video.paused) void resumeChromium(); else video.pause(); });
     on('dblclick', () => $('vpFull').click());
+    on('auxclick', e=>{if(e.button!==1||!current()||parked||handoff)return;e.preventDefault();video.muted=!video.muted;});
     on('error', () => {say(t('vp.cantPlay'));if(playbackEngine)scheduleStreamRetry();});
     on('ended', onEnded);
     on('timeupdate', () => { if (ab.stage === 'loop' && video.currentTime >= ab.b) video.currentTime = ab.a; });
@@ -1041,6 +1042,8 @@
       if (k === ' ') { if(parked){playAt(idx);}else if (video.paused) void resumeChromium(); else video.pause(); }
       else if (k === 'ArrowRight') seekTo(video.currentTime + (e.shiftKey ? 30 : 5));
       else if (k === 'ArrowLeft') seekTo(video.currentTime - (e.shiftKey ? 30 : 5));
+      else if (k === 'Home' && current() && !parked) seekTo(0);
+      else if (k === 'End' && current() && !parked && Number.isFinite(video.duration)) seekTo(Math.max(0,video.duration-0.1));
       else if (k === 'ArrowUp') video.volume = Math.min(1, video.volume + 0.05);
       else if (k === 'ArrowDown') video.volume = Math.max(0, video.volume - 0.05);
       else if (k === 'm' || k === 'M') video.muted = !video.muted;

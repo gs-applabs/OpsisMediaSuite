@@ -31,6 +31,11 @@ R6 υπερισχύει στη σειρά εργασιών, R5-AUDIT στην π
 
 **Αναφορά κάθε pass:** κατάσταση κάθε ομάδας 01–16 (ή σύνδεση προς τον ενημερωμένο πλήρη πίνακα αν δεν ζητήθηκε αναλυτικά), ακριβείς αλλαγές/OV-IDs, πραγματικό CI, επόμενο εύκολο μη ολοκληρωμένο βήμα, blockers (credentials, provider policy, hardware, connector limits). Μην παρουσιάζεις ως πλήρες το σύνολο των εκκρεμοτήτων αν υπάρχει μόνο μερική απογραφή. Δεν χρειάζεται νέο plugin για τις τρέχουσες GitHub αλλαγές· αν απαιτηθεί συγκεκριμένη μη διαθέσιμη δυνατότητα, αναζήτησε κατάλληλο connector και ζήτησε μόνο την αναγκαία σύνδεση. Μη δημιουργείς δεύτερο roadmap.
 
+### R6-07.1 / 10.2 — ελεύθερη περικοπή και πρόσθετοι χειρισμοί βίντεο (base 30c60e6)
+- EXTEND group 10: existing photo crop mode adds independent width/height percent and existing X/Y anchor sliders, same normalized crop, history, preview and full-resolution export path. Preset crops retained, no second geometry pipeline; preview zoom independent. Free crop source-relative before edit rotation, not perspective/straighten.
+- EXTEND group 07: inspected existing keyboard shortcuts and media event lifecycle; add Chromium middle-click mute and Home/End seeking for loaded non-parked media using existing handlers and shortcut guard. Existing native controls unchanged; native parity pending. No new listeners outside existing lifecycle.
+- Guide entry and targeted fixture added; full UI/CI remains pending. All R6 groups remain tracked, no release.
+
 ### R6-06.1 / 10.1 — φίλτρα μουσικής και μεγέθυνση φωτογραφίας (base b656a0d)
 - EXTEND group 06: existing metadata:read now exposes bounded genre, existing serial music scan populates it, existing feature-guide search and playlist UI support artist/album/genre collections as view filters, preserving original order, indices, current playback, removal and persistence. No second library/database or player, no automatic tag writes. Up to 1000 distinct displayed groups, unknown bucket; full smart collections/history remain pending.
 - EXTEND group 10: existing Photo Editor preview gains 100–300% zoom, bounded pointer/keyboard pan, reset on new/closed image, no new pixel buffers or processing loop, view-only transform independent of original/export/history. Shared pure clamp in photolib; existing visibility gate preserved. Advanced free crop, masks, batch etc remain open.

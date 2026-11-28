@@ -207,6 +207,14 @@
     }
     return {red,green,blue,luma,total,shadow,highlight};
   }
+  // Width/height are percentages of the oriented source before edit rotation.
+  // Anchors position the selected rectangle within the remaining margins.
+  function freeCrop(width=100,height=100,anchorX=50,anchorY=50){
+    const percent=(v,fallback,min)=>Math.max(min,Math.min(100,Number.isFinite(Number(v))?Number(v):fallback))/100;
+    const w=percent(width,100,1),h=percent(height,100,1);
+    if(w===1&&h===1)return null;
+    return {x:(1-w)*percent(anchorX,50,0),y:(1-h)*percent(anchorY,50,0),w,h};
+  }
   function aspectCrop(w,h,ratio,rotate=0,anchorX=50,anchorY=50){
     if(![w,h,ratio].every(Number.isFinite)||w<=0||h<=0||ratio<=0)return null;
     const target=rotate===90||rotate===270?1/ratio:ratio,ar=w/h;
@@ -332,5 +340,5 @@
     const mx=Math.max(0,(Math.max(0,finite(width))*scale-Math.max(0,finite(boxWidth)))/2),my=Math.max(0,(Math.max(0,finite(height))*scale-Math.max(0,finite(boxHeight)))/2);
     return {scale,x:Math.max(-mx,Math.min(mx,finite(x))),y:Math.max(-my,Math.min(my,finite(y)))};
   }
-  return { previewViewport,headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportReadPlan, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
+  return { freeCrop,previewViewport,headerSize,validImageSize,colorHistogram, aspectCrop, applyLook, clarity, resizeOutput, exportReadPlan, exportBudget, createHistory, applyAuto, LIMITS, RANGE, EXTS, OUT_FORMATS, defaults, clampParams, isNeutral, toneLut, applyColor, denoise, sharpen, geometry, process, histogram, autoParams, previewSize, outputSize };
 });

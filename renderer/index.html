@@ -444,6 +444,7 @@
                 <select id="phCrop"></select></label>
             </div>
             <div class="vp-bar"><label>Crop X <input id="phCropX" type="range" min="0" max="100" value="50"></label><label>Crop Y <input id="phCropY" type="range" min="0" max="100" value="50"></label><label><span data-i18n="ph.histogram">Ιστόγραμμα</span> <select id="phHistMode"><option value="luma" data-i18n="ph.luma">Φωτεινότητα</option><option value="rgb">RGB</option></select></label></div>
+            <div class="vp-bar" id="phFreeCrop" hidden><label class="vp-inline" for="phFreeW">Πλάτος / Width % <input id="phFreeW" type="range" min="1" max="100" step="1" value="100" disabled></label><label class="vp-inline" for="phFreeH">Ύψος / Height % <input id="phFreeH" type="range" min="1" max="100" step="1" value="100" disabled></label></div>
             <p class="hint" id="phClipping"></p>
             <canvas id="phHist" class="ph-hist" width="256" height="64" role="img" data-i18n-aria="ph.histogram" aria-label="Ιστόγραμμα"></canvas>
             <p class="hint" id="phInfo" role="status" aria-live="polite"></p>

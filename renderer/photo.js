@@ -11,7 +11,7 @@
     ['saturation', -100, 100, 1], ['temperature', -100, 100, 1], ['tint', -100, 100, 1], ['sharpen', 0, 100, 1], ['denoise', 0, 100, 1],
     ['black', 0, 254, 1], ['white', 1, 255, 1], ['gamma', 0.2, 3, 0.01], ['vibrance', -100, 100, 1], ['sepia', 0, 100, 1], ['vignette', 0, 100, 1], ['red',-100,100,1], ['green',-100,100,1], ['blue',-100,100,1], ['clarity',-100,100,1],
   ];
-  const CROPS = [['none', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
+  const CROPS = [['none', null], ['free', null], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['3:4', 3 / 4], ['2:3', 2 / 3], ['9:16', 9 / 16]];
   const fmt = (s, vars) => Object.entries(vars || {}).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
 
   let openGeneration = 0,opening=false,exportController=null,exportPhase='idle',captureToken=null,captureDate=null;
@@ -43,17 +43,17 @@
       input.addEventListener('dblclick', () => { input.value = String(P.defaults()[key]); input.dispatchEvent(new Event('input')); checkpoint(); });
       row.append(label, input, out); box.append(row);
     }
-    for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k; $('phCrop').append(o); }
+    for (const [k] of CROPS) { const o = document.createElement('option'); o.value = k; o.textContent = k === 'none' ? t('ph.cropNone') : k==='free'?'Ελεύθερη / Free':k; $('phCrop').append(o); }
     $('phOpen').addEventListener('click', async () => { if(opening||busy)return;const p = await api.photoPick(); if (p) openPath(p); });
-    $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params={...P.applyLook(params,$('phLook').value,Number($('phLookStrength').value)),anchorX:params.anchorX,anchorY:params.anchorY};syncSliders();checkpoint();schedule();});
-    $('phAuto').addEventListener('click', () => { if (!preview) return; params = P.applyAuto(preview,params); syncSliders(); checkpoint(); schedule(); });
+    $('phLookApply').addEventListener('click',()=>{if(!orig||busy)return;params={...P.applyLook(params,$('phLook').value,Number($('phLookStrength').value)),anchorX:params.anchorX,anchorY:params.anchorY,freeW:params.freeW,freeH:params.freeH};syncSliders();checkpoint();schedule();});
+    $('phAuto').addEventListener('click', () => { if (!preview) return; params = {...P.applyAuto(preview,params),anchorX:params.anchorX,anchorY:params.anchorY,freeW:params.freeW,freeH:params.freeH}; syncSliders(); checkpoint(); schedule(); });
     $('phReset').addEventListener('click', () => { params = P.defaults(); cropKey = 'none'; $('phCrop').value = 'none'; syncCrop();syncSliders(); checkpoint(); schedule(); });
     $('phRotL').addEventListener('click', () => { params.rotate = (params.rotate + 270) % 360; checkpoint(); schedule(); });
     $('phRotR').addEventListener('click', () => { params.rotate = (params.rotate + 90) % 360; checkpoint(); schedule(); });
     $('phFlipH').addEventListener('click', () => { params.flipH = !params.flipH; checkpoint(); schedule(); });
     $('phFlipV').addEventListener('click', () => { params.flipV = !params.flipV; checkpoint(); schedule(); });
     $('phCrop').addEventListener('change', () => { cropKey = $('phCrop').value;syncCrop();checkpoint();schedule(); });
-    for(const [id,key] of [['phCropX','anchorX'],['phCropY','anchorY']]){ $(id).addEventListener('input',()=>{params[key]=Number($(id).value);schedule();});$(id).addEventListener('change',checkpoint);}
+    for(const [id,key] of [['phCropX','anchorX'],['phCropY','anchorY'],['phFreeW','freeW'],['phFreeH','freeH']]){ $(id).addEventListener('input',()=>{params[key]=Number($(id).value);schedule();});$(id).addEventListener('change',checkpoint);}
     $('phHistMode').addEventListener('change',schedule);syncCrop();
     $('phUndo').addEventListener('click',()=>{if(orig)restore(history.undo());});$('phRedo').addEventListener('click',()=>{if(orig)restore(history.redo());});updateHistory();
     const cmp = $('phCompare');
@@ -105,7 +105,7 @@
     $('phCrop').value='none';syncCrop();syncSliders();updateHistory();
     $('phClipping').textContent='';$('phDimensions').textContent='';$('phSave').title='';info('');
   }
-  function syncCrop(){ $('phCropX').value=String(params.anchorX??50);$('phCropY').value=String(params.anchorY??50);$('phCropX').disabled=$('phCropY').disabled=cropKey==='none'; }
+  function syncCrop(){ $('phCropX').value=String(params.anchorX??50);$('phCropY').value=String(params.anchorY??50);$('phCropX').disabled=$('phCropY').disabled=cropKey==='none';$('phFreeW').value=String(params.freeW??100);$('phFreeH').value=String(params.freeH??100);$('phFreeCrop').hidden=cropKey!=='free';$('phFreeW').disabled=$('phFreeH').disabled=cropKey!=='free'; }
   function syncSliders() {
     for (const [key] of SLIDERS) {
       const i = $(`ph_${key}`); i.value = String(params[key]);
@@ -161,7 +161,9 @@
 
   // Centered crop of the wanted aspect ratio, in the orientation of the ORIGINAL (rotation happens after the crop).
   function cropParams() {
-    const e = CROPS.find((c) => c[0] === cropKey); if (!e || !e[1] || !orig) return null;
+    if(!orig)return null;
+    if(cropKey==='free')return P.freeCrop(params.freeW??100,params.freeH??100,params.anchorX??50,params.anchorY??50);
+    const e = CROPS.find((c) => c[0] === cropKey); if (!e || !e[1]) return null;
     return P.aspectCrop(bmp.width,bmp.height,e[1],params.rotate,params.anchorX??50,params.anchorY??50);
   }
   const full = () => ({ ...params, crop: cropParams() });

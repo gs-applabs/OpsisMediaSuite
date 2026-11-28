@@ -194,3 +194,12 @@ test('preview-only zoom clamps pan and never changes image dimensions',()=>{
  assert.deepEqual(P.previewViewport(1,500,-500,300,200,400,300),{scale:1,x:0,y:0});
  assert.deepEqual(P.previewViewport(99,0,0,300,200,400,300),{scale:3,x:0,y:0});
 });
+
+test('free crop uses bounded source-relative dimensions and the existing export path',()=>{
+ assert.deepEqual(P.freeCrop(50,25,100,0),{x:.5,y:0,w:.5,h:.25});
+ assert.equal(P.freeCrop(100,100),null);
+ assert.deepEqual(P.freeCrop(0,200,100,50),{x:.99,y:0,w:.01,h:1});
+ const crop=P.freeCrop(50,50,100,100),plan=P.exportReadPlan(800,600,{crop,rotate:90});
+ assert.equal(plan.x,400);assert.equal(plan.y,300);assert.equal(plan.width,400);assert.equal(plan.height,300);
+ assert.deepEqual(P.outputSize(800,600,{crop,rotate:90}),{width:300,height:400});
+});
