@@ -82,6 +82,12 @@
     const panel = h('section', { class: 'panel conv-panel vid-panel', id: 'vidPanel', 'aria-labelledby': 'vidTitle' });
     panel.append(h('h2', { id: 'vidTitle', text: t('vid.title') }), h('p', { class: 'hint', text: t('vid.hint') }));
     panel.append(h('div', { class: 'vid-enc', id: 'vidEnc', role: 'status', 'aria-live': 'polite' }));
+    panel.append(h('div',{class:'conv-field'},[
+      h('label',{class:'field-label',htmlFor:'vidOnlineUrl',text:'Online media URL / Σύνδεσμος πολυμέσων'}),
+      h('input',{id:'vidOnlineUrl',type:'url',maxLength:2048,placeholder:'https://…',autocomplete:'off'}),
+      h('button',{id:'vidOnlineAnalyze',class:'small-btn',text:'Identify source / Αναγνώριση πηγής'}),
+      h('p',{id:'vidOnlineStatus',class:'hint',role:'status','aria-live':'polite',text:'Local identification only / Τοπική αναγνώριση χωρίς σύνδεση'})
+    ]));
 
     const drop = h('div', { class: 'conv-drop', id: 'vidDrop', tabIndex: 0, role: 'button', 'aria-label': t('vid.drop') }, [h('span', { text: t('vid.drop') })]);
     panel.append(drop, h('div', { class: 'conv-list', id: 'vidList' }),
@@ -383,6 +389,10 @@
   /* ---------------- wiring ---------------- */
 
   function wire() {
+    const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
+    $('vidOnlineAnalyze').addEventListener('click',identify);
+    $('vidOnlineUrl').addEventListener('input',()=>{$('vidOnlineStatus').textContent='Identify source / Αναγνώριση πηγής';});
+    $('vidOnlineUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();identify();}});
     $('vidAdd').addEventListener('click', async () => addPaths(await api.vidPick('video')));
     $('vidDrop').addEventListener('click', async () => addPaths(await api.vidPick('video')));
     $('vidDrop').addEventListener('keydown', async (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addPaths(await api.vidPick('video')); } });

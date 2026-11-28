@@ -28,6 +28,9 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 - Before a conversation becomes too long, and at natural checkpoints, provide the handoff file and current GitHub source link; if user needs offline source, deliver a verified canonical source archive when available. Do not rely on conversation memory, claim knowledge of exact context limit, or delete user data. Old revisions retained in Git history, no redundant patch ZIPs or progress files.
 - If access or context fails, disclose it and retrieve this handoff/roadmap before further work. No inferred completion from missing evidence.
 
+### ULTRA 3D.9A — online source identification
+- Existing lazy converter now identifies HTTP(S) provider and item/playlist/album candidate locally. No network access, no download permission inferred, no persisted URL or raw URL in classification result. Spotify metadata-only, other named providers adapter-required, direct media candidate unverified. Guide 114, pure tests. Base 7b3a2da 8/9 CI PASS, Inno pending; new CI pending. Actual download, playlist enumeration and queue integration remain open.
+
 ### ULTRA 3D.7B — subtitle viewport regression
 - Packaged job 140853768011 failed actual subtitle pixel comparison: video outside viewport. Restore video tab and scroll decoded video into view before capture; retain original assertion and pixel threshold. CI pending, no release.
 

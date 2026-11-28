@@ -305,5 +305,27 @@
     return out;
   }
 
-  return { CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
+  // Classification only: no network requests, credentials or implied download permission.
+  function onlineSource(value){
+    if(typeof value!=='string'||value.length>2048||/[\x00-\x1f\x7f]/.test(value.trim()))return null;
+    let u;try{u=new URL(value.trim());}catch{return null;}
+    if(!['http:','https:'].includes(u.protocol)||u.username||u.password||!u.hostname)return null;
+    const host=u.hostname.toLowerCase(),path=u.pathname;
+    const domain=d=>host===d||host.endsWith('.'+d);
+    let provider='direct',kind='unknown',capability='unverified';
+    if(domain('youtube.com')||host==='youtu.be'){
+      provider=host==='music.youtube.com'?'youtube-music':'youtube';
+      kind=u.searchParams.has('list')?'playlist':(host==='youtu.be'||u.searchParams.has('v')||/^\/(?:shorts|live|embed)\//.test(path))?'item':'unknown';
+      capability='adapter-required';
+    }else if(domain('spotify.com')){
+      provider='spotify';kind=/\/playlist\//.test(path)?'playlist':/\/album\//.test(path)?'album':/\/(?:track|episode)\//.test(path)?'item':'unknown';capability='metadata-only';
+    }else if(domain('vimeo.com')||domain('dailymotion.com')||host==='dai.ly'||domain('soundcloud.com')||domain('bandcamp.com')){
+      provider=domain('vimeo.com')?'vimeo':domain('dailymotion.com')||host==='dai.ly'?'dailymotion':domain('soundcloud.com')?'soundcloud':'bandcamp';
+      kind=/\/(?:sets|playlist|showcase)\//.test(path)?'playlist':/\/album\//.test(path)?'album':'item';capability='adapter-required';
+    }else if(/\.(?:mp4|mkv|webm|mov|mp3|wav|flac|m4a|aac|ogg|opus|m3u8?)$/i.test(path)){
+      kind=/\.m3u8?$/i.test(path)?'playlist':'item';capability='direct-candidate';
+    }
+    return {provider,kind,capability};
+  }
+  return { onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
 });
