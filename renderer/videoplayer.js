@@ -152,7 +152,7 @@
       say(engine+' — '+(r?.code||'unavailable')+(!ok?' · Native stop not confirmed':''));
       if(ok&&wasPlaying)void resumeChromium();return false;
     }
-    marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;
+    marker.session=r.session;marker.engine=engine;marker.embedded=r.embedded===true;publishMediaState();
     window.dispatchEvent(new CustomEvent('waveframe:video-playing'));
     if(marker.embedded)startViewport(marker);marker.subtitle.accepted=r.subtitleAccepted===true;playbackEngine=engine;resumePath=null;
     say(engine+' — native playback ready'+(engine==='libvlc'?' · decoder requested: '+decode:'')+(text?(r.subtitleAccepted?' · synced subtitle accepted':' · subtitle not accepted'):'')+(engine!=='libvlc'&&sub?' · subtitle handoff unavailable':''));
@@ -233,6 +233,7 @@
     const old=handoff;
     if(old.status?.durationMs>0)checkpoint(old.p,old.status.positionMs,old.status.durationMs,true);
     handoff=null;clearTimeout(nativePoll);nativePoll=null;playbackEngine=null;$('vpNativeStop').hidden=true;
+    publishMediaState();
     return requestNativeStop(generation);
   }
   // Common Chromium resume gate for click, keyboard, replay and fallback.
@@ -278,7 +279,7 @@
     const result=await opening;
     if(g!==generation)return;
     if(!result.ok){releaseTicket();say(t('vp.cantPlay'));if(VP.isUrl(p))scheduleStreamRetry();if(!VP.isUrl(p)&&$('vpNativeFallback').checked){await nativeHandoff('libvlc',p,g);}return;}
-    playbackEngine=result.engine;
+    playbackEngine=result.engine;publishMediaState();
     if(resumeParked){seekTo(resumeParked.seconds);rebuildTrack();}
     if (restoreFx) await toggleFx();
     if(g!==generation)return;
@@ -548,6 +549,26 @@
     } else lines.push(t('vp.infoNone'));
     await showAlertDialog(t('vp.info'), lines.join('\n'));
   }
+  // OS media commands reuse the same transport and native command queue.
+  // A parked/closed video never takes media keys away from music.
+  function mediaState(){
+    if(!built||!current()||parked||(!handoff&&!(session&&playbackEngine)))return null;
+    return {title:VP.titleOf(current()),playing:handoff?handoff.status?.playing===true:!video.paused&&!video.ended,ready:handoff?!!handoff.status:!!video.readyState};
+  }
+  let osMediaSignature='';
+  function publishMediaState(){
+    const next=JSON.stringify(mediaState());
+    if(next===osMediaSignature)return;
+    osMediaSignature=next;window.dispatchEvent(new Event('waveframe:video-media-state'));
+  }
+  function mediaCommand(action){
+    const state=mediaState();if(!state)return false;
+    if(action==='next'||action==='prev'){next(action==='next'?1:-1);return true;}
+    if(action==='stop'){$('vpStop').click();return true;}
+    if(!['play','pause','playpause'].includes(action))return false;
+    if(action!=='playpause'&&(!state.ready||state.playing===(action==='play')))return true;
+    $('vpPlay').click();return true;
+  }
   // transport: icon buttons like the music player; labels / tooltips come from the language files
   function syncTransport() {
     const playing = handoff?!!handoff.status?.playing:video && !video.paused && !video.ended, p = $('vpPlay');
@@ -556,6 +577,7 @@
     const m = $('vpMute'), muted = handoff?!!handoff.status?.muted||handoff.status?.volume===0:video.muted || video.volume === 0;
     m.textContent = muted ? '🔇' : '🔊'; m.classList.toggle('active', muted);
     const ml = muted ? t('vp.unmute') : t('vp.mute'); m.title = ml; m.setAttribute('aria-label', ml); m.setAttribute('aria-pressed', String(muted));
+    publishMediaState();
   }
   let remainingTime=get('waveframe.video.remainingTime',false)===true;
   function syncTime() {
@@ -1065,6 +1087,7 @@
   }
 
   window.WaveframeVideoPlayer = { checkpointForBackup:()=>{if(built)saveResume();},
+    mediaState,mediaCommand,
     show() { build(); },
     open(p) { build(); addPaths([p], true); },
     enqueue(paths) { build(); addPaths(paths, false); },

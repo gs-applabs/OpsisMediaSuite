@@ -134,3 +134,10 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - R6-11/14 audit: all eight other branches compared against head b616cfbf; each diverged. Unique ahead counts: build/opsis-2.4.2-review-installer 26, claude/full-audit 1, claude/hardening 2, codex/flyout-test-download 23, codex/opsis-media-flyout 23, feat/p0-electron45-candidate 4, integration/opsis-ui6-design-tokens 3, master 13. These are commits, not missing feature counts. Flyout/lock-toast modules, desktop integration, old helper differences, dependency candidate, UI6 and master demo/docs remain review scope; no blind merge. Older M3U hardening branch permits UNC and truncates comments; retain stronger current policy.
 - b616cfbf 2 PASS/7 queued or running at inspection; installer failure on older SHA documented. Full runtime verification and all groups 01–16 remain open where not certified. No release/merge.
 
+
+### R6-11.2 / 07.4 — κοινή ιδιοκτησία Windows media controls (base d17a2a6a)
+- Cross-check codex/opsis-media-flyout against current main/app/video: current branch already has global media keys, thumbbar and Chromium MediaSession; old Flyout adds desktop helper/mixer/lock UI with independent polling and settings. Do not copy entire branch or run duplicate engines.
+- EXTEND existing OS media control path: route key/thumbbar/MediaSession play/pause/next/prev/stop to actual selected, unparked video (Chromium/native queue) or audio owner. Shared now-playing title/play state, existing media session, correct JPEG/PNG artwork MIME, metadata deduplicated. Publish video state only on changes, no new timers or native helper. Active audio wins transient handover; parked/closed video releases ownership.
+- Added pure ownership and real renderer MP4 route/pause/play/park checks. Physical Windows SMTC/global shortcut and native-host parity still require tests. Flyout/mixer/Lock Toast/taskbar widget/settings and Opsis desktop overlap still open; do not mark complete.
+- d17a2a6a 1 PASS/8 queued or running at first inspection; b616cfbf 4 PASS, 3 cancelled, 2 in progress. No new release or merge. All 16 roadmap groups retained.
+

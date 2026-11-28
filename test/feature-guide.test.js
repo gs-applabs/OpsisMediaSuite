@@ -71,3 +71,14 @@ test('local audio file URLs escape literal URL punctuation and preserve Unicode 
  for(const invalid of ['relative.mp3','https://example.test/a','\\\\server\\share\\a.mp3','C:\\a.mp3:stream','C:\\a\n.mp3','C:/bad\ud800.mp3'])assert.equal(P.fileUrl(invalid),'');
  assert.equal(P.key('C:\\Music\\A.mp3'),'c:/music/a.mp3');
 });
+
+
+test('OS media ownership uses actual playback and parked/closed video state, not tab focus',()=>{
+ const f=guide.mediaOwner,audio={title:'Song',playing:false,active:false},video={title:'Movie',playing:true,ready:true};
+ assert.equal(f(video,audio).owner,'video');
+ assert.equal(f({...video,playing:false},audio).owner,'video');
+ assert.equal(f(video,{...audio,playing:true}).owner,'audio');
+ assert.equal(f(video,{...audio,active:true}).owner,'audio');
+ assert.equal(f(null,audio).title,'Song');
+ assert.equal(f(null,{}).playing,false);
+});

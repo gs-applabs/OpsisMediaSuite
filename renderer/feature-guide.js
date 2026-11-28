@@ -65,5 +65,11 @@ function musicGroups(items,field){
  return [...groups.values()].sort((a,b)=>a.key==='unknown'?1:b.key==='unknown'?-1:a.label.localeCompare(b.label));
 }
 function duplicateMusicPaths(items){const seen=new Set(),duplicates=new Set();for(const item of items){const key=musicPathKey(item?.path);if(!key)continue;if(seen.has(key))duplicates.add(key);seen.add(key);}return duplicates;}
-const api={musicPathKey,duplicateMusicPaths,trackMatches,musicGroups,musicGroupKey,list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage,createSerialQueue,setIfChanged};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
+// Prefer actual live audio over video in a transient handover; paused video
+// remains the owner until parked/closed. No tab-based switching or polling.
+function mediaOwner(video,audio){
+ const a=audio||{};
+ return video&&typeof video.title==='string'&&video.title&&!a.playing&&!a.active?{...video,owner:'video'}:{...a,owner:'audio',title:a.title||'',playing:a.playing===true};
+}
+const api={mediaOwner,musicPathKey,duplicateMusicPaths,trackMatches,musicGroups,musicGroupKey,list,tabs,ui,shortcutAllowed,loudnessEligibility,retainImage,createSerialQueue,setIfChanged};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.OpsisFeatureGuide=api;
 })(typeof window!=='undefined'?window:globalThis);

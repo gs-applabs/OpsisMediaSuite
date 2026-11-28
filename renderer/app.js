@@ -1387,28 +1387,29 @@ function updateTrackNameUi() {
   syncMiniBar();
   syncMediaSession();
 }
+function currentOsMedia(){
+  const item=playlist[currentTrackIndex],video=window.WaveframeVideoPlayer?.mediaState?.();
+  const audio={title:item?.name||'',artist:item?.artist||'',album:item?.album||'',picture:item?.picture||'',playing:!!(engine.activeEl&&!engine.activeEl.paused&&!engine.activeEl.ended),active:!!(engine.micStream||engine.testOsc)};
+  return OpsisFeatureGuide.mediaOwner(video,audio);
+}
+let lastSessionMetadata='';
 function syncMediaSession() {
-  // Standard Web MediaSession API — Chromium wires this straight through to
-  // Windows' System Media Transport Controls (volume flyout, lock screen,
-  // Bluetooth headset buttons), no native module needed.
+  // One OS media session; route actions to the active media owner.
   if (!('mediaSession' in navigator)) return;
-  const item = playlist[currentTrackIndex];
-  if (item) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: item.name || '',
-      artist: item.artist || '',
-      album: item.album || '',
-      artwork: item.picture ? [{ src: item.picture, sizes: '512x512', type: 'image/png' }] : [],
-    });
-  } else {
-    navigator.mediaSession.metadata = null;
+  const state=currentOsMedia(),session=navigator.mediaSession;
+  const {title,artist='',album='',picture=''}=state;
+  const signature=JSON.stringify([title,artist,album,picture]);
+  if(signature!==lastSessionMetadata){
+    const type=picture.startsWith('data:image/jpeg;')?'image/jpeg':picture.startsWith('data:image/png;')?'image/png':'';
+    session.metadata=title?new MediaMetadata({title,artist,album,artwork:type?[{src:picture,type}]:[]}):null;
+    lastSessionMetadata=signature;
   }
+  const playback=state.playing?'playing':title?'paused':'none';
+  if(session.playbackState!==playback)session.playbackState=playback;
 }
 let lastNowPlaying='';
 function syncOsNowPlaying() {
-  const item = playlist[currentTrackIndex];
-  const title = item ? item.name : null;
-  const playing = !!(engine.activeEl && !engine.activeEl.paused);
+  const {title,playing}=currentOsMedia();
   const state=JSON.stringify([title,playing]);
   if(state!==lastNowPlaying){lastNowPlaying=state;window.waveframe?.updateNowPlaying?.({ title, playing });}
 }
@@ -1464,15 +1465,27 @@ function syncPlayButton() {
   syncOsNowPlaying();
   const miniPlay = document.getElementById('miniBarPlay');
   if (miniPlay) miniPlay.textContent = engine.activeEl.paused ? '▶' : '⏸';
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.playbackState = engine.activeEl.paused ? 'paused' : 'playing';
-  }
+  syncMediaSession();
 }
+function routeMediaCommand(action){
+  if(currentOsMedia().owner==='video'){
+    window.WaveframeVideoPlayer?.mediaCommand?.(action);
+    return;
+  }
+  if(action==='playpause'||action==='play'){
+    if(action==='play'&&!engine.activeEl.paused)return;
+    if(currentTrackIndex===-1&&playlist.length)playTrackAt(0);
+    else (action==='play'?engine.play():engine.togglePlay()).then(syncPlayButton).catch(()=>{});
+  }else if(action==='pause'){engine.pauseActive();syncPlayButton();}
+  else if(action==='next')goNext();
+  else if(action==='prev')goPrev();
+  else if(action==='stop'){engine.pauseActive();engine.stopAlternateSources();syncPlayButton();}
+}
+window.addEventListener('waveframe:video-media-state',()=>{syncOsNowPlaying();syncMediaSession();});
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => {if(engine.activeEl.paused)engine.play().then(syncPlayButton).catch(()=>{});});
-  navigator.mediaSession.setActionHandler('pause', () => {engine.pauseActive();syncPlayButton();});
-  navigator.mediaSession.setActionHandler('previoustrack', () => goPrev());
-  navigator.mediaSession.setActionHandler('nexttrack', () => goNext());
+  for(const [name,action] of [['play','play'],['pause','pause'],['previoustrack','prev'],['nexttrack','next'],['stop','stop']]){
+    try{navigator.mediaSession.setActionHandler(name,()=>routeMediaCommand(action));}catch{}
+  }
 }
 engine.slots.forEach((s) => {
   s.el.addEventListener('loadedmetadata',()=>{if(s===engine.slots[engine.activeSlot])requestLoudness(s.item);});
@@ -3100,12 +3113,7 @@ restorePreferences();
 restorePlaylist();
 updateTrackNameUi();
 
-window.waveframe.onMediaKey((action) => {
-  if (action === 'playpause') { if (currentTrackIndex === -1 && playlist.length > 0) playTrackAt(0); else engine.togglePlay().then(syncPlayButton); }
-  else if (action === 'next') goNext();
-  else if (action === 'prev') goPrev();
-  else if (action === 'stop') { engine.pauseActive();engine.stopAlternateSources();syncPlayButton(); }
-});
+window.waveframe.onMediaKey(routeMediaCommand);
 
 /* ---- Taskbar thumbnail toolbar icons (drawn on a canvas, no image assets needed) ---- */
 function drawThumbIcon(draw) {

@@ -695,6 +695,15 @@ function init({ getMainWin, resolveFfmpegPath }) {
             const mp4Ok=await until("(() => {const v=document.getElementById('vpVideo');return v.readyState>=2 && v.videoWidth===352;})()",15000);
             check('H.264/AAC MP4 playback',mp4Ok,await js("(() => {const v=document.getElementById('vpVideo');return JSON.stringify({w:v.videoWidth,error:v.error?.code,message:v.error?.message,mp4:v.canPlayType('video/mp4'),ready:v.readyState});})()"));
             check('no stale subtitle track after source change',await js("document.getElementById('vpVideo').textTracks.length===0"),'new media');
+            if(mp4Ok){
+              check('OS media route owns loaded video',await until("currentOsMedia().owner==='video'",3000));
+              await js("routeMediaCommand('pause');1");
+              check('OS media pause targets video',await until("document.getElementById('vpVideo').paused&&currentOsMedia().owner==='video'",3000));
+              await js("routeMediaCommand('play');1");
+              check('OS media play resumes video',await until("!document.getElementById('vpVideo').paused&&currentOsMedia().owner==='video'",3000));
+              await js("WaveframeVideoPlayer.parkForAudio();1");
+              check('parked video releases OS media ownership',await until("currentOsMedia().owner==='audio'",3000));
+            }
           }
         }
       }
