@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • R6-07.2 / 05.2 — NATIVE ΧΕΙΡΙΣΜΟΙ ΚΑΙ METADATA
+28 Νοεμβρίου 2026 • R6-01.2 / 05.3 — ΔΙΟΡΘΩΣΕΙΣ ΚΑΙ TAGS
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R6 (όλες οι εκκρεμότητες, 01–16) και R5-AUDIT στην αρχή, R4 και ιστορικές προτεραιότητες/παραρτήματα για scope. Υποχρεωτική πύλη D1–D6 και μητρώο OV-01–OV-25 πριν από κάθε MEGA PASS.
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι R6-07.2 / 05.2. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι R6-01.2 / 05.3. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+R6-01.2/05.3: base 1c02e89 six PASS/three FAIL; corrected signed-zero zoom and missing path-identity dependency splash/help (welcome regression); no disabled tests. Opt-in matched audio tags attached to existing queue, main clean/fixed keys, FFmpeg existing path, no new writer/source changes, cover pending. Guide 127. New CI pending; full R6 groups 01–16 remain active.
+
 R6-07.2/05.2: native keyboard seek/volume/Home/End via existing command queue; explicit source metadata/chapter toggle for video/audio extraction/MKV in existing FFmpeg path, not anonymization, preserves source. Guide 126. Actual native focus and output-format tests pending, no online tag injection or cover integration yet. All R6 groups remain active; no release.
 
 R6-07.1/10.2: ελεύθερη περικοπή μέσω υπάρχοντος photo geometry/history/export, ανεξάρτητο πλάτος/ύψος με X/Y, πρόσθετα Home/End και μεσαίο πλήκτρο ποντικιού για Chromium video μέσω υπαρχόντων handlers. Native parity, προχωρημένα photo tools, λοιπές ομάδες 01–16 και τελική πιστοποίηση εκκρεμούν. Καμία νέα παράλληλη μηχανή ή release.

@@ -132,3 +132,10 @@ test('settings backup uses one allowlist, validates before restore, and rolls ba
  assert.equal(B.sanitize({'waveframe.destFolder':'\\\\server\\share'}),null);
  assert.equal(B.sanitize({'waveframe.video.resume':'{"a":"bad"}'}),null);
 });
+
+test('all guide renderers load shared path identity before feature-guide',()=>{
+ for(const page of ['renderer/index.html','renderer/help.html','renderer/splash.html']){
+  const html=read(page);assert.ok(html.indexOf('src="path-identity.js"')>=0,page);
+  assert.ok(html.indexOf('src="path-identity.js"')<html.indexOf('src="feature-guide.js"'),page);
+ }
+});

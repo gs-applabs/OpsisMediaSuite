@@ -150,6 +150,7 @@
     panel.append(
       h('label', { class: 'conv-check' }, [h('input', { id: 'vidRemoveAudio', type: 'checkbox', checked: !!s.removeAudio }), h('span', { text: t('vid.removeAudio') })]),
       h('label',{class:'conv-check'},[h('input',{id:'vidSourceMetadata',type:'checkbox',checked:s.sourceMetadata!==false}),h('span',{text:'Keep source tags and chapters / Διατήρηση tags και κεφαλαίων (not anonymization / όχι ανωνυμοποίηση)'})]),
+      h('label',{class:'conv-check'},[h('input',{id:'vidUseOnlineTags',type:'checkbox',checked:false}),h('span',{text:'Apply matched title/artist/album to new audio output (may replace copied fields) / Εφαρμογή αντιστοιχισμένων tags μόνο στο νέο αρχείο ήχου'})]),
       h('div', { class: 'conv-check vid-sub-row', id: 'vidSubFileRow' }, [h('button', { class: 'small-btn', id: 'vidSubFile', text: t('vid.subFile') }), h('span', { class: 'dest-path', id: 'vidSubFileName', text: subFile ? subFile.split(/[\\/]/).pop() : t('vid.subFileNone') })]),
       h('div', { class: 'dest-row', id: 'vidOutRow' }, [h('span', { class: 'dest-path', id: 'vidOutPath', text: customDir }), h('button', { class: 'small-btn', id: 'vidOutPick', text: t('conv.out.choose') })]),
       h('p', { class: 'hint vid-estimate', id: 'vidEstimate', role: 'status' }),
@@ -222,6 +223,7 @@
     show('vidSubtitleTrack', vid && $('vidSubtitle').value !== 'none' && !subFile);
     $('vidRemoveAudio').closest('label').classList.toggle('dep-hidden', !vid);
     $('vidSourceMetadata').closest('label').classList.toggle('dep-hidden', !(vid||aud||operation==='remux'));
+    $('vidUseOnlineTags').closest('label').classList.toggle('dep-hidden', !aud);
     $('vidSubFileRow').classList.toggle('dep-hidden', !(vid && $('vidSubtitle').value === 'burn'));
     $('vidOutRow').classList.toggle('dep-hidden', $('vidOut').value !== 'custom');
     for (const b of document.querySelectorAll('#vidPresets button')) { /* aria-pressed is set by applyPreset */ }
@@ -295,12 +297,13 @@
 
   /* ---------------- file list ---------------- */
 
-  function addPaths(paths) {
+  function addPaths(paths,onlineTags=new Map()) {
     if(starting||running)return;
     const added = [],seen=new Set(items.map(f=>pathKey(f.path)).filter(Boolean));
     for (const p of paths || []) {
       if (pathKey(p) && items.length < V.LIMITS.maxFiles && !seen.has(pathKey(p))) {
         const it = { id: `v${Date.now().toString(36)}${++seq}`, path: p, name: p.split(/[\\/]/).pop(), state: 'wait', pct: 0, info: null, thumb: '' };
+        if(onlineTags.has(pathKey(p)))it.onlineTags=onlineTags.get(pathKey(p));
         items.push(it); added.push(it);seen.add(pathKey(p));
       }
     }
@@ -326,7 +329,7 @@
       const thumb = picture ? h('img', { class: 'vid-thumb', src: picture, alt: '', loading:'lazy' }) : h('div', { class: 'vid-thumb vid-thumb-empty', 'aria-hidden': 'true', text: '🎞' });
       const row = h('div', { class: `conv-row vid-row ${f.state}` }, [
         thumb,
-        h('div', { class: 'vid-info' }, [h('div', { class: 'conv-name', title: f.path, text: f.name }), h('div', { class: 'vid-meta', text: meta })]),
+        h('div', { class: 'vid-info' }, [h('div', { class: 'conv-name', title: f.path, text: f.name }), h('div', { class: 'vid-meta', text: meta }),...(f.onlineTags?[h('div',{class:'vid-meta',text:'Matched / Αντιστοίχιση: '+[f.onlineTags.title,f.onlineTags.artist,f.onlineTags.album].filter(Boolean).join(' · ')})]:[])]),
         h('div', { class: 'conv-state', text: status + (f.note ? ` · ${f.note}` : '') }),
         h('div', { class: 'conv-bar' }, [h('div', { class: 'conv-bar-fill', id: `vbar-${f.id}` })]),
       ]);
@@ -365,6 +368,7 @@
     if (!v.ok) { status.textContent = fmt(t('conv.invalid'), { what: v.errors.join(', ') }); return; }
     if ($('vidOut').value === 'custom' && !localStorage.getItem('waveframe.vidDestFolder')) { status.textContent = t('conv.out.needFolder'); return; }
     const outMode=$('vidOut').value,outDir=localStorage.getItem('waveframe.vidDestFolder')||'';
+    const applyOnlineTags=v.options.audioOnly&&v.options.operation==='encode'&&$('vidUseOnlineTags').checked;
     const st = await api.convStatus();
     if (!st.ffmpeg) {
       const r = await api.convEnsureFfmpeg();
@@ -379,7 +383,7 @@
     const queue = C.createQueue(items, async (item) => {
       current = item; item.state = 'work'; renderList();
       try {
-        const r = await api.vidEncode({ id: item.id, path: item.path, options: v.options, outMode, outDir });
+        const r = await api.vidEncode({ id: item.id, path: item.path, options: v.options, outMode, outDir, outputTags:applyOnlineTags?item.onlineTags:undefined });
         if (!r.ok) throw Object.assign(new Error(r.error || r.code), { code: r.code });
         item.state = 'done'; item.out = r.output;
         if(r.outputCount)item.note=r.outputCount+' PNG frames';else if(r.keyframeCut)item.note='Keyframe cut / Κοπή καρέ-κλειδί';
@@ -413,14 +417,14 @@
     const identify=()=>{const result=V.onlineSource($('vidOnlineUrl').value);$('vidOnlineStatus').textContent=!result?'Invalid HTTP(S) URL / Μη έγκυρος σύνδεσμος':result.provider+' · '+result.kind+' · '+({ 'metadata-only':'Metadata only / Μόνο μεταδεδομένα','adapter-required':'Adapter pending / Εκκρεμεί προσαρμογέας','direct-candidate':'Direct media candidate / Πιθανό αρχείο','unverified':'Unverified source / Μη επαληθευμένη πηγή'})[result.capability]+' · No download yet / Χωρίς λήψη';};
     $('vidOnlineAnalyze').addEventListener('click',identify);
     const choice=$('vidYoutubeItems'),match=$('vidYoutubeMatch'),queue=$('vidYoutubeQueue'),all=$('vidYoutubeAll'),selectionStatus=$('vidYoutubeSelectionStatus');
-    let previewRows=[],bindings=new Map(),matching=false,previewBusy=false,spotifyLink=null;
+    let previewRows=[],bindings=new Map(),matching=false,previewBusy=false,spotifyLink=null,previewProvider=null;
     const selected=()=>Array.from(choice.selectedOptions,x=>Number(x.value));
     const refreshSelection=()=>{
       const sel=selected();all.disabled=!previewRows.length||matching;match.disabled=matching||sel.length!==1;queue.disabled=matching||!sel.length||sel.some(i=>!bindings.has(i));
       $('vidSpotifyOpen').disabled=!spotifyLink;
       selectionStatus.textContent=sel.length+' selected / επιλεγμένα · '+bindings.size+' matched / αντιστοιχισμένα';
     };
-    const resetSelection=()=>{previewRows=[];spotifyLink=null;bindings.clear();choice.replaceChildren();refreshSelection();};
+    const resetSelection=()=>{previewRows=[];spotifyLink=null;previewProvider=null;bindings.clear();choice.replaceChildren();refreshSelection();};
     choice.addEventListener('change',refreshSelection);
     all.addEventListener('click',()=>{for(const opt of choice.options)opt.selected=true;refreshSelection();});
     match.addEventListener('click',async()=>{
@@ -436,7 +440,8 @@
       if(running||starting||matching){selectionStatus.textContent='Converter busy / Εκτελείται μετατροπή';return;}
       const plan=V.playlistQueuePlan(previewRows,selected(),bindings,items.map(x=>x.path),V.LIMITS.maxFiles-items.length);
       if(!plan.ok){selectionStatus.textContent='Queue: '+plan.code;return;}
-      addPaths(plan.paths);selectionStatus.textContent=plan.paths.length+' files queued / αρχεία στην ουρά';
+      const tags=new Map();for(const index of selected()){const row=previewRows[index],path=bindings.get(index),value=V.matchedAudioTags(row,previewProvider);if(Object.keys(value).length)tags.set(pathKey(path),value);}
+      addPaths(plan.paths,tags);selectionStatus.textContent=plan.paths.length+' files queued / αρχεία στην ουρά';
     });
     $('vidSpotifyOpen').addEventListener('click',()=>{const sel=selected();const link=sel.length===1&&previewRows[sel[0]]?.link||spotifyLink;if(link)void api.vidSpotifyOpen(link).catch(()=>{});});
     const previewButtons=['vidYoutubePreview','vidSpotifyPreview','vidOtherPreview'].map(id=>$(id));
@@ -450,7 +455,7 @@
         const result=await request(url,credential);if(!choice.isConnected)return;
         if(!result?.ok){previewOutput.value='Preview: '+(result?.code||'failed');return;}
         const rows=Array.isArray(result.items)?result.items.slice(0,200):[];
-        spotifyLink=result.source==='Spotify'?result.link:null;
+        previewProvider=result.source;spotifyLink=result.source==='Spotify'?result.link:null;
         if(!result.collectionOnly){
           previewRows=rows;
           for(const [i,row] of rows.entries())choice.append(h('option',{value:String(i),text:(row.position+1)+'. '+row.title+' — '+row.channel}));

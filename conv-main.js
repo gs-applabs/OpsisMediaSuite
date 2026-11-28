@@ -257,6 +257,12 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     if (!trusted(e) || !req || !okId(req.id) || !okMedia(req.path)) return { ok: false, code: 'bad-request' };
     const v = V.validateOptions(req.options);
     if (!v.ok) return { ok: false, code: 'bad-options', error: v.errors.join(',') };
+    if(req.outputTags!==undefined){
+      if(!v.options.audioOnly||v.options.operation!=='encode'||!req.outputTags||typeof req.outputTags!=='object'||Array.isArray(req.outputTags)||Object.keys(req.outputTags).some(k=>!['title','artist','album'].includes(k)))return {ok:false,code:'bad-options',error:'outputTags'};
+      const clean=require('./music-tags').clean(req.outputTags);
+      if(Object.keys(clean).length!==Object.keys(req.outputTags).length)return {ok:false,code:'bad-options',error:'outputTags'};
+      v.options.outputTags=clean;
+    }
     if (v.options.subtitleFile && !subtitleGrants.has(allowedFile(v.options.subtitleFile, SUB_TYPES))) return { ok: false, code: 'bad-options', error: 'subtitleFile' };
     return track(req.id,async ensureActive=>{
       if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});ensureActive();

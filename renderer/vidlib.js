@@ -56,6 +56,8 @@
     const r = raw && typeof raw === 'object' ? raw : {};
     const base = { ...DEFAULTS, ...(PRESETS[r.preset] || {}) };
     const o = { ...base, ...r };
+    // Output tags are independently admitted by the main process, never raw options.
+    delete o.outputTags;
     const errors = [], warnings = [];
     if(typeof o.sourceMetadata!=='boolean')errors.push('sourceMetadata');
     if(!OPERATIONS.includes(o.operation))return {ok:false,options:o,errors:['operation'],warnings};
@@ -200,6 +202,18 @@
   // Keep the historical default; explicit stripping disables automatic global,
   // stream and chapter metadata mapping. Not an anonymizer: media content,
   // attachments, codec data and muxer-generated fields may still identify it.
+  function matchedAudioTags(row,provider){
+    const value=x=>typeof x==='string'?x.replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,250):'';
+    const result={};const title=value(row?.title);if(title)result.title=title;
+    // Upload channel/creator is not necessarily a musical artist.
+    if(provider==='Spotify'){const artist=value(row?.channel),album=value(row?.album);if(artist)result.artist=artist;if(album)result.album=album;}
+    return result;
+  }
+  function outputTagArgs(tags){
+    const args=[];for(const key of ['title','artist','album']){
+      const value=tags?.[key];if(typeof value==='string'&&value.trim()&&value.length<=250&&!/[\x00-\x1f\x7f]/.test(value))args.push('-metadata',key+'='+value);
+    }return args;
+  }
   function metadataArgs(o){
     return o.sourceMetadata===false?['-map_metadata','-1','-map_metadata:s','-1','-map_chapters','-1']:['-map_metadata','0','-map_chapters','0'];
   }
@@ -233,7 +247,7 @@
     if (o.trimEnd > 0) a.push('-t', String(o.trimEnd - o.trimStart));
     if (o.audioOnly) {
       const f = AUDIO_ONLY[o.audioOnlyFormat];
-      a.push('-vn', '-map', `0:a:${o.audioTrack}?`, '-c:a', f.codec, ...(o.audioOnlyFormat === 'flac' ? [] : ['-b:a', `${o.audioBitrate}k`]), ...(o.sourceMetadata===false?metadataArgs(o):[]), '-f', f.muxer, output);
+      a.push('-vn', '-map', `0:a:${o.audioTrack}?`, '-c:a', f.codec, ...(o.audioOnlyFormat === 'flac' ? [] : ['-b:a', `${o.audioBitrate}k`]), ...(o.sourceMetadata===false?metadataArgs(o):[]), ...outputTagArgs(o.outputTags), '-f', f.muxer, output);
       return a;
     }
     if (o.gif) {
@@ -352,5 +366,5 @@
     if(paths.length>capacity)return {ok:false,code:'queue-full'};
     return {ok:true,paths};
   }
-  return { playlistQueuePlan, onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
+  return { matchedAudioTags,playlistQueuePlan, onlineSource, CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
 });

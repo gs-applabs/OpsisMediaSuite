@@ -218,3 +218,14 @@ test('source metadata option is validated and disables copy in supported output 
  assert.equal(kept[kept.indexOf('-map_metadata')+1],'0');
  assert.equal(kept[kept.indexOf('-map_chapters')+1],'0');
 });
+
+test('matched tags are explicit audio-output-only metadata, not arbitrary FFmpeg options',()=>{
+ assert.deepEqual(V.matchedAudioTags({title:' Song ',channel:'Artist',album:'Album'},'Spotify'),{title:'Song',artist:'Artist',album:'Album'});
+ assert.deepEqual(V.matchedAudioTags({title:'Clip',channel:'Uploader'},'YouTube'),{title:'Clip'});
+ assert.equal(V.validateOptions({outputTags:{title:'untrusted'}}).options.outputTags,undefined);
+ const o=opts({audioOnly:true,sourceMetadata:false});o.outputTags={title:'-y',artist:'A',album:'B',comment:'not allowed'};
+ const a=V.buildArgs({input:'in.mp4',output:'out.m4a',options:o,encoder:null});
+ assert.ok(a.includes('title=-y'));assert.ok(a.includes('artist=A'));assert.ok(a.includes('album=B'));assert.ok(!a.includes('comment=not allowed'));
+ assert.equal(a.filter(x=>x==='-metadata').length,3);
+ assert.ok(!V.buildArgs({input:'in.mp4',output:'out.mp4',options:{...opts({}),outputTags:o.outputTags},encoder:'libx264'}).includes('title=-y'));
+});
