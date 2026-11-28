@@ -31,6 +31,9 @@ Additional P3/P4 unresolved: actual LibVLC/DirectShow/MF parity (A/V, track/seek
 ### ULTRA 3D.9C — package inclusion and bounded streaming progress
 - Added download module to explicit package file list and both online suites to npm test. Shared stream writer validates response length/MIME/status, cleans owned partials, emits bounded byte/total/rate updates. Deterministic stream tests for success, size limit, truncation, MIME, redirect, empty, abort. No actual HTTPS or packaged UI certification yet. DNS lookup itself not cancellable. Provider adapters remain open.
 
+### ULTRA 3D.9D.3 — bounded provider update transport
+- Main-process-only candidate transport with distribution-supplied trusted HTTPS endpoint, no redirects, bounded JSON signed envelope, 15s deadline, cancellation, on-use/manual update manager and fail-closed unconfigured state. Tests use streams and injected transport. Packaged and registered in npm test. No production endpoint/key or actual adapter contract wired; automatic updates remain disabled. Base 91a84e7 two PASS, seven running.
+
 ### ULTRA 3D.9D.2 — durable signed registry foundation
 - Optional bounded atomic local storage, reverify signed envelopes at restart, preserve signed high-water evidence after rollback and expiry; reject tampered state, do not switch on disk failure. Added restart/rollback/expiry/tamper/failure tests. Local OS-level deletion or replacement not prevented; not yet wired to production trust key, main process or remote source. Base 5d4b768 6/9 PASS including packaged; new CI pending.
 

@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.9D.2
+28 Νοεμβρίου 2026 • ULTRA 3D.9D.3
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -9,9 +9,11 @@
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
 - Τελευταία πλήρως ελεγμένη βάση CI: 93a5b6594e878575a579ed6746be5c78b2674735 (3D.4), 9/9 workflows PASS.
 - 3D.3 final base: d7f5f08547c41709d4fca9b4990429a317cf654e, 8/9 workflows PASS, installer pending.
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9D.2. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
+- Το commit που περιέχει αυτό το αρχείο είναι το 3D.9D.3. Πάντα επίλυσε το πραγματικό PR head πριν από αλλαγές.
 
 ## Τρέχουσα εργασία
+3D.9D.3: bounded HTTPS signed envelope transport, trusted endpoint supplied only by distribution, no redirects, JSON size/time checks, on-use/manual manager, single request, cancel, cooldown and fail-closed unconfigured state. Registered packaging/tests with mocked streams and transport. No production trust key, endpoint, actual adapter contract or UI connected; no live update. Base 91a84e7 2 PASS, 7 running. Next actual authorized adapter work and configured source integration once trust exists.
+
 3D.9D.2: optional bounded atomic local file store with signed envelopes for current/previous/highest, restart restore, expired active manifest disabled, high-water evidence retained after rollback, fail-closed invalid state and disk failure. Tests for restart, rollback, expiry, tamper, failed save. Not yet wired to main/UI, no production key or remote endpoint; local file deletion/replacement by an OS-level attacker is not prevented. Base 5d4b768 6/9 PASS incl packaged, 3 running. New CI pending.
 
 3D.9D.1: data-only signed Ed25519 registry contract, schema/expiry/provider constraints, in-memory staged activation, one concurrent activation, previous-version rollback without lowering sequence, opt-in on-use check policy and cooldown. Registered package and tests. No production trust key, remote registry, persistent anti-replay state, adapter process, live provider update or UI yet; next integrate trusted manifest source and durable state before enabling automatic update. Base 7b95ed2 CI 2 running, 7 queued at inspection. New CI pending.
