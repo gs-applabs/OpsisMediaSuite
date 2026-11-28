@@ -496,7 +496,8 @@
   }
   let snapshotBusy=false;
   async function snapshot(toClipboard=false) {
-    if(snapshotBusy||handoff||!current()||!video.videoWidth||!video.videoHeight||video.videoWidth*video.videoHeight>16000000)return;
+    if(snapshotBusy||handoff||!current()||!video.videoWidth||!video.videoHeight)return;
+    if(video.videoWidth*video.videoHeight>(toClipboard===true?16000000:80000000)){say('Frame exceeds export limit / Το καρέ υπερβαίνει το όριο εξαγωγής');return;}
     snapshotBusy=true;const source=current(),g=generation;let c;
     try {
       c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
