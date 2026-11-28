@@ -127,7 +127,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
       if (closing||cancelledEarly.has(id)) job.cancel();
       const r = await job.promise;
       const output=localPath(r.output);if(output)boundedAdd(outputGrants,output);
-      return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom };
+      return { ok: true, output: r.output, encoder: r.encoder, fellBackFrom: r.fellBackFrom,outputCount:r.outputCount,keyframeCut:r.keyframeCut===true };
     } catch (err) { return errorOf(err); } finally { jobs.delete(id); cancelledEarly.delete(id); pending.delete(id);progressGate.release(id); }
   }
 
@@ -210,7 +210,7 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
     return track(req.id,async ensureActive=>{
       if(!await approveOutput(req))throw Object.assign(Error('output not approved'),{code:'denied'});ensureActive();
       const ff=await resolveFfmpegPath(),f=inputFile(req.path);if(!ff||!f)throw Object.assign(Error('source or ffmpeg unavailable'),{code:ff?'denied':'no-ffmpeg'});
-      const d=await EV.detectEncoders(ff);
+      const d=V.needsVideoEncoder(v.options)?await EV.detectEncoders(ff):{encoders:new Set()};
       const outDir=resolveOutDir(req,true,defaultVideoOutDir);
       if(v.options.subtitleFile){const sub=allowedFile(v.options.subtitleFile,SUB_TYPES);if(!sub||!subtitleGrants.has(sub))throw Object.assign(Error('subtitle not approved'),{code:'denied'});v.options.subtitleFile=sub;}
       ensureActive();return EV.encodeVideo({ffmpegPath:ff,input:f,options:v.options,available:d.encoders,outDir,ensureActive,onProgress:p=>sendProgress({id:req.id,pct:Math.max(0,Math.min(1,p))})});

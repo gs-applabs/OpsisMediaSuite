@@ -19,7 +19,9 @@
   const MUXERS = { mp4: 'mp4', mkv: 'matroska', webm: 'webm' };
   const LIMITS = { maxHeight: 4320, maxFps: 240, minBitrate: 100, maxBitrate: 200000, maxFiles: 200, maxTrack: 31 };
 
+  const OPERATIONS=['encode','remux','poster','contact','sequence'];
   const DEFAULTS = {
+    operation:'encode',frameInterval:5,frameCount:30,
     preset: 'youtube1080', codec: 'h264', container: 'mp4', height: 1080, fps: 0, rateMode: 'crf', crf: 21, bitrate: 8000, passes: 1, speed: 'medium',encoderPolicy:'auto',gamma:1,sharpen:0,deinterlace:false,
     audioCodec: 'aac', audioBitrate: 192, audioTrack: 0, removeAudio: false, subtitle: 'none', subtitleFile: '', subtitleTrack: 0,
     trimStart: 0, trimEnd: 0, audioOnly: false, audioOnlyFormat: 'm4a', gif: false, suffix: '-video',
@@ -55,6 +57,17 @@
     const base = { ...DEFAULTS, ...(PRESETS[r.preset] || {}) };
     const o = { ...base, ...r };
     const errors = [], warnings = [];
+    if(!OPERATIONS.includes(o.operation))return {ok:false,options:o,errors:['operation'],warnings};
+    if(o.operation!=='encode'){
+      o.trimStart=num(o.trimStart);o.trimEnd=num(o.trimEnd);
+      o.frameInterval=num(o.frameInterval);o.frameCount=int(o.frameCount);
+      if(!(o.trimStart>=0&&o.trimStart<=360000&&o.trimEnd>=0&&o.trimEnd<=360000&&(o.trimEnd===0||o.trimEnd>o.trimStart)))errors.push('trim');
+      if(!(o.frameInterval>=1&&o.frameInterval<=60))errors.push('frameInterval');
+      if(!(o.frameCount>=1&&o.frameCount<=60))errors.push('frameCount');
+      o.suffix=sanitizeSuffix(o.suffix)||'-'+o.operation;
+      o.audioOnly=false;o.gif=false;o.subtitleFile='';o.passes=1;
+      return {ok:errors.length===0,options:o,errors,warnings};
+    }
     if (!CODECS[o.codec]) errors.push('codec');
     else if (!CODECS[o.codec].containers.includes(o.container)) { o.container = CODECS[o.codec].containers[0]; warnings.push('container-changed'); }
     for (const k of ['height', 'fps', 'crf', 'bitrate', 'passes', 'audioBitrate', 'audioTrack', 'subtitleTrack']) o[k] = int(o[k]);
@@ -182,8 +195,32 @@
 
   // Builds the argument ARRAY for one ffmpeg run. info = { duration } is optional.
   // pass: 0 = single pass, 1 = first pass of two (null output), 2 = second pass. passLog: base path for -passlogfile (a temp file, never user input).
+  function needsVideoEncoder(o){return (!o.operation||o.operation==='encode')&&!o.audioOnly&&!o.gif;}
+  function specialArgs({input,output,options:o,info}){
+    const duration=Number(info?.duration),start=o.trimStart,end=o.trimEnd>0?Math.min(o.trimEnd,duration):duration;
+    if(!Number.isFinite(duration)||duration<=0||start>=duration||end<=start)throw Object.assign(Error('Invalid media range'),{code:'bad-range'});
+    const span=end-start,a=['-hide_banner','-nostdin','-y'];
+    if(start>0)a.push('-ss',String(start));
+    if(o.operation!=='remux')a.push('-t',String(o.operation==='poster'?Math.min(span,2):o.operation==='sequence'?Math.min(span,o.frameInterval*o.frameCount):span));
+    a.push('-i',input);
+    if(o.operation==='remux'){
+      if(o.trimEnd>0)a.push('-t',String(span));
+      return a.concat(['-map','0','-c','copy','-map_metadata','0','-map_chapters','0','-avoid_negative_ts','make_zero','-f','matroska',output]);
+    }
+    a.push('-map','0:V:0','-an','-sn','-dn');
+    const scale='scale=640:360:force_original_aspect_ratio=decrease:force_divisible_by=2';
+    if(o.operation==='poster')a.push('-vf','scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2','-frames:v','1','-c:v','png','-f','image2',output);
+    else if(o.operation==='contact'){
+      const interval=Math.max(.001,span/12);
+      a.push('-vf','fps=1/'+interval+','+scale+',pad=640:360:(ow-iw)/2:(oh-ih)/2,tile=4x3:nb_frames=12','-frames:v','1','-c:v','png','-f','image2',output);
+    }else if(o.operation==='sequence'){
+      a.push('-vf','fps=1/'+o.frameInterval+','+scale,'-frames:v',String(o.frameCount),'-start_number','1','-c:v','png','-f','image2',output);
+    }else throw Error('unsupported operation');
+    return a;
+  }
   function buildArgs({ input, output, options, encoder, pass = 0, passLog = '', info = null }) {
     const o = options;
+    if(o.operation&&o.operation!=='encode')return specialArgs({input,output,options:o,info});
     const a = ['-hide_banner', '-nostdin', '-y', '-i', input];
     if (o.trimStart > 0) a.push('-ss', String(o.trimStart));
     if (o.trimEnd > 0) a.push('-t', String(o.trimEnd - o.trimStart));
@@ -213,7 +250,7 @@
     return a;
   }
 
-  function outputExt(o) { return o.audioOnly ? AUDIO_ONLY[o.audioOnlyFormat].ext : o.gif ? 'gif' : o.container; }
+  function outputExt(o) { if(o.operation==='remux')return 'mkv';if(['poster','contact','sequence'].includes(o.operation))return 'png';return o.audioOnly ? AUDIO_ONLY[o.audioOnlyFormat].ext : o.gif ? 'gif' : o.container; }
 
   // Two passes are only used when the chosen encoder supports -pass (software H.264 / VP9 / AV1-aom).
   function canTwoPass(enc) { return enc === 'libx264' || enc === 'libvpx-vp9' || enc === 'libaom-av1'; }
@@ -236,6 +273,7 @@
     return s.w * s.h * s.fps * bpp / 1000;
   }
   function predictBytes({ duration, width = 1920, height = 1080, fps = 30 }, o) {
+    if(o.operation&&o.operation!=='encode')return 0;
     if (!(duration > 0)) return 0;
     const span = (o.trimEnd > 0 ? Math.min(o.trimEnd, duration) : duration) - o.trimStart;
     if (!(span > 0)) return 0;
@@ -267,5 +305,5 @@
     return out;
   }
 
-  return { CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
+  return { CODECS, SPEEDS, PRESETS, DEFAULTS, LIMITS, AUDIO_ONLY,OPERATIONS,needsVideoEncoder, validateOptions, validSubtitlePath, escapeFilterPath, parseEncoders, parseHwaccels, encoderOrder, summarize, isHardware, buildArgs, outputExt, canTwoPass, predictBytes, estimateVideoKbps, parseProbe, sanitizeSuffix };
 });

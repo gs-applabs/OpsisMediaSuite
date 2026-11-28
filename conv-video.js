@@ -79,9 +79,9 @@ const lastLines = (text) => String(text).split(/\r?\n/).filter(Boolean).slice(-3
 // support -pass. Returns { promise -> { output, encoder, fellBackFrom }, cancel() }; a half-written file is removed on error and on cancel.
 async function encodeVideo({ ffmpegPath, input, options, available, onProgress, outDir, ensureActive=()=>{} }) {
   ensureRunning();ensureActive();const info = await probeVideo(ffmpegPath, input);ensureRunning();ensureActive();
-  if (!info.video && !options.audioOnly) throw Object.assign(new Error('no-video'), { code: 'no-video' });
+  if (!info.video && !options.audioOnly&&options.operation!=='remux') throw Object.assign(new Error('no-video'), { code: 'no-video' });
   if (options.audioOnly && !info.audio.length) throw Object.assign(new Error('no-audio'), { code: 'no-audio' });
-  const needsEncoder = !options.audioOnly && !options.gif;
+  const needsEncoder = V.needsVideoEncoder(options);
   const order = needsEncoder ? V.encoderOrder(options.codec, available,{policy:options.encoderPolicy,passes:options.passes}) : [null];
   if (!order.length) throw Object.assign(new Error('no-encoder'), { code: 'no-encoder' });
   const ext = V.outputExt(options);
@@ -89,8 +89,8 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
   const duration = span > 0 ? span : info.duration;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   const finalPath = () => L.buildOutputPath({ inputPath: input, ext, suffix: options.suffix, pathApi: path, exists: fs.existsSync, dir: outDir || undefined });
-  let current = null, cancelled = false, tmp = null, passLog = null, passScratch=null;
-  const cleanup = () => { if (tmp) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } } if(passScratch)passScratch.release();passScratch=null;tmp=null;passLog=null; };
+  let current = null, cancelled = false, tmp = null, passLog = null, passScratch=null,sequenceDir=null;
+  const cleanup = () => { if(sequenceDir){try{if(require('./local-media-policy').localDirectory(sequenceDir)===sequenceDir){for(const n of fs.readdirSync(sequenceDir))if(/^frame-\d{4}\.png$/.test(n))fs.unlinkSync(path.join(sequenceDir,n));fs.rmdirSync(sequenceDir);}}catch{}sequenceDir=null;} if (tmp) { try { fs.unlinkSync(tmp); } catch (_) { /* none */ } } if(passScratch)passScratch.release();passScratch=null;tmp=null;passLog=null; };
   const run = (args, scale, offset) => {
     ensureRunning();ensureActive();
     if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
@@ -105,6 +105,17 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
       const twoPass = !!enc && options.passes === 2 && V.canTwoPass(enc);
       tmp = path.join(path.dirname(finalPath()), `.waveframe-${process.pid}-${crypto.randomBytes(16).toString('hex')}.${ext}`);
       try {
+        if(options.operation==='sequence'){
+          const parent=require('./local-media-policy').localDirectory(path.dirname(finalPath()));if(!parent||parent.includes('%'))throw Object.assign(Error('Unsupported frame destination'),{code:'denied'});
+          sequenceDir=fs.mkdtempSync(path.join(parent,'opsis-frames-'));tmp=null;
+          const pattern=path.join(sequenceDir,'frame-%04d.png');
+          const r=await run(V.buildArgs({input,output:pattern,options,encoder:null,info}),1,0);
+          ensureRunning();ensureActive();if(cancelled)throw Object.assign(Error('cancelled'),{code:'cancelled'});
+          if(require('./local-media-policy').localDirectory(sequenceDir)!==sequenceDir)throw Object.assign(Error('Output folder changed'),{code:'denied'});
+          const names=fs.readdirSync(sequenceDir).sort();if(r.code!==0||!names.length||names.length>options.frameCount||names.some(n=>!/^frame-\d{4}\.png$/.test(n)))throw Error(lastLines(r.stderr)||'frame sequence failed');
+          const first=path.join(sequenceDir,names[0]);if(names.some(n=>{const s=fs.lstatSync(path.join(sequenceDir,n));return !s.isFile()||s.isSymbolicLink()||s.size<=0||s.size>2*1024*1024;}))throw Error('invalid frame output');
+          const count=names.length;sequenceDir=null;if(onProgress)onProgress(1);return {output:first,outputCount:count,encoder:null,fellBackFrom:null};
+        }
         passScratch=twoPass?require('./resource-diagnostics').createScratch('opsis-pass-'):null;
         passLog=passScratch?path.join(passScratch.dir,'ffmpeg-pass'):null;
         if (twoPass) {
@@ -123,7 +134,7 @@ async function encodeVideo({ ffmpegPath, input, options, available, onProgress, 
         if(passScratch)passScratch.release();
         passScratch=null;tmp=null;passLog=null;
         if (onProgress) onProgress(1);
-        return { output: out, encoder: enc, fellBackFrom: firstTried };
+        return { output: out, encoder: enc, fellBackFrom: firstTried, keyframeCut:options.operation==='remux'&&(options.trimStart>0||options.trimEnd>0) };
       } catch (e) {
         cleanup();
         if (cancelled || (e && e.code === 'cancelled')) throw Object.assign(new Error('cancelled'), { code: 'cancelled' });

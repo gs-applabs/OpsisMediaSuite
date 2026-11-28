@@ -181,3 +181,7 @@ test('thumbnail: a PNG data URL of one frame', { skip }, async () => {
 
 
 test('real filtered video export decodes with gamma, sharpen and deinterlace',{skip},async()=>{const encoder=sw264();if(!encoder)return;const r=await encode({preset:'webSmall',gamma:1.2,sharpen:.3,deinterlace:true,suffix:'-filters'},new Set([encoder]));assert.equal((await EA.verifyDecodes(FFMPEG,r.output)).ok,true);});
+
+
+test('real remux preserves both audio streams and original codecs',{skip},async()=>{const before=await EV.probeVideo(FFMPEG,SRC);const r=await encode({operation:'remux',suffix:'-remux'},new Set());const after=(await check(r.output)).info;assert.equal(after.video.codec,before.video.codec);assert.deepEqual(after.audio.map(x=>x.codec),before.audio.map(x=>x.codec));assert.equal(after.audio.length,2);});
+test('real poster, contact sheet and bounded PNG sequence',{skip},async()=>{for(const operation of ['poster','contact','sequence']){const r=await encode({operation,frameInterval:1,frameCount:2,suffix:'-'+operation},new Set());const b=fs.readFileSync(r.output);assert.deepEqual([...b.subarray(0,8)],[137,80,78,71,13,10,26,10]);const w=b.readUInt32BE(16),h=b.readUInt32BE(20);assert.ok(w>0&&h>0);if(operation==='contact'){assert.equal(w,2560);assert.equal(h,1080);}if(operation==='sequence'){assert.equal(r.outputCount,2);assert.equal(fs.readdirSync(path.dirname(r.output)).length,2);assert.ok(w<=640&&h<=360);}}});

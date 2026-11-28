@@ -94,7 +94,10 @@
     const heights = [[0, t('vid.keep')], [2160, '2160p (4K)'], [1440, '1440p'], [1080, '1080p'], [720, '720p'], [480, '480p'], [360, '360p']];
     const fpsOpts = [[0, t('vid.keep')], [24, '24'], [25, '25'], [30, '30'], [50, '50'], [60, '60']];
     const audioCodecs = V.PRESETS && ['copy', 'aac', 'opus', 'mp3', 'flac'].map((k) => [k, t(`vid.audio.${k}`)]);
+    panel.append(h('div',{class:'conv-field'},[h('label',{class:'field-label',htmlFor:'vidOperation',text:'Task / Εργασία'}),(()=>{const e=h('select',{id:'vidOperation'});for(const [value,text] of [['encode','Encode / Κωδικοποίηση'],['remux','Lossless remux / Κοπή MKV χωρίς επανακωδικοποίηση'],['poster','Poster PNG / Καρέ'],['contact','Contact sheet / Φύλλο 12 καρέ'],['sequence','PNG sequence / Ακολουθία καρέ']])e.append(h('option',{value,text}));e.value=V.OPERATIONS.includes(s.operation)?s.operation:'encode';return e;})()]));
     panel.append(h('div', { class: 'conv-grid', id: 'vidGrid' }, [
+      h('div',{class:'conv-field',id:'vidFrameIntervalField'},[h('label',{class:'field-label',htmlFor:'vidFrameInterval',text:'Frame interval (s) / Διάστημα καρέ'}),h('input',{id:'vidFrameInterval',type:'number',min:1,max:60,step:1,value:s.frameInterval})]),
+      h('div',{class:'conv-field',id:'vidFrameCountField'},[h('label',{class:'field-label',htmlFor:'vidFrameCount',text:'Maximum frames / Μέγιστα καρέ'}),h('input',{id:'vidFrameCount',type:'number',min:1,max:60,step:1,value:s.frameCount})]),
       select('vidCodec', 'vid.codec', codecOpts, s.codec),
       h('div',{class:'conv-field',id:'vidEncoderPolicyField'},[h('label',{class:'field-label',htmlFor:'vidEncoderPolicy',text:'Encoder / Κωδικοποιητής'}),(()=>{const e=h('select',{id:'vidEncoderPolicy'});for(const [value,text] of [['auto','Auto: GPU → CPU'],['software','CPU only / Μόνο CPU'],['hardware','GPU only / Μόνο GPU']])e.append(h('option',{value,text}));e.value=['auto','software','hardware'].includes(s.encoderPolicy)?s.encoderPolicy:'auto';return e;})()]),
       select('vidContainer', 'vid.container', [['mp4', 'MP4'], ['mkv', 'MKV'], ['webm', 'WebM']], s.container),
@@ -143,6 +146,7 @@
   function collect() {
     const ts = parseTime($('vidTrimStart').value), te = parseTime($('vidTrimEnd').value);
     const raw = {
+      operation:$('vidOperation').value,frameInterval:+$('vidFrameInterval').value,frameCount:+$('vidFrameCount').value,
       codec: $('vidCodec').value, container: $('vidContainer').value, height: +$('vidHeight').value, fps: +$('vidFps').value,
       rateMode: $('vidRateMode').value, crf: +$('vidCrf').value, bitrate: +$('vidBitrate').value, passes: +$('vidPasses').value, speed: $('vidSpeed').value,encoderPolicy:$('vidEncoderPolicy').value,gamma:+$('vidGamma').value,sharpen:+$('vidSharpen').value,deinterlace:$('vidDeinterlace').checked,
       audioCodec: $('vidAudioCodec').value, audioBitrate: +$('vidAudioBitrate').value, audioTrack: +$('vidAudioTrack').value,
@@ -156,7 +160,7 @@
   function applyPreset(key) {
     const p = V.PRESETS[key];
     const o = { ...V.DEFAULTS, ...p };
-    mode = p.gif ? 'gif' : p.audioOnly ? 'audio' : 'video';
+    mode = p.gif ? 'gif' : p.audioOnly ? 'audio' : 'video';$('vidOperation').value='encode';
     $('vidCodec').value = o.codec; $('vidContainer').value = o.container; $('vidHeight').value = String(o.height); $('vidFps').value = String(o.fps);
     $('vidRateMode').value = o.rateMode; $('vidCrf').value = o.crf; $('vidSpeed').value = o.speed; $('vidAudioCodec').value = o.audioCodec;
     $('vidGamma').value=o.gamma;$('vidSharpen').value=o.sharpen;$('vidDeinterlace').checked=o.deinterlace;
@@ -167,7 +171,8 @@
 
   // shows only what applies, keeps values inside the ranges of the chosen codec, and refreshes the size estimate
   function sync() {
-    const vid = mode === 'video', gif = mode === 'gif', aud = mode === 'audio';
+    const operation=$('vidOperation').value,normal=operation==='encode';
+    const vid = normal&&mode === 'video', gif = normal&&mode === 'gif', aud = normal&&mode === 'audio';
     const codec = V.CODECS[$('vidCodec').value] || V.CODECS.h264;
     const cont = $('vidContainer');
     for (const o of cont.options) o.hidden = !codec.containers.includes(o.value);
@@ -180,7 +185,8 @@
     const best=candidates[0];
     const show = (id, on) => $(`${id}Field`).classList.toggle('dep-hidden', !on);
     for (const id of ['vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidRateMode', 'vidSpeed', 'vidSubtitle']) show(id, vid);
-    show('vidHeight', vid || gif); show('vidFps', vid || gif);
+    show('vidFrameInterval',operation==='sequence');show('vidFrameCount',operation==='sequence');
+    show('vidTrimEnd',operation!=='poster');show('vidHeight', vid || gif); show('vidFps', vid || gif);
     show('vidCrf', vid && !rateBitrate); show('vidBitrate', vid && rateBitrate);
     const canPass=!encInfo||candidates.some(V.canTwoPass);if(!canPass)$('vidPasses').value='1';
     show('vidPasses',vid&&rateBitrate&&canPass);
@@ -199,6 +205,7 @@
     const el = $('vidEstimate');
     const o = V.validateOptions(collect());
     if (!o.ok) { el.textContent = ''; return; }
+    if(o.options.operation!=='encode'){el.textContent=({remux:'MKV stream copy; trim is keyframe-based / Κοπή σε καρέ-κλειδί, όχι ακριβής ανά καρέ.',poster:'PNG up to 1920×1080 at start time / Καρέ στην αρχή.',contact:'4 × 3 PNG contact sheet / Φύλλο 12 καρέ.',sequence:'Up to 60 PNG frames, 640×360 maximum, in a new folder / Έως 60 καρέ σε νέο φάκελο.'})[o.options.operation];return;}
     let total = 0;
     for (const it of items) if (it.info && it.info.duration) total += V.predictBytes({ duration: it.info.duration, width: it.info.video && it.info.video.width, height: it.info.video && it.info.video.height, fps: it.info.video && it.info.video.fps }, o.options);
     el.textContent = total > 0 ? fmt(t('vid.estimate'), { size: sizeText(total) }) : '';
@@ -332,7 +339,7 @@
       if (!r.ok) { status.textContent = r.declined ? t('vid.ffmpegNeeded') : fmt(t('conv.ffmpegFailed'), { why: r.error || '' }); return; }
       await refreshEncoders();
     } else if (!encInfo || !encInfo.ffmpeg) await refreshEncoders();
-    const needsEncoder = !v.options.gif&&!v.options.audioOnly;
+    const needsEncoder = V.needsVideoEncoder(v.options);
     if (needsEncoder && encInfo && !V.encoderOrder(v.options.codec,new Set(encInfo.encoders||[]),{policy:v.options.encoderPolicy,passes:v.options.passes}).length) { status.textContent = fmt(t('vid.err.noEncoder'), { codec: V.CODECS[v.options.codec].label }); return; }
     for (const f of items) { f.state = 'wait'; f.pct = 0; f.err = ''; f.note = ''; f.out = ''; }
     $('vidStart').classList.add('dep-hidden'); $('vidCancel').classList.remove('dep-hidden'); $('vidTrack').classList.remove('dep-hidden');
@@ -343,7 +350,8 @@
         const r = await api.vidEncode({ id: item.id, path: item.path, options: v.options, outMode, outDir });
         if (!r.ok) throw Object.assign(new Error(r.error || r.code), { code: r.code });
         item.state = 'done'; item.out = r.output;
-        if (r.fellBackFrom && r.encoder) item.note = fmt(t('vid.hwFallback'), { from: r.fellBackFrom, to: r.encoder });
+        if(r.outputCount)item.note=r.outputCount+' PNG frames';else if(r.keyframeCut)item.note='Keyframe cut / Κοπή καρέ-κλειδί';
+        else if (r.fellBackFrom && r.encoder) item.note = fmt(t('vid.hwFallback'), { from: r.fellBackFrom, to: r.encoder });
         else if (r.encoder && V.isHardware(r.encoder)) item.note = fmt(t('vid.hwUsed'), { enc: r.encoder });
         return r;
       } catch (e) {
@@ -378,7 +386,7 @@
     $('vidDrop').addEventListener('drop', async (e) => { e.preventDefault(); $('vidDrop').classList.remove('over'); addPaths(await api.convApproveDrop([...e.dataTransfer.files].map(f=>api.pathForFile(f)).filter(Boolean)).catch(()=>[])); });
     $('vidClear').addEventListener('click', () => { if (!running&&!starting) { clearPreviews();items = []; renderList(); fillTracks(); estimate(); } });
     $('vidPresets').addEventListener('click', (e) => { const b = e.target.closest('button[data-preset]'); if (b) applyPreset(b.dataset.preset); });
-    for (const id of ['vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
+    for (const id of ['vidOperation','vidFrameInterval','vidFrameCount','vidCodec','vidEncoderPolicy','vidGamma','vidSharpen','vidDeinterlace', 'vidContainer', 'vidHeight', 'vidFps', 'vidRateMode', 'vidCrf', 'vidBitrate', 'vidPasses', 'vidSpeed', 'vidAudioCodec', 'vidAudioBitrate', 'vidAudioTrack', 'vidAudioOnlyFormat', 'vidSubtitle', 'vidSubtitleTrack', 'vidTrimStart', 'vidTrimEnd', 'vidRemoveAudio']) {
       $(id).addEventListener('change', sync);
       if ($(id).tagName === 'INPUT') $(id).addEventListener('input', estimate);
     }
