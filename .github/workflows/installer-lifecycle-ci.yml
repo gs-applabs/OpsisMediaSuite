@@ -1,7 +1,7 @@
 name: Installer lifecycle CI (test only)
 on:
   pull_request:
-    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js','installer/**','music-tags.js']
+    paths: ['.github/workflows/installer-lifecycle-ci.yml','test/build-installer-ci.js','test/installer-lifecycle.ps1','package.json','package-lock.json','renderer/**','main.js','preload.js','native-player/**','conv-*.js','media-main.js','installer/**','music-tags.js','music-library.js','m3u.js','decode-text.js','photo-metadata.js','local-media-policy.js','atomic-write.js','.github/scripts/ensure-ffmpeg.ps1']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,12 +26,13 @@ jobs:
       - name: Install pinned Inno Setup 7 compiler
         shell: pwsh
         run: |
-          $release=Invoke-RestMethod 'https://api.github.com/repos/jrsoftware/issrc/releases/tags/is-7_1_1'
-          $asset=@($release.assets | Where-Object name -eq 'innosetup-7.1.1-x64.exe')
-          if($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:[0-9a-f]{64}$'){throw 'missing official compiler digest'}
+          # Pinned official release asset digest, retrieved from jrsoftware/issrc
+          # tag is-7_1_1. Avoid anonymous API rate limits and mutable metadata.
+          $url='https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe'
+          $sha='8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0'
           $setup=Join-Path $env:RUNNER_TEMP 'inno7.exe'
-          Invoke-WebRequest $asset[0].browser_download_url -OutFile $setup
-          if((Get-FileHash $setup -Algorithm SHA256).Hash -ne $asset[0].digest.Substring(7)){throw 'compiler hash mismatch'}
+          Invoke-WebRequest $url -OutFile $setup
+          if((Get-FileHash $setup -Algorithm SHA256).Hash -ne $sha){throw 'compiler hash mismatch'}
           $sig=Get-AuthenticodeSignature $setup
           if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Pyrsys'){throw 'compiler signature mismatch'}
           $dir=Join-Path $env:RUNNER_TEMP 'inno7'

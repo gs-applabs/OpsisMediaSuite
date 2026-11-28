@@ -71,6 +71,7 @@
       "!renderer/index-dsp-dev.html",
       "!renderer/dsp-dev/**/*",
       "m3u.js",
+      "decode-text.js",
       "music-tags.js",
       "music-library.js",
       "music-lookup.js"

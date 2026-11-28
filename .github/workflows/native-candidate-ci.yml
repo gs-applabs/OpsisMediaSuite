@@ -4,7 +4,7 @@ on:
     branches: ['feat/photo-tools-fxsound-coexistence']
     paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js','native-player/**','native-host.js','package.json','package-lock.json','selftest.js','subtitle-sync-worker.js','subtitle-autosync.js']
   pull_request:
-    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js','native-player/**','native-host.js','package.json','package-lock.json','renderer/**','main.js','preload.js','media-main.js','conv-main.js','subtitle-*.js']
+    paths: ['.github/workflows/native-candidate-ci.yml','test/build-native-candidate.js','native-player/**','native-host.js','package.json','package-lock.json','renderer/**','main.js','preload.js','media-main.js','conv-main.js','subtitle-*.js','m3u.js','decode-text.js','photo-metadata.js','music-library.js','music-tags.js','local-media-policy.js','atomic-write.js']
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
