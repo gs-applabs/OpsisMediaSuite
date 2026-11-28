@@ -3245,16 +3245,6 @@ window.__selfTest = async function () {
       vpList.children[0].dispatchEvent(new DragEvent('drop',{dataTransfer:new DataTransfer(),bubbles:true,cancelable:true}));
       check('external drag cannot reorder video playlist',order()[0]===names[3]&&order().length===4&&videoPlayer.diagnostics().selected===-1);
     }finally{vpClear.click();}
-    // Exercise converter's actual preparation controls without starting FFmpeg.
-    await loadConverter();const videoUi=window.WaveframeVideoUi;
-    videoUi.clearItems();
-    try{
-      check('A-B converter rejects invalid and remote ranges',!videoUi.prepareAB('https://example.invalid/a.mp4',{start:1,end:3})&&!videoUi.prepareAB(names[0],{start:3,end:1}));
-      check('A-B prepares one local stream copy job',videoUi.prepareAB(names[0],{start:1.125,end:3.5}));
-      const opts=videoUi.collect();
-      check('A-B controls receive exact range and no job starts',opts.operation==='remux'&&opts.trimStart===1.125&&opts.trimEnd===3.5&&!videoUi.busy());
-      check('A-B refuses to replace other queued file',!videoUi.prepareAB(names[1],{start:2,end:4})&&videoUi.collect().trimStart===1.125);
-    }finally{videoUi.clearItems();}
     showTab('player');
     // loudness through a REAL decoded AudioBuffer: stereo 997 Hz sine at -23 dBFS must read -23 LUFS and need +5 dB to reach -18
     const fs = 48000, ctx = new OfflineAudioContext(2, fs * 6, fs);

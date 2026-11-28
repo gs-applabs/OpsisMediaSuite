@@ -249,6 +249,18 @@ function init({ getMainWin, resolveFfmpegPath, installFfmpeg, confirmFfmpegDownl
         catch (e) { return { error: String(e && e.message || e) }; }
       })()`);
       check('converter tab skeleton exists but is empty before first open', (await win.webContents.executeJavaScript("document.getElementById('tab-converter').children.length")) === 0);
+      const abChecks=await win.webContents.executeJavaScript(`(async()=>{const out=[],check=(name,ok)=>out.push({name,ok:!!ok});const names=['C:/opsis-ci/a.mp4','C:/opsis-ci/b.mp4'];
+    // Exercise converter's actual preparation controls without starting FFmpeg.
+    await loadConverter();const videoUi=window.WaveframeVideoUi;
+    videoUi.clearItems();
+    try{
+      check('A-B converter rejects invalid and remote ranges',!videoUi.prepareAB('https://example.invalid/a.mp4',{start:1,end:3})&&!videoUi.prepareAB(names[0],{start:3,end:1}));
+      check('A-B prepares one local stream copy job',videoUi.prepareAB(names[0],{start:1.125,end:3.5}));
+      const opts=videoUi.collect();
+      check('A-B controls receive exact range and no job starts',opts.operation==='remux'&&opts.trimStart===1.125&&opts.trimEnd===3.5&&!videoUi.busy());
+      check('A-B refuses to replace other queued file',!videoUi.prepareAB(names[1],{start:2,end:4})&&videoUi.collect().trimStart===1.125);
+    }finally{videoUi.clearItems();}
+return out;})()`);out.push(...abChecks);
       // 1. processed route: normalise -23.. -> -16 LUFS, FLAC
       const a = await run({ format: 'flac', depth: 16, normalize: true, targetLufs: -16, suffix: '-selftest' });
       check('processed route (normalise to -16 LUFS -> FLAC) runs', a && a.output && !a.error, a && (a.error || path.basename(a.output)));

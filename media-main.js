@@ -556,6 +556,17 @@ function init({ getMainWin, resolveFfmpegPath }) {
           check('subtitle off clears active cues',await js("Array.from(document.getElementById('vpVideo').textTracks).every(tr=>tr.mode==='disabled')"),'off');
           await js("document.getElementById('vpSubTrack').value='0';document.getElementById('vpSubTrack').dispatchEvent(new Event('change'));1");
           check('subtitle selection restores one track and cue',await until("Array.from(document.getElementById('vpVideo').textTracks).filter(tr=>tr.mode==='showing' && tr.cues?.length===1).length===1",3000),'on');
+          // Real local video identity and A-B transfer using the already approved fixture.
+          const identity=await js(`(()=>{const p=WaveframeVideoPlayer,v=document.getElementById('vpVideo'),rows=document.getElementById('vpList');const before=p.diagnostics().selected;p.enqueue([${JSON.stringify(file)}]);const next=rows.children[before+1]?.querySelector('.vp-name');if(!next)return false;next.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',altKey:true,bubbles:true,cancelable:true}));const ok=p.diagnostics().selected===before+1&&document.getElementById('vpVideo')===v;rows.children[before].querySelector('.vp-x').click();return ok;})()`);
+          check('loaded video keeps exact active occurrence after duplicate reorder',identity);
+          await js("(()=>{const v=document.getElementById('vpVideo');v.pause();v.currentTime=1;return 1})()");
+          const aReady=await until("!document.getElementById('vpVideo').seeking&&Math.abs(document.getElementById('vpVideo').currentTime-1)<.1",4000);
+          await js("document.getElementById('vpAB').click();document.getElementById('vpVideo').currentTime=3;1");
+          const bReady=await until("!document.getElementById('vpVideo').seeking&&Math.abs(document.getElementById('vpVideo').currentTime-3)<.1",4000);
+          await js("WaveframeVideoUi.clearItems();document.getElementById('vpAB').click();document.getElementById('vpABExport').click();inputModalOk.click();1");
+          const transferred=await until("document.getElementById('tab-converter').classList.contains('active')&&document.getElementById('vidOperation').value==='remux'&&Math.abs(Number(document.getElementById('vidTrimStart').value)-1)<.1&&Math.abs(Number(document.getElementById('vidTrimEnd').value)-3)<.1&&!WaveframeVideoUi.busy()",4000);
+          check('approved decoded video A-B dialog transfers range without starting conversion',aReady&&bReady&&transferred);
+          await js("WaveframeVideoUi.clearItems();showTab('video');document.getElementById('vpAB').click();1");
           // Real HTTP transfer through the same provider client and real IPC/UI.
           // Only the self-test injects a fixture transport; production uses fixed HTTPS origins.
           const http=require('node:http'),requests=[];
