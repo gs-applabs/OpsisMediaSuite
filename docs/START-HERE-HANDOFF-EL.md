@@ -114,3 +114,10 @@ docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6
 - OV-10/08 EXTEND: forced tag refresh queues a fresh read if an earlier read of the same item is active, preserving bounded/coalesced work; compare updated paths using shared Windows-aware identity. Canonical metadata file admission rechecked after import before parse. No new writer or network action; existing per-path read authorization design not changed.
 - Added regression fixtures for restore lock and forced metadata read. Baseline f0f2b109 all nine CI workflows passed; 31a1b7fe 4 PASS/5 running at inspection, prior packaged runs cancelled. No tests run by connector; new CI pending. All R6 01–16 remain tracked; no merge/release.
 
+
+### R6-06.5 / 03.4 — εισαγωγή μουσικής, κωδικοποίηση διαδρομών και ασφαλέστερα εξώφυλλα (base fcea3e04)
+- OV-08 FIX: existing shared path-identity module adds local file URL conversion preserving literal percent/hash/question marks, spaces and Unicode. Music open-with/folder/restore use it, reject relative/network/ADS/control/malformed strings; no permission grant. Existing path identity unchanged.
+- R6-06 EXTEND: explicit cancel for existing folder import, one scoped job and cooperative scan cancellation, no partial import when cancelled, no new scanner/watchers. Native picker still needs closing by user; no claim of forcibly interrupting pending OS directory I/O. Updated existing guide.
+- OV-11 FIX: preflight embedded art dimensions before native decode with existing photo header reader and 16 MP bound; invalid/unknown header skips artwork, text remains available. No new decoder.
+- Added URL and static contract tests. f0f2b109 9/9 PASS; fcea3e04 CI 3 PASS/6 running at first inspection. New CI pending, real folder cancel/UI and malformed artwork acceptance not yet certified. All groups 01–16 retained; no merge/release.
+

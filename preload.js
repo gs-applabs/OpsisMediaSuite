@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld('waveframe', {
   completeMetadata: (mode,values) => ipcRenderer.invoke('metadata:complete',mode,values),
   readMetadata: (filePath) => ipcRenderer.invoke('metadata:read', filePath),
   importMusicFolder: () => ipcRenderer.invoke('music:import-folder'),
+  cancelMusicFolder: () => ipcRenderer.invoke('music:cancel-folder'),
   setThumbbarIcons: (icons) => ipcRenderer.send('thumbbar:icons', icons),
   updateNowPlaying: (data) => ipcRenderer.send('now-playing:update', data),
   sendThemeChange: (theme) => ipcRenderer.send('theme:changed', theme),

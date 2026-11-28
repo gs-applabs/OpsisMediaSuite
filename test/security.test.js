@@ -186,3 +186,13 @@ test('backup import locks only restored keys against stale renderer saves until 
  assert.equal(B.canPersist('waveframe.accentColor'),true);
  assert.equal(m.get('waveframe.lang'),'en');
 });
+
+
+test('music import cancellation stays within the current on-demand folder job and preflights artwork',()=>{
+ const m=read('main.js'),preload=read('preload.js'),html=read('renderer/index.html');
+ assert.match(m,/ipcMain\.handle\('music:cancel-folder'/);assert.match(m,/musicFolderJob\.cancelled=true/);
+ assert.match(m,/scanFolder\(picked\.filePaths\[0\],\{cancelled\}\)/);
+ assert.match(preload,/cancelMusicFolder: \(\) => ipcRenderer\.invoke\('music:cancel-folder'\)/);
+ assert.match(html,/id="playlistFolderCancel" hidden/);
+ assert.match(m,/const img=safe\?nativeImage\.createFromBuffer\(bytes\):null/);
+});

@@ -1829,14 +1829,15 @@ async function enrichTrackMetadata(item,force=false) {
 
 const PLAYLIST_KEY = 'waveframe.playlist';
 function pathToFileUrl(p) {
-  return 'file:///' + p.replace(/\\/g, '/').replace(/^\/+/, '');
+  return OpsisPathIdentity.fileUrl(p);
 }
 
 // "Open with Waveframe" from Explorer (file association) or double-clicking
 // an audio file while the app is already running (forwarded via second-instance).
 window.waveframe.onOpenFile((filePath) => {
   const name = filePath.split(/[\\/]/).pop().replace(/\.[^/.]+$/, '');
-  const item = { path: filePath, url: pathToFileUrl(filePath), name };
+  const url=pathToFileUrl(filePath);if(!url)return;
+  const item = { path: filePath, url, name };
   playlist.push(item);
   renderPlaylist();
   playTrackAt(playlist.length - 1);
@@ -1855,7 +1856,9 @@ function restorePlaylist() {
   if (!Array.isArray(saved)||saved.length === 0) return;
   saved.forEach((entry) => {
     if (!entry||typeof entry!=='object')return;
-    if (typeof entry.path==='string'&&entry.path) playlist.push({ path: entry.path, url: pathToFileUrl(entry.path), name: entry.name });
+    if (typeof entry.path==='string'&&entry.path) {
+      const url=pathToFileUrl(entry.path);if(url)playlist.push({path:entry.path,url,name:entry.name});
+    }
     else if (typeof entry.url==='string'&&entry.url) playlist.push({ url: entry.url, name: entry.name });
   });
   renderPlaylist();
@@ -1887,9 +1890,14 @@ els.btnTestTone.addEventListener('click', () => {
 });
 
 const playlistSearch=document.getElementById('playlistSearch');
-const playlistFolder=document.getElementById('playlistFolder');
+const playlistFolder=document.getElementById('playlistFolder'),playlistFolderCancel=document.getElementById('playlistFolderCancel');
+playlistFolderCancel.addEventListener('click',async()=>{
+ playlistFolderCancel.disabled=true;
+ try{await window.waveframe.cancelMusicFolder();}catch{}
+});
 playlistFolder.addEventListener('click',async()=>{
  if(playlistFolder.disabled)return;playlistFolder.disabled=true;
+ playlistFolderCancel.hidden=false;playlistFolderCancel.disabled=false;
  try{
   const result=await window.waveframe.importMusicFolder();
   if(result?.cancelled)return;
@@ -1897,14 +1905,14 @@ playlistFolder.addEventListener('click',async()=>{
   const existing=new Set(playlist.map(x=>OpsisFeatureGuide.musicPathKey(x.path)).filter(Boolean));
   let added=0,duplicates=0;
   for(const p of result.files||[]){
-   const key=OpsisFeatureGuide.musicPathKey(p);if(!key)continue;
+   const key=OpsisFeatureGuide.musicPathKey(p),url=pathToFileUrl(p);if(!key||!url)continue;
    if(existing.has(key)){duplicates++;continue;}existing.add(key);
-   playlist.push({path:p,url:pathToFileUrl(p),name:p.split(/[\\/]/).pop().replace(/\.[^/.]+$/,'')});added++;
+   playlist.push({path:p,url,name:p.split(/[\\/]/).pop().replace(/\.[^/.]+$/,'')});added++;
   }
   renderPlaylist();if(added)scheduleMetadataScan();
   await showAlertDialog('Music library / Βιβλιοθήκη',added+' added / προστέθηκαν · '+duplicates+' duplicates skipped / διπλότυπα παραλείφθηκαν'+(result.truncated?' · Scan limit reached / Όριο σάρωσης':'')+(result.skipped?' · '+result.skipped+' inaccessible/skipped entries':''));
  }catch{await showAlertDialog('Music library','Import failed / Αποτυχία εισαγωγής');}
- finally{playlistFolder.disabled=false;}
+ finally{playlistFolder.disabled=false;playlistFolderCancel.hidden=true;playlistFolderCancel.disabled=false;}
 });
 const playlistGroupField=document.getElementById('playlistGroupField'),playlistGroupValue=document.getElementById('playlistGroupValue');
 let musicGroupSignature='';

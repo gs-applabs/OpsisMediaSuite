@@ -61,3 +61,13 @@ test('forced metadata refresh after a tag write queues a fresh read instead of r
  assert.equal(q.request('track',true,true),fresh);
  release();assert.deepEqual(await Promise.all([old,fresh]),[1,2]);assert.equal(count,2);assert.equal(q.diagnostics().pending,0);
 });
+
+
+test('local audio file URLs escape literal URL punctuation and preserve Unicode paths',()=>{
+ const P=require('../renderer/path-identity');
+ assert.equal(P.fileUrl('C:\\Music\\Ελληνικά #100%?.mp3'),'file:///C:/Music/%CE%95%CE%BB%CE%BB%CE%B7%CE%BD%CE%B9%CE%BA%CE%AC%20%23100%25%3F.mp3');
+ assert.equal(P.fileUrl('/tmp/a#b%20.wav'),'file:///tmp/a%23b%2520.wav');
+ assert.equal(P.fileUrl('C:/Music/a+b.wav'),'file:///C:/Music/a%2Bb.wav');
+ for(const invalid of ['relative.mp3','https://example.test/a','\\\\server\\share\\a.mp3','C:\\a.mp3:stream','C:\\a\n.mp3','C:/bad\ud800.mp3'])assert.equal(P.fileUrl(invalid),'');
+ assert.equal(P.key('C:\\Music\\A.mp3'),'c:/music/a.mp3');
+});

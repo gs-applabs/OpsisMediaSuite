@@ -561,15 +561,22 @@ function createWindow() {
     }catch(err){return {error:String(err.message).slice(0,250)};}
     finally{metadataBusy=false;}
   });
-  let musicFolderBusy=false;
+  let musicFolderJob=null;
   ipcMain.handle('music:import-folder',async e=>{
-    if(!fromMain(e)||musicFolderBusy||win.isDestroyed())return {error:'busy or denied'};
-    musicFolderBusy=true;
+    if(win.isDestroyed()||!fromMain(e)||musicFolderJob)return {error:'busy or denied'};
+    const job=musicFolderJob={cancelled:false};
+    const cancelled=()=>job.cancelled||win.isDestroyed();
     try{
       const picked=await dialog.showOpenDialog(win,{title:'Import music folder / Εισαγωγή φακέλου μουσικής',properties:['openDirectory']});
-      if(picked.canceled||win.isDestroyed())return {cancelled:true};
-      return await require('./music-library').scanFolder(picked.filePaths[0],{cancelled:()=>win.isDestroyed()});
-    }catch{return {error:'Music folder could not be read'};}finally{musicFolderBusy=false;}
+      if(picked.canceled||cancelled()||!fromMain(e))return {cancelled:true};
+      const result=await require('./music-library').scanFolder(picked.filePaths[0],{cancelled});
+      return cancelled()||!fromMain(e)?{cancelled:true}:result;
+    }catch{return cancelled()?{cancelled:true}:{error:'Music folder could not be read'};}
+    finally{if(musicFolderJob===job)musicFolderJob=null;}
+  });
+  ipcMain.handle('music:cancel-folder',e=>{
+    if(win.isDestroyed()||!fromMain(e)||!musicFolderJob)return false;
+    musicFolderJob.cancelled=true;return true;
   });
   let metadataReadBusy=false;
   ipcMain.handle('metadata:read', async (event, filePath) => {
@@ -591,9 +598,14 @@ function createWindow() {
         const pic = common.picture[0];
         if(['image/jpeg','image/png','image/webp'].includes(pic.format)&&pic.data?.length<=2*1024*1024){
           // Bound retained album art per track. Preserve originals on disk.
-          const img=nativeImage.createFromBuffer(Buffer.from(pic.data));
-          const size=img.getSize();
-          if(!img.isEmpty()&&size.width>0&&size.height>0&&size.width<=8192&&size.height<=8192){
+          const bytes=Buffer.from(pic.data);
+          const header=require('./renderer/photolib').headerSize(bytes);
+          // Reject oversized/unknown image headers before native decode.
+          // An invalid cover must not suppress readable text metadata.
+          const safe=header&&Number.isSafeInteger(header.width)&&Number.isSafeInteger(header.height)&&header.width>0&&header.height>0&&header.width<=8192&&header.height<=8192&&header.width*header.height<=16000000;
+          const img=safe?nativeImage.createFromBuffer(bytes):null;
+          const size=img?.getSize();
+          if(img&&!img.isEmpty()&&size.width>0&&size.height>0&&size.width<=8192&&size.height<=8192&&size.width*size.height<=16000000){
             const factor=Math.min(1,384/Math.max(size.width,size.height));
             const thumb=factor<1?img.resize({width:Math.max(1,Math.round(size.width*factor)),height:Math.max(1,Math.round(size.height*factor)),quality:'good'}):img;
             const jpeg=thumb.toJPEG(82);if(jpeg.length<=256*1024)picture='data:image/jpeg;base64,'+jpeg.toString('base64');
