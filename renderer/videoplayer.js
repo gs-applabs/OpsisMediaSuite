@@ -30,6 +30,7 @@
       li.append(b, x); ul.append(li);
     });
     put(K.queue, list.slice(0, VP.LIMITS.playlist));
+    $('vpReveal').disabled=!current()||VP.isUrl(current());$('vpCopyPath').disabled=!current();
     $('vpMoveUp').disabled=idx<=0;$('vpMoveDown').disabled=idx<0||idx>=list.length-1;$('vpSort').disabled=list.length<2;$('vpExportM3u').disabled=!list.length;
   }
   function addPaths(paths, play) {
@@ -63,7 +64,7 @@
   }
   function releaseTicket() { if (activeTicket) { api.vpReleaseSource(activeTicket).catch(() => {}); activeTicket = null; } }
   function disposeSession(){const previous=session;session=null;if(previous)previous.stop().catch(()=>{});}
-  function stop() { parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
+  function stop() { clearChapters();parked=null;stopNative();saveResume(); releaseTicket(); ++generation; disposeSession(); playbackEngine=null; resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false; clearSubs(); replaceVideo(); }
   function closeMedia(){stop();idx=-1;renderList();renderBookmarks();say('');}
   function parkForAudio(){
     if(!built||!current()||parked||(!session&&!handoff&&!video.getAttribute('src')&&!playbackEngine&&idx<0))return nativeStopping||(nativeStopUnconfirmed?stopNative():true);
@@ -228,7 +229,7 @@
     if (i < 0 || i >= list.length) return;
     window.dispatchEvent(new CustomEvent('waveframe:video-intent'));
     const stopped=stopNative();saveResume(); releaseTicket();
-    const g = ++generation;
+    const g = ++generation;clearChapters();
     disposeSession(); playbackEngine=null;
     resumePath = null; ab = { stage: 'off', a: 0, b: 0 }; seeking = false;
     idx = i; const p = list[i],resumeParked=parked?.path===p?parked:null;
@@ -473,9 +474,12 @@
   }
 
   /* ---------------- repeat, frame step, A-B, snapshot, picture, info (2.3.1) ---------------- */
+  let chapters=[],chapterGeneration=-1;
+  function clearChapters(){chapters=[];chapterGeneration=-1;const sel=$('vpChapterSelect');sel.replaceChildren();sel.hidden=true;}
   function applyPicture() {
     const css = VP.pictureCss(pic, video.clientWidth, video.clientHeight);
     video.style.filter = css.filter; video.style.transform = css.transform;
+    video.style.objectFit=['contain','cover','fill'].includes(pic.view)?pic.view:'contain';
   }
   function onEnded() {
     saveResume();
@@ -490,16 +494,20 @@
     else if (ab.stage === 'loop') say(fmt(t('vp.abB'), { a: VP.clock(ab.a * 1000), b: VP.clock(ab.b * 1000) }));
     else say(t('vp.abOff'));
   }
-  async function snapshot() {
-    if (!current() || !video.videoWidth) return;
+  let snapshotBusy=false;
+  async function snapshot(toClipboard=false) {
+    if(snapshotBusy||handoff||!current()||!video.videoWidth||!video.videoHeight||video.videoWidth*video.videoHeight>16000000)return;
+    snapshotBusy=true;const source=current(),g=generation;let c;
     try {
-      const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
+      c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
       c.getContext('2d').drawImage(video, 0, 0);
       const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-      if (!blob) throw new Error('empty');
-      const r = await api.photoSave({ format: 'png', name: VP.titleOf(current()), bytes: await blob.arrayBuffer() });
+      if(!blob||generation!==g||source!==current())return;
+      const bytes=await blob.arrayBuffer();if(generation!==g||source!==current())return;
+      if(toClipboard===true){const ok=await api.vpCopyFrame(bytes);say(ok?'Frame copied / Το καρέ αντιγράφηκε':'Clipboard unavailable / Μη διαθέσιμο πρόχειρο');return;}
+      const r = await api.photoSave({ format: 'png', name: VP.titleOf(source), bytes });
       say(r && r.ok ? t('vp.snapSaved') : r && r.canceled ? '' : t('ph.saveFailed'));
-    } catch (_) { say(t('ph.saveFailed')); }
+    } catch (_) { say(t('ph.saveFailed')); }finally{if(c){c.width=0;c.height=0;}snapshotBusy=false;}
   }
   async function fileInfo() {
     const it = current(); if (!it) return;
@@ -593,6 +601,33 @@
     $('vpCloseMedia').addEventListener('click',closeMedia);
     $('vpOpenFolder').addEventListener('click', async () => addPaths(await api.vpPick('folder'), true));
     $('vpOpenUrl').addEventListener('click', async () => { const u = await showInputDialog(t('vp.urlPrompt')); if (u && /^https?:\/\/\S+$/i.test(u.trim())) addPaths([u.trim()], true); else if (u) say(t('vp.unsupported')); });
+    $('vpPasteUrl').addEventListener('click',async()=>{
+      const u=VP.clipboardUrl(await api.vpClipboardUrl().catch(()=>null));
+      if(!u){say('No valid HTTP(S) URL / Μη έγκυρο URL');return;}
+      if(await showConfirmDialog('Open URL / Άνοιγμα URL',u))addPaths([u],true);
+    });
+    $('vpReveal').addEventListener('click',async()=>{if(current()&&!await api.vpReveal(current()).catch(()=>false))say('File not approved or unavailable / Μη διαθέσιμο αρχείο');});
+    $('vpCopyPath').addEventListener('click',async()=>{if(current()&&await api.vpCopyPath(current()).catch(()=>false))say('Copied / Αντιγράφηκε');});
+    $('vpChapters').addEventListener('click',async()=>{
+      const path=current(),g=generation,btn=$('vpChapters');if(!path||VP.isUrl(path)||btn.disabled)return;
+      btn.disabled=true;
+      try{
+        const result=await api.vpChapters(path);
+        if(g!==generation||path!==current())return;
+        if(!result?.ok){say('MKV chapters unavailable / Μη διαθέσιμα κεφάλαια MKV');return;}
+        chapters=result.chapters;chapterGeneration=g;const sel=$('vpChapterSelect');sel.replaceChildren();
+        const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose chapter / Επιλέξτε κεφάλαιο';sel.append(placeholder);
+        chapters.forEach((c,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=VP.clock(c.start*1000)+' · '+(c.title||'Chapter '+(i+1));sel.append(o);});
+        sel.hidden=!chapters.length;if(!chapters.length)say('No chapters / Δεν υπάρχουν κεφάλαια');
+      }catch{say('Chapter probe failed');}finally{btn.disabled=false;}
+    });
+    $('vpChapterSelect').addEventListener('change',()=>{
+      const sel=$('vpChapterSelect');if(sel.value===''||chapterGeneration!==generation||parked)return;
+      const c=chapters[Number(sel.value)];if(!c)return;
+      const duration=handoff?Number(handoff.status?.durationMs)/1000:video.duration;
+      if(!Number.isFinite(duration)||c.start>duration)return;
+      if(handoff)nativeCommand('seek',Math.round(c.start*1000));else seekTo(c.start);
+    });
     $('vpPrev').addEventListener('click', () => next(-1));
     $('vpNext').addEventListener('click', () => next(1));
     $('vpPlay').addEventListener('click', () => { if(handoff){nativeCommand('toggle');return;} if (!current() && list.length) playAt(0); else if (session && playbackEngine) { if(video.paused)void resumeChromium();else session.pause().catch(()=>{}); } else if(current())playAt(idx); });
@@ -871,7 +906,11 @@
     $('vpFramePrev').addEventListener('click', () => stepFrame(-1));
     $('vpFrameNext').addEventListener('click', () => stepFrame(1));
     $('vpAB').addEventListener('click', toggleAB);
-    $('vpSnap').addEventListener('click', snapshot);
+    $('vpSnap').addEventListener('click',()=>snapshot(false));
+    $('vpCopyFrame').addEventListener('click',()=>snapshot(true));
+    $('vpViewMode').addEventListener('change',()=>{pic.view=$('vpViewMode').value;applyPicture();});
+    $('vpZoom').addEventListener('input',()=>{pic.zoom=Number($('vpZoom').value)/100;applyPicture();});
+    $('vpPip').addEventListener('click',async()=>{try{if(document.pictureInPictureElement)await document.exitPictureInPicture();else if(!handoff&&video.videoWidth&&document.pictureInPictureEnabled)await video.requestPictureInPicture();else say('PiP unavailable / Μη διαθέσιμο');}catch{say('PiP unavailable / Μη διαθέσιμο');}});
     $('vpInfo').addEventListener('click', fileInfo);
     api.vpNativeStatus().then(r=>{$('vpNative').hidden=!r?.available;$('vpNativeEmbed').hidden=!r?.available;$('vpDirectShow').hidden=!r?.available;$('vpMediaFoundation').hidden=!r?.available;$('vpNativeFallbackLabel').hidden=!r?.available;}).catch(()=>{});
     $('vpDirectShow').addEventListener('click',()=>nativeHandoff('directshow',current(),generation));
@@ -922,7 +961,7 @@
     $('vpRot').addEventListener('click', () => { pic.rotate = (pic.rotate + 90) % 360; applyPicture(); });
     $('vpFlipH').addEventListener('click', () => { pic.flipH = !pic.flipH; applyPicture(); });
     $('vpFlipV').addEventListener('click', () => { pic.flipV = !pic.flipV; applyPicture(); });
-    $('vpPicReset').addEventListener('click', () => { pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }; $('vpBright').value = $('vpContrast').value = $('vpSat').value = '100'; applyPicture(); });
+    $('vpPicReset').addEventListener('click', () => { pic = { brightness: 100, contrast: 100, saturation: 100, rotate: 0, flipH: false, flipV: false }; $('vpBright').value = $('vpContrast').value = $('vpSat').value = '100';$('vpZoom').value='100';$('vpViewMode').value='contain'; applyPicture(); });
     $('vpRepeat').value = get('waveframe.video.repeat', 'off'); $('vpRepeat').addEventListener('change', () => put('waveframe.video.repeat', $('vpRepeat').value));
     aria(); document.addEventListener('waveframe:language-changed', aria);
 

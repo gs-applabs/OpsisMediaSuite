@@ -25,7 +25,7 @@
 - [Ελληνικά](#ελληνικά)
 - [English](#english)
 - [Άδεια / License](#άδεια--license)
-- [Roadmap 3.0 / OPSIS Audio Engine](docs/P0-PASS-1.md#consolidated-roadmap--30-and-optional-system-wide-audio-2026-11-27)
+- [Master Roadmap 3.0 / OPSIS Audio Engine](docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md) · [Handoff](docs/START-HERE-HANDOFF-EL.md)
 
 ## Ελληνικά
 

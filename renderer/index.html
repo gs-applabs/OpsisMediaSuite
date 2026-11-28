@@ -249,7 +249,7 @@
                 <div class="vp-open">
                   <button class="small-btn" id="vpOpen" data-i18n="vp.openFiles">Άνοιγμα αρχείων</button>
                   <button class="small-btn" id="vpOpenFolder" data-i18n="vp.openFolder">Φάκελος</button>
-                  <button class="small-btn" id="vpOpenUrl" data-i18n="vp.openUrl">Διεύθυνση URL</button>
+                  <button class="small-btn" id="vpOpenUrl" data-i18n="vp.openUrl">Διεύθυνση URL</button><button class="small-btn" id="vpPasteUrl">Paste URL / Επικόλληση URL</button>
                   <button class="small-btn" id="vpCloseMedia">Close / Κλείσιμο</button>
                 </div>
               </div>
@@ -294,7 +294,7 @@
                 <div class="vp-bar vp-row">
                   <button class="small-btn" id="vpFramePrev">◂|</button>
                   <button class="small-btn" id="vpFrameNext">|▸</button>
-                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button><button class="small-btn" id="vpGoTime">Go to time / Μετάβαση σε χρόνο</button><button class="small-btn" id="vpPlaybackStats">Playback stats / Στατιστικά</button>
+                  <button class="small-btn" id="vpAB" data-i18n="vp.abLoop">Επανάληψη A-B</button><button class="small-btn" id="vpChapters">MKV chapters / Κεφάλαια</button><select id="vpChapterSelect" aria-label="Chapter / Κεφάλαιο" hidden></select><button class="small-btn" id="vpGoTime">Go to time / Μετάβαση σε χρόνο</button><button class="small-btn" id="vpPlaybackStats">Playback stats / Στατιστικά</button>
                 </div>
               </section>
               <section class="panel vp-card" aria-labelledby="vpGPic">
@@ -306,7 +306,8 @@
                   <button class="small-btn" id="vpRot" data-i18n="ph.rotR">↷ 90°</button>
                   <button class="small-btn" id="vpFlipH" data-i18n="ph.flipH">Αναστροφή ↔</button>
                   <button class="small-btn" id="vpFlipV" data-i18n="ph.flipV">Αναστροφή ↕</button>
-                  <button class="small-btn" id="vpPicReset" data-i18n="ph.reset">Επαναφορά</button>
+                  <button class="small-btn" id="vpPicReset" data-i18n="ph.reset">Επαναφορά</button><button class="small-btn" id="vpCopyFrame">Copy frame / Αντιγραφή καρέ</button>
+                </div><div class="vp-bar vp-row"><label>View / Προβολή <select id="vpViewMode"><option value="contain">Fit / Προσαρμογή</option><option value="cover">Crop / Περικοπή</option><option value="fill">Stretch / Τέντωμα</option></select></label><label>Zoom <input id="vpZoom" type="range" min="100" max="200" value="100" step="5"></label><button class="small-btn" id="vpPip">Picture-in-Picture</button>
                 </div>
               </section>
               <section class="panel vp-card" aria-labelledby="vpGSound">
@@ -396,7 +397,7 @@
               <button class="small-btn" id="vpClear" data-i18n="vp.clear">Εκκαθάριση</button>
               <button class="small-btn" id="vpSavePl" data-i18n="vp.savePl">Αποθήκευση λίστας</button>
               <button class="small-btn" id="vpImportM3u" data-i18n="vp.importM3u">Εισαγωγή M3U</button><button class="small-btn" id="vpExportM3u">Export M3U / Εξαγωγή M3U</button>
-            </div><div class="vp-bar vp-row"><button class="small-btn" id="vpSort">Sort A–Z / Ταξινόμηση</button><button class="small-btn" id="vpMoveUp" aria-label="Move current up / Μετακίνηση πάνω">↑</button><button class="small-btn" id="vpMoveDown" aria-label="Move current down / Μετακίνηση κάτω">↓</button>
+            </div><div class="vp-bar vp-row"><button class="small-btn" id="vpSort">Sort A–Z / Ταξινόμηση</button><button class="small-btn" id="vpMoveUp" aria-label="Move current up / Μετακίνηση πάνω">↑</button><button class="small-btn" id="vpMoveDown" aria-label="Move current down / Μετακίνηση κάτω">↓</button><button class="small-btn" id="vpReveal">Show in folder / Στον φάκελο</button><button class="small-btn" id="vpCopyPath">Copy path / Αντιγραφή διαδρομής</button>
             </div>
             <div class="vp-bar vp-row">
               <label class="vp-inline"><span data-i18n="vp.savedLists">Αποθηκευμένες λίστες</span>

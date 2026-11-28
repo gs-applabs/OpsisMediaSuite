@@ -31,6 +31,10 @@
     else if(mode==='move'&&Number.isInteger(from)&&Number.isInteger(to)&&from>=0&&to>=0&&from<rows.length&&to<rows.length){rows.splice(to,0,rows.splice(from,1)[0]);}
     return {items:rows.map(r=>r.value),selected:rows.findIndex(r=>r.index===selected)};
   }
+  function clipboardUrl(value){
+    if(typeof value!=='string'||value.length>2048||/[\x00-\x1f\x7f]/.test(value.trim()))return null;
+    try{const u=new URL(value.trim());return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password?u.href:null;}catch{return null;}
+  }
   function parseSeekTime(value){
     const s=typeof value==='string'?value.trim():'';
     if(!/^\d{1,6}(?::[0-5]\d){0,2}(?:[.,]\d{1,3})?$/.test(s))return null;
@@ -274,6 +278,8 @@
     const rot = [0, 90, 180, 270].includes(Number(p.rotate)) ? Number(p.rotate) : 0;
     const k = rot === 90 || rot === 270 ? (boxW > 0 && boxH > 0 ? Math.min(boxW / boxH, boxH / boxW) : 0.56) : 1;
     const parts = [];
+    const zoom=Number.isFinite(p.zoom)?Math.max(1,Math.min(2,p.zoom)):1;
+    if(zoom!==1)parts.push(`scale(${zoom})`);
     if (rot) parts.push(`rotate(${rot}deg)`);
     if (k !== 1) parts.push(`scale(${Math.round(k * 1000) / 1000})`);
     if (p.flipH) parts.push('scaleX(-1)');
@@ -287,5 +293,5 @@
     return { stage: 'off', a: 0, b: 0 };
   }
 
-  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
+  return { releaseInfo,releaseScore,ttmlSeconds,editCue, twoPointSync, exportSubtitles, subtitleLanguages, preferredSubtitle, nextIndex, pictureCss, abStep, VIDEO, AUDIO, SPEEDS, LIMITS, extOf, kindOf, titleOf, isUrl, mediaUrl, clock, clipboardUrl, reorderPlaylist, parseSeekTime, displayTime, vttTime, srtToVtt, assToSrt, subtitleToVtt, resumeAction, resumeUpdate, pushRecent, addBookmark, sortedBookmarks, limitResume, playable };
 });

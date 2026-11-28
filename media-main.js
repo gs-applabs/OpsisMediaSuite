@@ -2,7 +2,7 @@
 // IPC glue for the video player (file picker, subtitle discovery, a read-only "wfmedia" protocol with range support), the photo editor (open / save)
 // and M3U playlist import. Only the main window may call these channels; payloads are validated here.
 
-const { ipcMain, dialog, protocol, app, shell } = require('electron');
+const { ipcMain, dialog, protocol, app, shell, clipboard, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const M3U = require('./m3u.js');
@@ -383,6 +383,23 @@ function init({ getMainWin, resolveFfmpegPath }) {
     finally{state.running=false;}
   });
   let embeddedBusy=false;
+  ipcMain.handle('vp:chapters',async(e,file)=>{
+    const p=allowedFile(file,new Set(['mkv']));if(!trusted(e)||embeddedBusy||!p||!approved.has(p))return {ok:false};
+    embeddedBusy=true;try{const exe=await resolveProbe(await resolveFfmpegPath());if(!exe||!trusted(e)||!approved.has(p))return {ok:false};
+      const chapters=await require('./subtitle-probe').probeChapters(exe,p);return trusted(e)&&chapters!==null?{ok:true,chapters}:{ok:false};
+    }catch{return {ok:false};}finally{embeddedBusy=false;}
+  });
+  ipcMain.handle('vp:clipboard-url',e=>{if(!trusted(e))return null;try{return VP.clipboardUrl(clipboard.readText());}catch{return null;}});
+  ipcMain.handle('vp:copy-path',(e,p)=>{if(!trusted(e))return false;const file=allowedFile(p,PLAY_EXTS),value=file&&approved.has(file)?file:VP.clipboardUrl(p);if(!value)return false;try{clipboard.writeText(value);return true;}catch{return false;}});
+  ipcMain.handle('vp:reveal',(e,p)=>{if(!trusted(e))return false;const file=allowedFile(p,PLAY_EXTS);if(!file||!approved.has(file))return false;try{shell.showItemInFolder(file);return true;}catch{return false;}});
+  ipcMain.handle('vp:copy-frame',(e,bytes)=>{
+    if(!trusted(e)||!(bytes instanceof ArrayBuffer||ArrayBuffer.isView(bytes))||!bytes.byteLength||bytes.byteLength>64*1024*1024)return false;
+    try{const b=bytes instanceof ArrayBuffer?Buffer.from(bytes):Buffer.from(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+      if(b.length<33||!b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||b.toString('ascii',12,16)!=='IHDR')return false;
+      const w=b.readUInt32BE(16),h=b.readUInt32BE(20);if(!w||!h||w*h>16000000)return false;
+      const image=nativeImage.createFromBuffer(b);if(image.isEmpty())return false;clipboard.writeImage(image);return true;
+    }catch{return false;}
+  });
   ipcMain.handle('vp:sub-embedded-list',async(e,video)=>{
     const p=allowedFile(video,new Set(['mkv']));
     if(!trusted(e)||embeddedBusy||!p||!approved.has(p))return {ok:false,code:'denied-or-busy'};

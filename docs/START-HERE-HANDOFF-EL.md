@@ -1,5 +1,5 @@
 # START HERE — OPSIS Media Suite 3.0.0
-28 Νοεμβρίου 2026 • ULTRA 3D.2
+28 Νοεμβρίου 2026 • ULTRA 3D.3
 
 ## Πηγή αλήθειας
 - Repo: https://github.com/gs-applabs/OpsisMediaSuite
@@ -7,11 +7,7 @@
 - Branch: feat/photo-tools-fxsound-coexistence
 - Τρέχον source: https://github.com/gs-applabs/OpsisMediaSuite/tree/feat/photo-tools-fxsound-coexistence
 - Πλήρης μοναδική ενεργή ουρά: docs/MEDIA-SUITE-3.0-MASTER-ROADMAP-EL.md, R4 στην αρχή (P0–P9/R3 και ιστορικά παραρτήματα για κριτήρια και προέλευση).
-- Ελεγχθείσα βάση πριν το 3D.1: 88eeecc0f7bba6f8b08b58c4215134c91a13b4a5, 9/9 CI, 303/303 tests, πραγματικό Electron PASS. General run https://github.com/gs-applabs/OpsisMediaSuite/actions/runs/46073208388 .
-- Το commit που περιέχει αυτό το αρχείο είναι το 3D.2. Αν υπάρχει νεότερο PR head, διάβασε πρώτα το τελευταίο handoff και roadmap και έλεγξε το ιστορικό. Μην υποθέτεις ότι η βάση είναι το νέο head.
-
-## Τρέχουσα εργασία
-3D.1: διόρθωση διπλού ID υποτίτλων, go-to-time, elapsed/remaining, on-demand frame counters. Commit bd210395595db49e43a96540f178c6e2e6c72745: 7 specialist CI PASS, general/installer pending στην επιθεώρηση. 3D.2: UTF-8 M3U export, sort/move active entry without restart, gamma/sharpen/deinterlace and tests, 103 guide entries. Νέο CI εκκρεμεί. Πρώτα έλεγξε CI του πραγματικού PR head και διόρθωσε failures. Μετά 3D.3: υπόλοιπα playlist/clipboard/reveal, playback/chapter/view modes και frame/poster/contact-sheet ή lossless remux εργαλεία, με απογραφή πριν από υλοποίηση. Έπειτα 3E/3F/4A–D/5A–C όπως R4. Πλήρης λίστα στο roadmap, όχι μόνο σε αυτό το αρχείο.
+- Ελεγχθείσα βάση πριν το 3D.1: 9/9 CI PASS. 3D.2 base a8b23da3f0716684e8fd3d6a9dac529607076a44: 309/309 tests, Electron PASS, seven specialists PASS, installer pending at inspection. 3D.3: URL clipboard confirmation, local file reveal/copy, frame clipboard, fit/crop/stretch/zoom, Chromium PiP, MKV chapter probe, 109 guide entries. New CI pending. Two obsolete progress files removed from active tree; exact historical links retained in R4. Πρώτα έλεγξε CI πραγματικού PR head, διόρθωσε failures. Μετά 3D.4: frame sequence/poster/contact sheet and lossless remux/A-B, remaining 3D, then 3E/3F/4A–D/5A–C as R4. Do not lose prior work; no duplicate implementation.
 
 ## Αμετάβλητες απαιτήσεις
 Έξυπνος πυρήνας ενεργοποιεί μόνο επιλεγμένες λειτουργίες, χωρίς να εμποδίζει ανεξάρτητες παράλληλες εργασίες. Bounded RAM/CPU/SSD, no pile-up, προστασία πρωτοτύπων και ρυθμίσεων, καμία διπλή DSP/IPC/ρύθμιση. Inno Setup (όχι NSIS εκτός legacy migration), MIT και τρίτες άδειες, plugin 1.0.0.0, στόχος 3.0.0. PR #1 (Windows flyout/mixer/widget) παραμένει ανοικτό, 27 κοινά αρχεία με PR #3 στο audit. PR #2 Opsis.UI tokens ήδη merged. Upstream gs-applabs/Opsis.UI, όχι OpsisUI. Μην κάνεις blind merge ή release. Πιστοποίηση με πραγματικά αποτελέσματα για συγκεκριμένο SHA, όχι εκτιμήσεις.

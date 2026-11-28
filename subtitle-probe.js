@@ -43,4 +43,21 @@ async function extractMkv(ffmpeg,file,track){
  const body=require('./subtitle-sidecar').canonicalSrt({ext:'srt',text});
  return body?{name:path.basename(file,path.extname(file))+'.embedded-'+track.index+'.srt',ext:'srt',text:body}:null;
 }
-module.exports={resolveProbe,parseTracks,probeMkv,canExtract,extractMkv};
+function parseChapters(text){
+ try{
+   const data=JSON.parse(text);if(!Array.isArray(data.chapters)||data.chapters.length>500)return null;
+   const chapters=[];
+   for(const c of data.chapters){
+     const start=Number(c.start_time),end=Number(c.end_time);
+     if(c.start_time==null||c.end_time==null||!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||end>360000)return null;
+     chapters.push({start,end,title:typeof c.tags?.title==='string'?c.tags.title.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,160):''});
+   }
+   return chapters.sort((a,b)=>a.start-b.start);
+ }catch{return null;}
+}
+async function probeChapters(exe,file){
+ if(!exe||!file||path.extname(file).toLowerCase()!=='.mkv'||localPath(file)!==file)return null;
+ const output=await run(exe,['-v','error','-protocol_whitelist','file,pipe','-f','matroska','-probesize','1048576','-analyzeduration','1000000','-show_entries','chapter=start_time,end_time:chapter_tags=title','-of','json','-i',file]);
+ return output===null?null:parseChapters(output);
+}
+module.exports={resolveProbe,parseTracks,probeMkv,canExtract,extractMkv,parseChapters,probeChapters};
