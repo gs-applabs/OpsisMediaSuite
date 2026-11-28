@@ -152,3 +152,15 @@ test('backup covers all persisted current video and converter keys and validates
  assert.deepEqual(B.sanitize(valid),valid);
  for(const [key,value] of [['waveframe.video.nativeDecoder','"arbitrary"'],['waveframe.video.repeat','"unknown"'],['waveframe.video.remainingTime','"false"'],['waveframe.video.subSaveBeside','null'],['waveframe.fxSoundMode','invalid'],['waveframe.vidDestMode','invalid']])assert.equal(B.sanitize({[key]:value}),null,key);
 });
+
+
+test('backup preserves normal Windows output folders without treating them as filesystem grants',()=>{
+ const B=require('../renderer/backup');
+ const valid={'waveframe.destFolder':'C:\\Users\\User\\Music','waveframe.vidDestFolder':'D:/Video output'};
+ assert.deepEqual(B.sanitize(valid),valid);
+ const m=new Map(Object.entries(valid));
+ assert.deepEqual(B.collect({getItem:k=>m.get(k)??null}),valid);
+ for(const value of ['C:relative','\\\\server\\share','\\\\?\\C:\\Music','C:\\Music:stream','C:\\Music\x7f','C:\\Music\n','C:\\'+'a'.repeat(32765)]) {
+  for(const key of ['waveframe.destFolder','waveframe.vidDestFolder']) assert.equal(B.sanitize({[key]:value}),null,value.slice(0,40));
+ }
+});

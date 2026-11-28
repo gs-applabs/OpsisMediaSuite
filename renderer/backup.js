@@ -49,7 +49,7 @@ const WaveframeBackup = (() => {
 
   function validStoredValue(key, value) {
     if (typeof value !== 'string' || value.length >= 5 * 1024 * 1024) return false;
-    if (outputFolders.has(key) && value && (!/^[a-z]:[\/]/i.test(value) || /[\u0000-\u001f:]/.test(value.slice(2)))) return false;
+    if (outputFolders.has(key) && value && (value.length > 32767 || !/^[a-z]:[\\/]/i.test(value) || /[\u0000-\u001f\u007f:]/.test(value.slice(2)))) return false;
     if(Object.hasOwn(literalEnums,key)&&!literalEnums[key].includes(value))return false;
     if (!Object.hasOwn(schemas, key)) return true;
     try { return schemas[key](JSON.parse(value)); } catch { return false; }

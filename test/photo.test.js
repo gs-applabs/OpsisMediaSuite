@@ -203,3 +203,25 @@ test('free crop uses bounded source-relative dimensions and the existing export 
  assert.equal(plan.x,400);assert.equal(plan.y,300);assert.equal(plan.width,400);assert.equal(plan.height,300);
  assert.deepEqual(P.outputSize(800,600,{crop,rotate:90}),{width:300,height:400});
 });
+
+
+test('photo capture date reads bounded WebP EXIF and copies only date to JPEG/PNG',()=>{
+ const M=require('../photo-metadata'),date='2024:07:18 09:14:30',jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
+ const tagged=M.attachCaptureDate(jpeg,'jpeg',date),tiff=tagged.subarray(12,tagged.length-2);
+ function webp(payload){
+  const riff=Buffer.alloc(12),chunk=Buffer.alloc(8+payload.length+(payload.length&1));
+  riff.write('RIFF');riff.writeUInt32LE(4+chunk.length,4);riff.write('WEBP',8);
+  chunk.write('EXIF');chunk.writeUInt32LE(payload.length,4);payload.copy(chunk,8);
+  return Buffer.concat([riff,chunk]);
+ }
+ for(const payload of [tiff,Buffer.concat([Buffer.from('Exif\0\0'),tiff])]){
+  const source=webp(payload);
+  assert.equal(M.captureDate(source),date);
+  assert.equal(M.captureDate(source.subarray(0,source.length-2)),null);
+  const target=M.attachCaptureDate(jpeg,'jpeg',M.captureDate(source));
+  assert.equal(M.captureDate(target),date);
+  assert.equal(M.attachCaptureDate(source,'webp',date),source);
+  const invalid=Buffer.from(source);invalid.writeUInt32LE(0xffffffff,16);
+  assert.equal(M.captureDate(invalid),null);
+ }
+});

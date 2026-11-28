@@ -88,3 +88,10 @@ New user requirement — priority 3D.9 (after current CI/reconnect stabilization
 ## Πηγές για ανάκτηση παλαιότερων αιτημάτων
 docs/MPP-MIGRATION-LEDGER.md, WAVEFRAME_ROADMAP.md, CHANGELOG.md, docs/OPSIS-UI6-ADOPTION.md, PR #1/#2/#3. Αναδρομικός έλεγχος δεν είχε πλήρη αυτούσια πρόσβαση σε κάθε παλαιά συνομιλία. Αν βρεθεί νέα εκκρεμότητα, πρόσθεσέ την στο R4 του master πριν την υλοποίηση.
 Κράτα αυτό το ένα handoff ενημερωμένο σε κάθε ουσιαστικό pass· παρέδωσε σύνδεσμο και αντίγραφο στο χρήστη στα checkpoints. Git history αντί πολλών ZIP. Μην ισχυρίζεσαι πλήρη έλεγχο αν εκκρεμεί CI ή hardware.
+
+### R6-02.3 / 04.2 / 06.2 — διαδρομές Backup, εισαγωγή μουσικής, ημερομηνία WebP (base f0f2b109)
+- OV-14 FIX: existing backup validator incorrectly accepted only forward slash after drive letter, dropping normal Windows output folders during collection and rejecting restore. Accept both separators, reject device/UNC, ADS, controls/DEL and oversized paths; actual file access remains subject to existing main-process grants. Added positive/negative fixtures.
+- R6-06 EXTEND: existing music folder scan no longer reports truncation merely because exact capacity was reached; only reports omission after an extra eligible file/entry or depth limit. Bounded cursor traversal replaces repeated queue shifts. Existing cancellation, no-write and symlink policy preserved. Added exact-limit fixtures.
+- OV-12 EXTEND: existing bounded date reader accepts complete WebP RIFF EXIF chunk inside first MiB (bare TIFF or Exif prefix), reuses existing opt-in token and JPEG/PNG export, updates guide. WebP output, EXIF beyond prefix and drag/drop date remain open. No GPS copy, new IPC or parallel pipeline. Synthetic fixtures, not a real decoder certification.
+- Base f0f2b109: seven successful workflows; General and Inno pending at inspection. No new tests executed in connector; new CI required. Static tree inventory complete (nontruncated); individual source review targeted, not exhaustive. All R6 01–16 remain active and certification/release gates unchanged. No merge/release.
+

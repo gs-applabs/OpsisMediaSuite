@@ -16,6 +16,22 @@ function findExif(bytes) {
       if (type === 'eXIf') return bytes.subarray(p + 8, p + 8 + length);
       p += 12 + length;
     }
+  } else if (end >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
+    // Read only a complete EXIF chunk in the bounded prefix. RIFF size includes
+    // the WEBP FourCC and chunks, but excludes the first eight bytes.
+    const declaredEnd = 8 + bytes.readUInt32LE(4);
+    if (declaredEnd < 12) return null;
+    const boundary = Math.min(end, declaredEnd);
+    for (let p = 12; p + 8 <= boundary;) {
+      const length = bytes.readUInt32LE(p + 4);
+      const next = p + 8 + length + (length & 1);
+      if (next > boundary) break;
+      if (bytes.toString('ascii', p, p + 4) === 'EXIF') {
+        const chunk = bytes.subarray(p + 8, p + 8 + length);
+        return chunk.subarray(0, 6).equals(exif) ? chunk.subarray(6) : chunk;
+      }
+      p = next;
+    }
   } else if (bytes[0] === 0xff && bytes[1] === 0xd8) {
     for (let p = 2; p + 4 <= end && bytes[p] === 0xff;) {
       const marker = bytes[p + 1];

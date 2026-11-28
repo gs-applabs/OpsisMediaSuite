@@ -150,3 +150,18 @@ test('metadata writer refuses linked audio before parsing or modifying it',async
  assert.deepEqual(await fs.readFile(file),bytes);
  assert.deepEqual((await fs.readdir(dir)).sort(),['linked.mp3','source.mp3']);
 });
+
+
+test('music scan distinguishes an exact file/entry limit from actual omission',async(t)=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const dir=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'opsis-library-limit-')));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const {scanFolder}=require('../music-library');
+ await fs.writeFile(path.join(dir,'one.mp3'),'fixture');
+ let r=await scanFolder(dir,{maxFiles:1,maxEntries:1});
+ assert.equal(r.files.length,1);assert.equal(r.examined,1);assert.equal(r.truncated,false);
+ await fs.writeFile(path.join(dir,'readme.txt'),'ignore');
+ r=await scanFolder(dir,{maxFiles:1,maxEntries:2});assert.equal(r.files.length,1);assert.equal(r.truncated,false);
+ r=await scanFolder(dir,{maxEntries:1});assert.equal(r.examined,1);assert.equal(r.truncated,true);
+ await fs.writeFile(path.join(dir,'two.flac'),'fixture');
+ r=await scanFolder(dir,{maxFiles:1});assert.equal(r.files.length,1);assert.equal(r.truncated,true);
+});
